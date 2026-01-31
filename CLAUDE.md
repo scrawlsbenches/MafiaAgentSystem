@@ -123,3 +123,45 @@ public void RegisterRule(IRule<T> rule)
 | `AgentRouter` | Route messages to agents |
 | `MiddlewarePipeline` | Compose/execute middleware |
 | Each `*Middleware` | One cross-cutting concern |
+
+## MafiaDemo Game
+
+The `AgentRouting.MafiaDemo` project is a **test bed** for exercising the RulesEngine and AgentRouting systems. It simulates a mafia family hierarchy with autonomous agents making decisions.
+
+**Purpose:** Find API gaps and areas for improvement in the core libraries through real-world usage patterns.
+
+**Key namespaces:**
+- `AgentRouting.MafiaDemo.Game` - GameState, Territory, RivalFamily, AutonomousAgent base class
+- `AgentRouting.MafiaDemo.Rules` - Rules engine integration for game logic
+- `AgentRouting.MafiaDemo.Missions` - Mission system with player progression
+- `AgentRouting.MafiaDemo.AI` - PlayerAgent with rules-driven decision making
+- `AgentRouting.MafiaDemo.Autonomous` - NPC agents (Godfather, Underboss, etc.)
+
+## RulesEngine API Patterns
+
+**Full control (IRule<T>):** For complex rules with custom logic
+```csharp
+engine.RegisterRule(new MyCustomRule<Order>());
+```
+
+**Inline convenience (AddRule):** For quick rule definitions
+```csharp
+engine.AddRule("RULE_ID", "Rule Name",
+    ctx => ctx.Amount > 1000,           // condition
+    ctx => ctx.RequiresApproval = true, // action
+    priority: 100);
+```
+
+**Execution modes:**
+- `Execute(fact)` - Returns results, rules don't modify fact
+- `EvaluateAll(fact)` - Applies all matching rules, modifies fact in-place
+
+## Historical Context
+
+This codebase was built across multiple sessions. Key transcripts are in `transcripts.zip`:
+- Expression trees tutorial → RulesEngine foundation
+- Agent routing implementation → AgentRouting core
+- Middleware system → Pipeline architecture
+- MafiaDemo → Game that exercises both systems
+
+If files appear missing, check transcripts for code that may not have been saved to disk.
