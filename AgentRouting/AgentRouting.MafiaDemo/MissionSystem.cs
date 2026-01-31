@@ -1,5 +1,5 @@
 using AgentRouting.MafiaDemo.Game;
-using RulesEngine;
+using RulesEngine.Core;
 
 namespace AgentRouting.MafiaDemo.Missions;
 
