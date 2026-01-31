@@ -122,8 +122,8 @@ public static class RuleValidator
             // Check for potential division by zero
             if (node.NodeType == ExpressionType.Divide)
             {
-                if (node.Right is ConstantExpression constant && 
-                    Equals(constant.Value, 0) || Equals(constant.Value, 0.0))
+                if (node.Right is ConstantExpression constant &&
+                    (Equals(constant.Value, 0) || Equals(constant.Value, 0.0)))
                 {
                     Errors.Add("Division by zero detected");
                 }
