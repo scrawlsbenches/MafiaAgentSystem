@@ -1,6 +1,7 @@
 using TestRunner.Framework;
 using AgentRouting.Core;
 using AgentRouting.Agents;
+using AgentRouting.Middleware;
 
 namespace TestRunner.Tests;
 
@@ -293,10 +294,12 @@ public class AgentRoutingTests
     }
 
     [Test]
-    public async Task AnalyticsAgent_TracksMessageMetrics()
+    public async Task AnalyticsMiddleware_TracksMessageMetrics()
     {
-        var logger = new TestLogger();
-        var analytics = new AnalyticsAgent("analytics-001", "Analytics", logger);
+        var analytics = new AnalyticsMiddleware();
+
+        // Create a simple next delegate that just returns success
+        MessageDelegate next = (msg, ct) => Task.FromResult(MessageResult.Ok("processed"));
 
         var messages = new[]
         {
@@ -307,7 +310,7 @@ public class AgentRoutingTests
 
         foreach (var msg in messages)
         {
-            await analytics.ProcessMessageAsync(msg);
+            await analytics.InvokeAsync(msg, next, CancellationToken.None);
         }
 
         var report = analytics.GenerateReport();
