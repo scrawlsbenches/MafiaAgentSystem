@@ -2,30 +2,24 @@
 
 ## Prerequisites
 - .NET 8.0 SDK required (`dotnet --version` should show 8.x)
-- Standard install: `sudo apt install dotnet-sdk-8.0` (Ubuntu) or https://dot.net
 
-### Restricted/Proxy Environments
-If NuGet fails with proxy errors:
+### Install .NET SDK 8.0 (Ubuntu 24.04)
 ```bash
-# 1. Configure apt proxy (if needed)
-echo 'Acquire::http::Proxy "http://proxy:port";' | sudo tee /etc/apt/apt.conf.d/99proxy
+# Download Microsoft repository configuration
+wget https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb
 
-# 2. If NuGet still fails, download packages manually and use local source:
-mkdir -p /tmp/nuget-packages
-curl -x "$HTTP_PROXY" -o /tmp/nuget-packages/xunit.2.9.2.nupkg \
-  "https://api.nuget.org/v3-flatcontainer/xunit/2.9.2/xunit.2.9.2.nupkg"
-# Repeat for: Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, etc.
+# Install repository (as root, no sudo needed in web environment)
+dpkg -i packages-microsoft-prod.deb
+rm packages-microsoft-prod.deb
 
-# 3. Configure NuGet to use local source only:
-cat > ~/.nuget/NuGet/NuGet.Config << 'EOF'
-<?xml version="1.0" encoding="utf-8"?>
-<configuration>
-  <packageSources>
-    <clear />
-    <add key="local" value="/tmp/nuget-packages" />
-  </packageSources>
-</configuration>
-EOF
+# Fix /tmp permissions to prevent GPG errors
+chmod 1777 /tmp
+
+# Update package lists
+apt-get update 2>&1 | grep -v "403\|Forbidden" | tail -10
+
+# Install .NET SDK 8.0
+apt-get install -y dotnet-sdk-8.0 2>&1 | tail -20
 ```
 
 ## Build & Test
@@ -109,8 +103,20 @@ AgentRouting/
 
 ## Known Issues
 
-1. **AgentRouting build**: `AgentRouterWithMiddleware.cs` references deleted `IMessageMiddleware` - change to `IAgentMiddleware`
-2. **3 failing RulesEngine tests**: Test assertion logic issues, not code bugs
+### AgentRouting Build Errors
+
+`AgentRouterWithMiddleware.cs` has multiple issues that prevent compilation:
+
+1. **Wrong interface**: References `IMessageMiddleware` which doesn't exist. The correct interface is `IAgentMiddleware` (defined in `MiddlewareInfrastructure.cs`)
+   - Lines 21, 44, 55, 66 need `IMessageMiddleware` → `IAgentMiddleware`
+
+2. **Missing methods on `MiddlewarePipeline`**: The following methods are called but don't exist:
+   - `ExecuteAsync()` - called on line 34, also used in tests and demos
+   - `GetMiddleware()` - called on line 46
+
+3. **Tests/demos use undefined `UseCallback()`**: `MiddlewareTests.cs` and `MiddlewareDemo/Program.cs` call `pipeline.UseCallback()` which isn't defined on `MiddlewarePipeline`
+
+**To fix**: Either add the missing methods to `MiddlewarePipeline` or refactor `AgentRouterWithMiddleware.cs` to use the existing `Build()` method pattern
 
 ## Dependency Inversion Pattern
 
