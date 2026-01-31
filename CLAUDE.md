@@ -15,8 +15,8 @@ rm packages-microsoft-prod.deb
 # Fix /tmp permissions to prevent GPG errors
 chmod 1777 /tmp
 
-# Update package lists
-apt-get update 2>&1 | grep -v "403\|Forbidden" | tail -10
+# Update package lists (Microsoft repo only)
+apt-get update -o Dir::Etc::sourcelist="sources.list.d/microsoft-prod.list" -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0"
 
 # Install .NET SDK 8.0
 apt-get install -y dotnet-sdk-8.0 2>&1 | tail -20
