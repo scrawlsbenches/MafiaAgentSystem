@@ -1,22 +1,64 @@
 # MafiaAgentSystem Development Guide
 
 ## Prerequisites
-- .NET 8.0 SDK required (`dotnet --version` should show 8.x)
-- Standard install: `sudo apt install dotnet-sdk-8.0` (Ubuntu) or https://dot.net
 
-### Restricted/Proxy Environments
-If NuGet fails with proxy errors:
+.NET 8.0 SDK is required. Verify installation with:
 ```bash
-# 1. Configure apt proxy (if needed)
+dotnet --version   # Should show 8.x.x
+```
+
+### Installing .NET 8.0 SDK
+
+**Ubuntu/Debian:**
+```bash
+# Add Microsoft package repository (required on most systems)
+wget https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb -O packages-microsoft-prod.deb
+sudo dpkg -i packages-microsoft-prod.deb
+rm packages-microsoft-prod.deb
+
+# Install SDK
+sudo apt update
+sudo apt install -y dotnet-sdk-8.0
+```
+
+**macOS:**
+```bash
+brew install --cask dotnet-sdk   # Latest LTS (currently 8.x)
+# Or for a specific version:
+brew install --cask dotnet-sdk@8
+```
+
+**Windows:**
+Download installer from https://dot.net/download
+
+**Other platforms:** See https://learn.microsoft.com/dotnet/core/install/
+
+### Troubleshooting: Proxy/Restricted Environments
+
+If `dotnet restore` or NuGet fails with connection/proxy errors:
+
+```bash
+# 1. Set proxy environment variables
+export HTTP_PROXY="http://proxy:port"
+export HTTPS_PROXY="http://proxy:port"
+
+# 2. Configure apt proxy (for installation)
 echo 'Acquire::http::Proxy "http://proxy:port";' | sudo tee /etc/apt/apt.conf.d/99proxy
 
-# 2. If NuGet still fails, download packages manually and use local source:
+# 3. If NuGet still fails, download packages manually:
 mkdir -p /tmp/nuget-packages
-curl -x "$HTTP_PROXY" -o /tmp/nuget-packages/xunit.2.9.2.nupkg \
+# Required packages for this project:
+curl -x "$HTTP_PROXY" -L -o /tmp/nuget-packages/xunit.2.9.2.nupkg \
   "https://api.nuget.org/v3-flatcontainer/xunit/2.9.2/xunit.2.9.2.nupkg"
-# Repeat for: Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, etc.
+curl -x "$HTTP_PROXY" -L -o /tmp/nuget-packages/Microsoft.NET.Test.Sdk.17.11.1.nupkg \
+  "https://api.nuget.org/v3-flatcontainer/microsoft.net.test.sdk/17.11.1/microsoft.net.test.sdk.17.11.1.nupkg"
+curl -x "$HTTP_PROXY" -L -o /tmp/nuget-packages/xunit.runner.visualstudio.2.8.2.nupkg \
+  "https://api.nuget.org/v3-flatcontainer/xunit.runner.visualstudio/2.8.2/xunit.runner.visualstudio.2.8.2.nupkg"
+curl -x "$HTTP_PROXY" -L -o /tmp/nuget-packages/coverlet.collector.6.0.2.nupkg \
+  "https://api.nuget.org/v3-flatcontainer/coverlet.collector/6.0.2/coverlet.collector.6.0.2.nupkg"
 
-# 3. Configure NuGet to use local source only:
+# 4. Configure NuGet to use local source:
+mkdir -p ~/.nuget/NuGet
 cat > ~/.nuget/NuGet/NuGet.Config << 'EOF'
 <?xml version="1.0" encoding="utf-8"?>
 <configuration>
