@@ -179,7 +179,7 @@ public class ThreadSafeRulesEngine<T>
 /// <summary>
 /// Alternative: Traditional mutable engine with proper locking
 /// </summary>
-public class LockedRulesEngine<T>
+public class LockedRulesEngine<T> : IDisposable
 {
     private readonly List<IRule<T>> _rules = new();
     private readonly ReaderWriterLockSlim _lock = new();
