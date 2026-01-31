@@ -24,11 +24,11 @@ apt-get install -y dotnet-sdk-8.0 2>&1 | tail -20
 
 ## Build & Test
 ```bash
-dotnet build                           # Build all
-dotnet test                            # Run all tests
-dotnet test RulesEngine/               # RulesEngine tests only
-dotnet test AgentRouting/              # AgentRouting tests only
+dotnet build                              # Build all
+dotnet run --project Tests/TestRunner/    # Run all tests (zero dependencies)
 ```
+
+The test runner has **zero NuGet dependencies** - it uses a custom lightweight test framework in `Tests/TestRunner/Framework/`.
 
 ## Architecture
 
@@ -99,24 +99,8 @@ AgentRouting/
 - **Thread Safety**: `RulesEngine/RulesEngine/Enhanced/`
 - **Agents**: `AgentRouting/AgentRouting/Core/`
 - **Middleware**: `AgentRouting/AgentRouting/Middleware/`
-- **Tests**: `*/Tests/`
-
-## Known Issues
-
-### AgentRouting Build Errors
-
-`AgentRouterWithMiddleware.cs` has multiple issues that prevent compilation:
-
-1. **Wrong interface**: References `IMessageMiddleware` which doesn't exist. The correct interface is `IAgentMiddleware` (defined in `MiddlewareInfrastructure.cs`)
-   - Lines 21, 44, 55, 66 need `IMessageMiddleware` → `IAgentMiddleware`
-
-2. **Missing methods on `MiddlewarePipeline`**: The following methods are called but don't exist:
-   - `ExecuteAsync()` - called on line 34, also used in tests and demos
-   - `GetMiddleware()` - called on line 46
-
-3. **Tests/demos use undefined `UseCallback()`**: `MiddlewareTests.cs` and `MiddlewareDemo/Program.cs` call `pipeline.UseCallback()` which isn't defined on `MiddlewarePipeline`
-
-**To fix**: Either add the missing methods to `MiddlewarePipeline` or refactor `AgentRouterWithMiddleware.cs` to use the existing `Build()` method pattern
+- **Tests**: `Tests/TestRunner/Tests/`
+- **Test Framework**: `Tests/TestRunner/Framework/`
 
 ## Dependency Inversion Pattern
 
