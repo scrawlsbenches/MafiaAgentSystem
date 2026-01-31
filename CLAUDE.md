@@ -2,9 +2,8 @@
 
 ## Prerequisites
 - .NET 8.0 SDK required (`dotnet --version` should show 8.x)
-- Standard install: `sudo apt install dotnet-sdk-8.0` (Ubuntu) or https://dot.net
 
-### Microsoft Repository Install (Ubuntu 24.04)
+### Install .NET SDK 8.0 (Ubuntu 24.04)
 ```bash
 # Download Microsoft repository configuration
 wget https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb
@@ -21,30 +20,6 @@ apt-get update 2>&1 | grep -v "403\|Forbidden" | tail -10
 
 # Install .NET SDK 8.0
 apt-get install -y dotnet-sdk-8.0 2>&1 | tail -20
-```
-
-### Restricted/Proxy Environments
-If NuGet fails with proxy errors:
-```bash
-# 1. Configure apt proxy (if needed)
-echo 'Acquire::http::Proxy "http://proxy:port";' | sudo tee /etc/apt/apt.conf.d/99proxy
-
-# 2. If NuGet still fails, download packages manually and use local source:
-mkdir -p /tmp/nuget-packages
-curl -x "$HTTP_PROXY" -o /tmp/nuget-packages/xunit.2.9.2.nupkg \
-  "https://api.nuget.org/v3-flatcontainer/xunit/2.9.2/xunit.2.9.2.nupkg"
-# Repeat for: Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, etc.
-
-# 3. Configure NuGet to use local source only:
-cat > ~/.nuget/NuGet/NuGet.Config << 'EOF'
-<?xml version="1.0" encoding="utf-8"?>
-<configuration>
-  <packageSources>
-    <clear />
-    <add key="local" value="/tmp/nuget-packages" />
-  </packageSources>
-</configuration>
-EOF
 ```
 
 ## Build & Test
