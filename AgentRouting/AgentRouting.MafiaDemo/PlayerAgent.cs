@@ -2,7 +2,7 @@ using AgentRouting.MafiaDemo.Missions;
 using AgentRouting.MafiaDemo.Game;
 using AgentRouting.Core;
 using AgentRouting.Middleware;
-using RulesEngine;
+using RulesEngine.Core;
 
 namespace AgentRouting.MafiaDemo.AI;
 

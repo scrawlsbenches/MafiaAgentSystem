@@ -8,8 +8,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\AgentRouting\AgentRouting.csproj" />
     <ProjectReference Include="..\..\RulesEngine\RulesEngine\RulesEngine.csproj" />
+    <ProjectReference Include="..\..\AgentRouting\AgentRouting\AgentRouting.csproj" />
   </ItemGroup>
 
 </Project>

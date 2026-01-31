@@ -59,7 +59,38 @@ public class RulesEngineCore<T>
     {
         _rules.AddRange(rules);
     }
-    
+
+    /// <summary>
+    /// Convenience method for inline rule creation with condition and action
+    /// </summary>
+    /// <param name="id">Unique rule identifier</param>
+    /// <param name="name">Human-readable rule name</param>
+    /// <param name="condition">Predicate that determines if rule applies</param>
+    /// <param name="action">Action to execute when rule matches (modifies fact in-place)</param>
+    /// <param name="priority">Rule priority (higher = evaluated first)</param>
+    public void AddRule(string id, string name, Func<T, bool> condition, Action<T> action, int priority = 0)
+    {
+        _rules.Add(new ActionRule<T>(id, name, condition, action, priority));
+    }
+
+    /// <summary>
+    /// Evaluates all matching rules and applies their actions to the fact.
+    /// Unlike Execute(), this modifies the fact in-place and doesn't return results.
+    /// Rules are evaluated in priority order (highest first).
+    /// </summary>
+    public void EvaluateAll(T fact)
+    {
+        var sortedRules = _rules.OrderByDescending(r => r.Priority).ToList();
+
+        foreach (var rule in sortedRules)
+        {
+            if (rule.Evaluate(fact))
+            {
+                rule.Execute(fact);
+            }
+        }
+    }
+
     /// <summary>
     /// Removes a rule by ID
     /// </summary>
@@ -260,4 +291,69 @@ public class RulePerformanceMetrics
     public TimeSpan AverageExecutionTime { get; set; }
     public TimeSpan MinExecutionTime { get; set; }
     public TimeSpan MaxExecutionTime { get; set; }
+}
+
+/// <summary>
+/// Internal rule implementation that wraps condition and action delegates.
+/// Used by the AddRule convenience method for inline rule definitions.
+/// </summary>
+internal class ActionRule<T> : IRule<T>
+{
+    private readonly Func<T, bool> _condition;
+    private readonly Action<T> _action;
+
+    public string Id { get; }
+    public string Name { get; }
+    public string Description { get; }
+    public int Priority { get; }
+
+    public ActionRule(string id, string name, Func<T, bool> condition, Action<T> action, int priority)
+    {
+        Id = id;
+        Name = name;
+        Description = name; // Use name as default description for inline rules
+        _condition = condition;
+        _action = action;
+        Priority = priority;
+    }
+
+    public bool Evaluate(T fact) => _condition(fact);
+
+    public RuleResult Execute(T fact)
+    {
+        var matched = _condition(fact);
+        if (matched)
+        {
+            try
+            {
+                _action(fact);
+                return new RuleResult
+                {
+                    RuleId = Id,
+                    RuleName = Name,
+                    Matched = true,
+                    ActionExecuted = true
+                };
+            }
+            catch (Exception ex)
+            {
+                return new RuleResult
+                {
+                    RuleId = Id,
+                    RuleName = Name,
+                    Matched = true,
+                    ActionExecuted = false,
+                    ErrorMessage = ex.Message
+                };
+            }
+        }
+
+        return new RuleResult
+        {
+            RuleId = Id,
+            RuleName = Name,
+            Matched = false,
+            ActionExecuted = false
+        };
+    }
 }

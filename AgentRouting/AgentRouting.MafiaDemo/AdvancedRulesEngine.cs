@@ -1,4 +1,4 @@
-using RulesEngine;
+using RulesEngine.Core;
 using AgentRouting.MafiaDemo.Game;
 using System.Linq.Expressions;
 

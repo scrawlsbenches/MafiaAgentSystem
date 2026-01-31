@@ -478,7 +478,80 @@ public class EnrichmentMiddleware : MiddlewareBase
         {
             message.ConversationId = Guid.NewGuid().ToString();
         }
-        
+
         return next(message, ct);
     }
+}
+
+/// <summary>
+/// Tracks business analytics: category distribution and agent workload
+/// </summary>
+public class AnalyticsMiddleware : MiddlewareBase
+{
+    private readonly ConcurrentDictionary<string, int> _categoryCount = new();
+    private readonly ConcurrentDictionary<string, int> _agentWorkload = new();
+    private int _totalMessages = 0;
+
+    public override async Task<MessageResult> InvokeAsync(
+        AgentMessage message,
+        MessageDelegate next,
+        CancellationToken ct)
+    {
+        Interlocked.Increment(ref _totalMessages);
+
+        // Track categories
+        if (!string.IsNullOrEmpty(message.Category))
+        {
+            _categoryCount.AddOrUpdate(message.Category, 1, (_, count) => count + 1);
+        }
+
+        // Track agent workload
+        if (!string.IsNullOrEmpty(message.ReceiverId))
+        {
+            _agentWorkload.AddOrUpdate(message.ReceiverId, 1, (_, count) => count + 1);
+        }
+
+        return await next(message, ct);
+    }
+
+    public AnalyticsReport GetReport()
+    {
+        return new AnalyticsReport
+        {
+            TotalMessages = _totalMessages,
+            CategoryCounts = new Dictionary<string, int>(_categoryCount),
+            AgentWorkload = new Dictionary<string, int>(_agentWorkload)
+        };
+    }
+
+    public string GenerateReport()
+    {
+        var report = new System.Text.StringBuilder();
+        report.AppendLine("=== Analytics Report ===");
+        report.AppendLine($"Total Messages Processed: {_totalMessages}");
+        report.AppendLine();
+
+        report.AppendLine("Messages by Category:");
+        foreach (var (category, count) in _categoryCount.OrderByDescending(x => x.Value))
+        {
+            var percentage = _totalMessages > 0 ? count * 100.0 / _totalMessages : 0;
+            report.AppendLine($"  {category}: {count} ({percentage:F1}%)");
+        }
+
+        report.AppendLine();
+        report.AppendLine("Agent Workload:");
+        foreach (var (agentId, count) in _agentWorkload.OrderByDescending(x => x.Value))
+        {
+            report.AppendLine($"  {agentId}: {count} messages");
+        }
+
+        return report.ToString();
+    }
+}
+
+public class AnalyticsReport
+{
+    public int TotalMessages { get; set; }
+    public Dictionary<string, int> CategoryCounts { get; set; } = new();
+    public Dictionary<string, int> AgentWorkload { get; set; } = new();
 }

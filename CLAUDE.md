@@ -24,11 +24,11 @@ apt-get install -y dotnet-sdk-8.0 2>&1 | tail -20
 
 ## Build & Test
 ```bash
-dotnet build                           # Build all
-dotnet test                            # Run all tests
-dotnet test RulesEngine/               # RulesEngine tests only
-dotnet test AgentRouting/              # AgentRouting tests only
+dotnet build                              # Build all
+dotnet run --project Tests/TestRunner/    # Run all tests (zero dependencies)
 ```
+
+The test runner has **zero NuGet dependencies** - it uses a custom lightweight test framework in `Tests/TestRunner/Framework/`.
 
 ## Architecture
 
@@ -99,24 +99,8 @@ AgentRouting/
 - **Thread Safety**: `RulesEngine/RulesEngine/Enhanced/`
 - **Agents**: `AgentRouting/AgentRouting/Core/`
 - **Middleware**: `AgentRouting/AgentRouting/Middleware/`
-- **Tests**: `*/Tests/`
-
-## Known Issues
-
-### AgentRouting Build Errors
-
-`AgentRouterWithMiddleware.cs` has multiple issues that prevent compilation:
-
-1. **Wrong interface**: References `IMessageMiddleware` which doesn't exist. The correct interface is `IAgentMiddleware` (defined in `MiddlewareInfrastructure.cs`)
-   - Lines 21, 44, 55, 66 need `IMessageMiddleware` → `IAgentMiddleware`
-
-2. **Missing methods on `MiddlewarePipeline`**: The following methods are called but don't exist:
-   - `ExecuteAsync()` - called on line 34, also used in tests and demos
-   - `GetMiddleware()` - called on line 46
-
-3. **Tests/demos use undefined `UseCallback()`**: `MiddlewareTests.cs` and `MiddlewareDemo/Program.cs` call `pipeline.UseCallback()` which isn't defined on `MiddlewarePipeline`
-
-**To fix**: Either add the missing methods to `MiddlewarePipeline` or refactor `AgentRouterWithMiddleware.cs` to use the existing `Build()` method pattern
+- **Tests**: `Tests/TestRunner/Tests/`
+- **Test Framework**: `Tests/TestRunner/Framework/`
 
 ## Dependency Inversion Pattern
 
@@ -139,3 +123,45 @@ public void RegisterRule(IRule<T> rule)
 | `AgentRouter` | Route messages to agents |
 | `MiddlewarePipeline` | Compose/execute middleware |
 | Each `*Middleware` | One cross-cutting concern |
+
+## MafiaDemo Game
+
+The `AgentRouting.MafiaDemo` project is a **test bed** for exercising the RulesEngine and AgentRouting systems. It simulates a mafia family hierarchy with autonomous agents making decisions.
+
+**Purpose:** Find API gaps and areas for improvement in the core libraries through real-world usage patterns.
+
+**Key namespaces:**
+- `AgentRouting.MafiaDemo.Game` - GameState, Territory, RivalFamily, AutonomousAgent base class
+- `AgentRouting.MafiaDemo.Rules` - Rules engine integration for game logic
+- `AgentRouting.MafiaDemo.Missions` - Mission system with player progression
+- `AgentRouting.MafiaDemo.AI` - PlayerAgent with rules-driven decision making
+- `AgentRouting.MafiaDemo.Autonomous` - NPC agents (Godfather, Underboss, etc.)
+
+## RulesEngine API Patterns
+
+**Full control (IRule<T>):** For complex rules with custom logic
+```csharp
+engine.RegisterRule(new MyCustomRule<Order>());
+```
+
+**Inline convenience (AddRule):** For quick rule definitions
+```csharp
+engine.AddRule("RULE_ID", "Rule Name",
+    ctx => ctx.Amount > 1000,           // condition
+    ctx => ctx.RequiresApproval = true, // action
+    priority: 100);
+```
+
+**Execution modes:**
+- `Execute(fact)` - Returns results, rules don't modify fact
+- `EvaluateAll(fact)` - Applies all matching rules, modifies fact in-place
+
+## Historical Context
+
+This codebase was built across multiple sessions. Key transcripts are in `transcripts.zip`:
+- Expression trees tutorial → RulesEngine foundation
+- Agent routing implementation → AgentRouting core
+- Middleware system → Pipeline architecture
+- MafiaDemo → Game that exercises both systems
+
+If files appear missing, check transcripts for code that may not have been saved to disk.

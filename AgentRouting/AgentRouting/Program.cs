@@ -1,5 +1,6 @@
 using AgentRouting.Core;
 using AgentRouting.Agents;
+using AgentRouting.Middleware;
 
 namespace AgentRouting;
 
@@ -327,8 +328,11 @@ class Program
         Console.WriteLine();
 
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
-        var analytics = new AnalyticsAgent("analytics-001", "Analytics", logger);
+        var router = new MiddlewareAgentRouter(logger);
+
+        // Add analytics middleware - automatically tracks all messages
+        var analytics = new AnalyticsMiddleware();
+        router.UseMiddleware(analytics);
 
         var customerService = new CustomerServiceAgent("cs-001", "Customer Service", logger);
         var techSupport = new TechnicalSupportAgent("tech-001", "Tech Support", logger);
@@ -337,9 +341,8 @@ class Program
         router.RegisterAgent(customerService);
         router.RegisterAgent(techSupport);
         router.RegisterAgent(billing);
-        router.RegisterAgent(analytics);
 
-        // Route messages and log to analytics
+        // Route messages - analytics middleware captures automatically
         router.AddRoutingRule("TECH", "Tech", ctx => ctx.Category == "TechnicalSupport", "tech-001", 100);
         router.AddRoutingRule("BILLING", "Billing", ctx => ctx.Category == "Billing", "billing-001", 100);
         router.AddRoutingRule("DEFAULT", "Default", ctx => true, "cs-001", 1);
@@ -349,7 +352,7 @@ class Program
         var categories = new[] { "TechnicalSupport", "Billing", "CustomerService" };
 
         Console.WriteLine("Processing 20 messages...");
-        
+
         for (int i = 0; i < 20; i++)
         {
             var message = new AgentMessage
@@ -360,10 +363,8 @@ class Program
                 Category = categories[random.Next(categories.Length)]
             };
 
-            var result = await router.RouteMessageAsync(message);
-            
-            // Also log to analytics
-            await analytics.ProcessMessageAsync(message);
+            await router.RouteMessageAsync(message);
+            // No manual analytics call needed - middleware handles it!
         }
 
         await Task.Delay(500);
@@ -371,7 +372,7 @@ class Program
         Console.WriteLine();
         Console.WriteLine(analytics.GenerateReport());
         Console.WriteLine();
-        
+
         // Show routing performance
         Console.WriteLine("Routing Rule Performance:");
         var metrics = router.GetRoutingMetrics();
