@@ -28,3 +28,7 @@ Thumbs.db
 # Logs
 *.log
 logs/
+
+# Archives
+*.zip
+*.tar.gz
