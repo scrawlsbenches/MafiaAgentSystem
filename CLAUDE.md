@@ -4,6 +4,25 @@
 - .NET 8.0 SDK required (`dotnet --version` should show 8.x)
 - Standard install: `sudo apt install dotnet-sdk-8.0` (Ubuntu) or https://dot.net
 
+### Microsoft Repository Install (Ubuntu 24.04)
+```bash
+# Download Microsoft repository configuration
+wget https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb
+
+# Install repository (as root, no sudo needed in web environment)
+dpkg -i packages-microsoft-prod.deb
+rm packages-microsoft-prod.deb
+
+# Fix /tmp permissions to prevent GPG errors
+chmod 1777 /tmp
+
+# Update package lists
+apt-get update 2>&1 | grep -v "403\|Forbidden" | tail -10
+
+# Install .NET SDK 8.0
+apt-get install -y dotnet-sdk-8.0 2>&1 | tail -20
+```
+
 ### Restricted/Proxy Environments
 If NuGet fails with proxy errors:
 ```bash
