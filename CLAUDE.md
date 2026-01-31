@@ -109,8 +109,20 @@ AgentRouting/
 
 ## Known Issues
 
-1. **AgentRouting build**: `AgentRouterWithMiddleware.cs` references deleted `IMessageMiddleware` - change to `IAgentMiddleware`
-2. **3 failing RulesEngine tests**: Test assertion logic issues, not code bugs
+### AgentRouting Build Errors
+
+`AgentRouterWithMiddleware.cs` has multiple issues that prevent compilation:
+
+1. **Wrong interface**: References `IMessageMiddleware` which doesn't exist. The correct interface is `IAgentMiddleware` (defined in `MiddlewareInfrastructure.cs`)
+   - Lines 21, 44, 55, 66 need `IMessageMiddleware` → `IAgentMiddleware`
+
+2. **Missing methods on `MiddlewarePipeline`**: The following methods are called but don't exist:
+   - `ExecuteAsync()` - called on line 34, also used in tests and demos
+   - `GetMiddleware()` - called on line 46
+
+3. **Tests/demos use undefined `UseCallback()`**: `MiddlewareTests.cs` and `MiddlewareDemo/Program.cs` call `pipeline.UseCallback()` which isn't defined on `MiddlewarePipeline`
+
+**To fix**: Either add the missing methods to `MiddlewarePipeline` or refactor `AgentRouterWithMiddleware.cs` to use the existing `Build()` method pattern
 
 ## Dependency Inversion Pattern
 
