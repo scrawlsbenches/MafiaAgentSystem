@@ -159,7 +159,7 @@ public class AdvancedRulesEngine
             "Prime Territory Premium",
             ctx => ctx.PrimeTerritory && ctx.HighDemand,
             ctx => {
-                ctx.Territory.WeeklyRevenue = (decimal)(ctx.Territory.WeeklyRevenue * 1.5);
+                ctx.Territory.WeeklyRevenue = ctx.Territory.WeeklyRevenue * 1.5m;
                 Console.WriteLine($"  💎 {ctx.Territory.Name} is prime real estate! Revenue +50%");
             },
             priority: 1000
@@ -171,7 +171,7 @@ public class AdvancedRulesEngine
             "High Risk Discount",
             ctx => ctx.IsHighRisk && ctx.PoliceWatching,
             ctx => {
-                ctx.Territory.WeeklyRevenue = (decimal)(ctx.Territory.WeeklyRevenue * 0.7);
+                ctx.Territory.WeeklyRevenue = ctx.Territory.WeeklyRevenue * 0.7m;
                 Console.WriteLine($"  ⚠️  {ctx.Territory.Name} too hot - Revenue -30%");
             },
             priority: 900
@@ -207,7 +207,7 @@ public class AdvancedRulesEngine
             "Territory Under Dispute",
             ctx => ctx.Disputed,
             ctx => {
-                ctx.Territory.WeeklyRevenue = (decimal)(ctx.Territory.WeeklyRevenue * 0.5);
+                ctx.Territory.WeeklyRevenue = ctx.Territory.WeeklyRevenue * 0.5m;
                 Console.WriteLine($"  ⚔️  {ctx.Territory.Name} contested - Revenue -50%");
             },
             priority: 950

@@ -89,6 +89,22 @@ public class RuleResult
             ErrorMessage = error
         };
     }
+
+    /// <summary>
+    /// Creates a failure result with just an error message (rule ID provided separately)
+    /// </summary>
+    public static RuleResult Failure(string ruleId, string errorMessage)
+    {
+        return new RuleResult
+        {
+            RuleId = ruleId,
+            RuleName = string.Empty,
+            Matched = false,
+            ActionExecuted = false,
+            ExecutedAt = DateTime.UtcNow,
+            ErrorMessage = errorMessage
+        };
+    }
 }
 
 /// <summary>

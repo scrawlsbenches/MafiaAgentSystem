@@ -212,7 +212,7 @@ public class RulesEngineTests
 
         var metrics = engine.GetMetrics("PERF_TEST");
         Assert.NotNull(metrics);
-        Assert.Equal(5, metrics.ExecutionCount);
+        Assert.Equal(5, metrics!.ExecutionCount);
         Assert.True(metrics.AverageExecutionTime.TotalMilliseconds >= 0);
     }
 
@@ -252,6 +252,6 @@ public class RulesEngineTests
         Assert.Equal(1, result.Errors);
         var errorResults = result.GetErrors();
         Assert.Single(errorResults);
-        Assert.Contains("Test error", errorResults[0].ErrorMessage);
+        Assert.Contains("Test error", errorResults[0].ErrorMessage!);
     }
 }

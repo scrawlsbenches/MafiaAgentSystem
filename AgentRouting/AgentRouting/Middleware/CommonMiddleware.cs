@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using AgentRouting.Configuration;
 using AgentRouting.Core;
 
 namespace AgentRouting.Middleware;
@@ -90,7 +91,20 @@ public class RateLimitMiddleware : MiddlewareBase
     private readonly int _maxRequests;
     private readonly TimeSpan _window;
     private readonly ConcurrentDictionary<string, RateLimitState> _state = new();
-    
+
+    /// <summary>
+    /// Creates a rate limiter with default settings from MiddlewareDefaults.
+    /// </summary>
+    public RateLimitMiddleware()
+        : this(MiddlewareDefaults.RateLimitDefaultMaxRequests, MiddlewareDefaults.RateLimitDefaultWindow)
+    {
+    }
+
+    /// <summary>
+    /// Creates a rate limiter with custom settings.
+    /// </summary>
+    /// <param name="maxRequests">Maximum requests allowed within the time window.</param>
+    /// <param name="window">Time window for rate limiting.</param>
     public RateLimitMiddleware(int maxRequests, TimeSpan window)
     {
         _maxRequests = maxRequests;
@@ -132,79 +146,173 @@ public class RateLimitMiddleware : MiddlewareBase
 }
 
 /// <summary>
-/// Caches message results
+/// Caches message results with LRU eviction policy
 /// </summary>
 public class CachingMiddleware : MiddlewareBase
 {
     private readonly TimeSpan _ttl;
+    private readonly int _maxEntries;
     private readonly ConcurrentDictionary<string, CacheEntry> _cache = new();
-    
+
+    /// <summary>
+    /// Creates a caching middleware with default settings from MiddlewareDefaults.
+    /// </summary>
+    public CachingMiddleware()
+        : this(MiddlewareDefaults.CacheDefaultTtl, MiddlewareDefaults.CacheMaxEntries)
+    {
+    }
+
+    /// <summary>
+    /// Creates a caching middleware with custom TTL.
+    /// </summary>
+    /// <param name="ttl">Time-to-live for cached entries.</param>
     public CachingMiddleware(TimeSpan ttl)
+        : this(ttl, MiddlewareDefaults.CacheMaxEntries)
+    {
+    }
+
+    /// <summary>
+    /// Creates a caching middleware with custom TTL and max entries.
+    /// </summary>
+    /// <param name="ttl">Time-to-live for cached entries.</param>
+    /// <param name="maxEntries">Maximum number of cache entries.</param>
+    public CachingMiddleware(TimeSpan ttl, int maxEntries)
     {
         _ttl = ttl;
+        _maxEntries = maxEntries;
     }
-    
+
+    /// <summary>
+    /// Gets the current number of entries in the cache.
+    /// </summary>
+    public int Count => _cache.Count;
+
     public override async Task<MessageResult> InvokeAsync(
         AgentMessage message,
         MessageDelegate next,
         CancellationToken ct)
     {
         var key = GenerateCacheKey(message);
-        
+
         // Check cache
         if (_cache.TryGetValue(key, out var entry))
         {
-            if (DateTime.UtcNow - entry.Timestamp < _ttl)
+            // Check expiration
+            if (DateTime.UtcNow - entry.CachedAt < _ttl)
             {
+                entry.LastAccessedAt = DateTime.UtcNow;
                 Console.WriteLine($"[Cache] HIT: {message.Subject}");
                 return entry.Result;
             }
-            
-            // Expired
+
+            // Expired, remove it
             _cache.TryRemove(key, out _);
         }
-        
+
         Console.WriteLine($"[Cache] MISS: {message.Subject}");
-        
+
         // Process and cache
         var result = await next(message, ct);
-        
+
         if (result.Success)
         {
+            var now = DateTime.UtcNow;
             _cache[key] = new CacheEntry
             {
                 Result = result,
-                Timestamp = DateTime.UtcNow
+                CachedAt = now,
+                LastAccessedAt = now
             };
+
+            // Evict if cache exceeds max size
+            EvictIfNeeded();
         }
-        
+
         return result;
     }
-    
+
+    /// <summary>
+    /// Evicts least recently used entries when cache exceeds max size.
+    /// Removes 10% extra entries as buffer to avoid frequent evictions.
+    /// </summary>
+    private void EvictIfNeeded()
+    {
+        if (_cache.Count <= _maxEntries)
+            return;
+
+        // Remove oldest by last access time (LRU)
+        var entriesToRemove = _cache
+            .OrderBy(kvp => kvp.Value.LastAccessedAt)
+            .Take(_cache.Count - _maxEntries + (_maxEntries / 10)) // Remove 10% extra for buffer
+            .Select(kvp => kvp.Key)
+            .ToList();
+
+        foreach (var key in entriesToRemove)
+            _cache.TryRemove(key, out _);
+    }
+
+    /// <summary>
+    /// Clears all entries from the cache.
+    /// </summary>
+    public void Clear()
+    {
+        _cache.Clear();
+    }
+
+    /// <summary>
+    /// Removes all expired entries from the cache.
+    /// Call this periodically to free memory from stale entries.
+    /// </summary>
+    public void CleanupExpired()
+    {
+        var now = DateTime.UtcNow;
+        var expiredKeys = _cache
+            .Where(kvp => now - kvp.Value.CachedAt >= _ttl)
+            .Select(kvp => kvp.Key)
+            .ToList();
+
+        foreach (var key in expiredKeys)
+            _cache.TryRemove(key, out _);
+    }
+
     private string GenerateCacheKey(AgentMessage message)
     {
         return $"{message.SenderId}:{message.Category}:{message.Subject}:{message.Content}";
     }
-    
+
     private class CacheEntry
     {
         public MessageResult Result { get; set; } = null!;
-        public DateTime Timestamp { get; set; }
+        public DateTime CachedAt { get; set; }
+        public DateTime LastAccessedAt { get; set; }
     }
 }
 
 /// <summary>
-/// Retries failed operations
+/// Retries failed operations with exponential backoff
 /// </summary>
 public class RetryMiddleware : MiddlewareBase
 {
     private readonly int _maxAttempts;
     private readonly TimeSpan _delay;
-    
-    public RetryMiddleware(int maxAttempts = 3, TimeSpan? delay = null)
+
+    /// <summary>
+    /// Creates a retry middleware with default settings from MiddlewareDefaults.
+    /// </summary>
+    public RetryMiddleware()
+        : this(MiddlewareDefaults.RetryDefaultMaxAttempts, MiddlewareDefaults.RetryDefaultBaseDelay)
+    {
+    }
+
+    /// <summary>
+    /// Creates a retry middleware with custom settings.
+    /// </summary>
+    /// <param name="maxAttempts">Maximum number of retry attempts.</param>
+    /// <param name="delay">Base delay between retries (multiplied by attempt number for exponential backoff).</param>
+    public RetryMiddleware(int maxAttempts, TimeSpan? delay = null)
     {
         _maxAttempts = maxAttempts;
-        _delay = delay ?? TimeSpan.FromMilliseconds(100);
+        _delay = delay ?? MiddlewareDefaults.RetryDefaultBaseDelay;
     }
     
     public override async Task<MessageResult> InvokeAsync(
@@ -252,7 +360,7 @@ public class RetryMiddleware : MiddlewareBase
 }
 
 /// <summary>
-/// Circuit breaker pattern
+/// Circuit breaker pattern - protects downstream services from cascading failures
 /// </summary>
 public class CircuitBreakerMiddleware : MiddlewareBase
 {
@@ -261,11 +369,24 @@ public class CircuitBreakerMiddleware : MiddlewareBase
     private CircuitState _state = CircuitState.Closed;
     private int _failureCount = 0;
     private DateTime? _openedAt;
-    
-    public CircuitBreakerMiddleware(int failureThreshold = 5, TimeSpan? resetTimeout = null)
+
+    /// <summary>
+    /// Creates a circuit breaker with default settings from MiddlewareDefaults.
+    /// </summary>
+    public CircuitBreakerMiddleware()
+        : this(MiddlewareDefaults.CircuitBreakerDefaultThreshold, MiddlewareDefaults.CircuitBreakerDefaultTimeout)
+    {
+    }
+
+    /// <summary>
+    /// Creates a circuit breaker with custom settings.
+    /// </summary>
+    /// <param name="failureThreshold">Number of consecutive failures before opening the circuit.</param>
+    /// <param name="resetTimeout">Time to wait before attempting to close an open circuit.</param>
+    public CircuitBreakerMiddleware(int failureThreshold, TimeSpan? resetTimeout = null)
     {
         _failureThreshold = failureThreshold;
-        _resetTimeout = resetTimeout ?? TimeSpan.FromSeconds(30);
+        _resetTimeout = resetTimeout ?? MiddlewareDefaults.CircuitBreakerDefaultTimeout;
     }
     
     public override async Task<MessageResult> InvokeAsync(

@@ -248,7 +248,7 @@ public interface IAgentLogger
 {
     void LogMessageReceived(IAgent agent, AgentMessage message);
     void LogMessageProcessed(IAgent agent, AgentMessage message, MessageResult result);
-    void LogMessageRouted(AgentMessage message, IAgent fromAgent, IAgent toAgent);
+    void LogMessageRouted(AgentMessage message, IAgent? fromAgent, IAgent toAgent);
     void LogError(IAgent agent, AgentMessage message, Exception ex);
 }
 
@@ -264,7 +264,7 @@ public class ConsoleAgentLogger : IAgentLogger
         lock (_lock)
         {
             Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] {agent.Name} received: {message.Subject}");
+            Console.WriteLine($"[{DateTime.UtcNow:HH:mm:ss}] {agent.Name} received: {message.Subject}");
             Console.ResetColor();
         }
     }
@@ -274,7 +274,7 @@ public class ConsoleAgentLogger : IAgentLogger
         lock (_lock)
         {
             Console.ForegroundColor = result.Success ? ConsoleColor.Green : ConsoleColor.Red;
-            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] {agent.Name} processed: {message.Subject} - {(result.Success ? "SUCCESS" : "FAILED")}");
+            Console.WriteLine($"[{DateTime.UtcNow:HH:mm:ss}] {agent.Name} processed: {message.Subject} - {(result.Success ? "SUCCESS" : "FAILED")}");
             if (!string.IsNullOrEmpty(result.Response))
             {
                 Console.WriteLine($"  Response: {result.Response}");
@@ -283,12 +283,12 @@ public class ConsoleAgentLogger : IAgentLogger
         }
     }
     
-    public void LogMessageRouted(AgentMessage message, IAgent fromAgent, IAgent toAgent)
+    public void LogMessageRouted(AgentMessage message, IAgent? fromAgent, IAgent toAgent)
     {
         lock (_lock)
         {
             Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Routed: {message.Subject}");
+            Console.WriteLine($"[{DateTime.UtcNow:HH:mm:ss}] Routed: {message.Subject}");
             Console.WriteLine($"  From: {fromAgent?.Name ?? "Router"} → To: {toAgent.Name}");
             Console.ResetColor();
         }
@@ -299,7 +299,7 @@ public class ConsoleAgentLogger : IAgentLogger
         lock (_lock)
         {
             Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] ERROR in {agent.Name}: {ex.Message}");
+            Console.WriteLine($"[{DateTime.UtcNow:HH:mm:ss}] ERROR in {agent.Name}: {ex.Message}");
             Console.ResetColor();
         }
     }

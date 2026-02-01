@@ -42,17 +42,17 @@ class AutonomousPlaythroughDemo
         var weeksInput = Console.ReadLine();
         var maxWeeks = int.TryParse(weeksInput, out var w) ? w : 52;
         
-        Console.Write("\nPlayback speed (1=fast, 2=medium, 3=slow, or Enter for medium): ");
+        Console.Write("\nPlayback speed (1=instant, 2=fast, 3=normal, or Enter for instant): ");
         var speedInput = Console.ReadLine();
-        var delay = speedInput switch
+        GameTimingOptions.Current = speedInput switch
         {
-            "1" => 500,
-            "3" => 2000,
-            _ => 1000
+            "2" => GameTimingOptions.Fast,
+            "3" => GameTimingOptions.Normal,
+            _ => GameTimingOptions.Instant
         };
-        
+
         Console.WriteLine("\n\nStarting autonomous playthrough...\n");
-        await Task.Delay(1500);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.GameStartDelayMs);
         
         // === NEW: Setup AgentRouter with Middleware! ===
         var logger = new ConsoleAgentLogger();
@@ -62,7 +62,7 @@ class AutonomousPlaythroughDemo
         router.RegisterAgent(new GodfatherAgent("godfather-001", "Don Vito Corleone", logger));
         router.RegisterAgent(new UnderbossAgent("underboss-001", "Peter Clemenza", logger));
         router.RegisterAgent(new ConsigliereAgent("consigliere-001", "Tom Hagen", logger));
-        router.RegisterAgent(new CapoAgent("capo-001", "Sonny Corleone", logger));
+        router.RegisterAgent(new CapoAgent("capo-001", "Sonny Corleone", logger, new List<string> { "soldier-001" }));
         router.RegisterAgent(new SoldierAgent("soldier-001", "Luca Brasi", logger));
         
         // Setup routing rules
@@ -92,14 +92,14 @@ class AutonomousPlaythroughDemo
         Console.WriteLine("✓ 5 mafia agents registered");
         Console.WriteLine("✓ Middleware: Logging, Timing, Validation, Metrics");
         Console.WriteLine();
-        await Task.Delay(1000);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.SceneTransitionMs);
         
         // Create player agent WITH ROUTER
         var player = new PlayerAgent(name, personality, router);
         var gameState = new GameState(); // From existing game
         
         Console.WriteLine(player.GetSummary());
-        await Task.Delay(delay * 2);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.TurnDelayMs);
         
         // Track statistics
         var stats = new PlaythroughStats();
@@ -108,23 +108,23 @@ class AutonomousPlaythroughDemo
         for (int week = 1; week <= maxWeeks; week++)
         {
             Console.WriteLine($"\n╔═══ WEEK {week} ═══════════════════════════════════════════════════╗");
-            await Task.Delay(delay / 2);
+            await GameTimingOptions.DelayAsync(GameTimingOptions.Current.DialoguePauseMs);
             
             var weekResult = await player.ProcessWeekAsync(gameState);
             
             // Display mission
             PrintMission(weekResult.GeneratedMission);
-            await Task.Delay(delay);
+            await GameTimingOptions.DelayAsync(GameTimingOptions.Current.SceneTransitionMs);
             
             // Display decision
             PrintDecision(weekResult.Decision);
-            await Task.Delay(delay);
+            await GameTimingOptions.DelayAsync(GameTimingOptions.Current.SceneTransitionMs);
             
             // If accepted, show execution
             if (weekResult.Decision.Accept && weekResult.ExecutionResult != null)
             {
                 PrintExecution(weekResult.ExecutionResult);
-                await Task.Delay(delay);
+                await GameTimingOptions.DelayAsync(GameTimingOptions.Current.SceneTransitionMs);
                 
                 // Track stats
                 stats.TotalMissions++;
@@ -144,7 +144,7 @@ class AutonomousPlaythroughDemo
             
             // Show current stats
             PrintCurrentStatus(player.Character);
-            await Task.Delay(delay / 2);
+            await GameTimingOptions.DelayAsync(GameTimingOptions.Current.DialoguePauseMs);
             
             // Check for promotion
             if (weekResult.ExecutionResult?.MissionResult != null)
@@ -153,7 +153,7 @@ class AutonomousPlaythroughDemo
                 if (oldRank != player.Character.Rank)
                 {
                     PrintPromotion(oldRank, player.Character.Rank);
-                    await Task.Delay(delay * 3);
+                    await GameTimingOptions.DelayAsync(GameTimingOptions.Current.DramaticPauseMs * 3);
                 }
             }
             

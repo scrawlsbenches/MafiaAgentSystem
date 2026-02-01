@@ -57,7 +57,7 @@ class Program
         
         Console.WriteLine("\n⏳ Starting autonomous simulation...");
         Console.WriteLine("⏸️  Press Ctrl+C to stop\n");
-        await Task.Delay(2000);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.GameStartDelayMs);
         
         // Handle Ctrl+C gracefully
         Console.CancelKeyPress += (sender, e) =>
@@ -77,10 +77,10 @@ class Program
         Console.Clear();
         PrintTitle();
         
-        await Task.Delay(1000);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.SceneTransitionMs);
         
         Console.WriteLine("\n🎬 The Corleone Family is open for business...\n");
-        await Task.Delay(500);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.DialoguePauseMs);
 
         await Scenario1_RequestingFavor();
         await Scenario2_TerritoryDispute();
@@ -151,7 +151,7 @@ class Program
         };
 
         Console.WriteLine("\n🎭 Bonasera enters the Don's office...\n");
-        await Task.Delay(500);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.DialoguePauseMs);
         
         var result = await router.RouteMessageAsync(message);
         
@@ -160,7 +160,7 @@ class Program
         Console.WriteLine(result.Response);
         Console.ResetColor();
         
-        await Task.Delay(1000);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.SceneTransitionMs);
     }
 
     static async Task Scenario2_TerritoryDispute()
@@ -182,7 +182,7 @@ class Program
         };
 
         Console.WriteLine("\n🗺️  A Capo reports a territory incursion...\n");
-        await Task.Delay(500);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.DialoguePauseMs);
         
         var result = await router.RouteMessageAsync(message);
         
@@ -191,7 +191,7 @@ class Program
         Console.WriteLine(result.Response);
         Console.ResetColor();
         
-        await Task.Delay(1000);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.SceneTransitionMs);
     }
 
     static async Task Scenario3_ProtectionRacket()
@@ -213,7 +213,7 @@ class Program
         };
 
         Console.WriteLine("\n🏪 Report of new business in the territory...\n");
-        await Task.Delay(500);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.DialoguePauseMs);
         
         var result = await router.RouteMessageAsync(message);
         
@@ -225,7 +225,7 @@ class Program
         if (result.ForwardedMessages.Any())
         {
             Console.WriteLine("\n📨 Message forwarded to Capo...");
-            await Task.Delay(300);
+            await GameTimingOptions.DelayAsync(GameTimingOptions.Current.TypewriterDelayMs);
             
             var capoResult = await router.GetAgent("capo-001")!
                 .ProcessMessageAsync(result.ForwardedMessages[0]);
@@ -236,7 +236,7 @@ class Program
             Console.ResetColor();
         }
         
-        await Task.Delay(1000);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.SceneTransitionMs);
     }
 
     static async Task Scenario4_HitRequest()
@@ -259,7 +259,7 @@ class Program
         };
 
         Console.WriteLine("\n💀 Request for sanctioned hit...\n");
-        await Task.Delay(500);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.DialoguePauseMs);
         
         var result1 = await router.RouteMessageAsync(message1);
         
@@ -268,7 +268,7 @@ class Program
         Console.WriteLine(result1.Response);
         Console.ResetColor();
         
-        await Task.Delay(800);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.DramaticPauseMs);
         
         // Scenario B: Denied hit
         Console.WriteLine("\n---\n");
@@ -282,7 +282,7 @@ class Program
         };
 
         Console.WriteLine("💀 Another hit request (targeting law enforcement)...\n");
-        await Task.Delay(500);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.DialoguePauseMs);
         
         var result2 = await router.RouteMessageAsync(message2);
         
@@ -291,7 +291,7 @@ class Program
         Console.WriteLine(result2.Response);
         Console.ResetColor();
         
-        await Task.Delay(1000);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.SceneTransitionMs);
     }
 
     static async Task Scenario5_LegalMatters()
@@ -314,7 +314,7 @@ class Program
         };
 
         Console.WriteLine("\n⚖️  Legal trouble brewing...\n");
-        await Task.Delay(500);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.DialoguePauseMs);
         
         var result = await router.RouteMessageAsync(message);
         
@@ -326,7 +326,7 @@ class Program
         if (result.ForwardedMessages.Any())
         {
             Console.WriteLine("\n📨 Matter referred to the Consigliere...");
-            await Task.Delay(300);
+            await GameTimingOptions.DelayAsync(GameTimingOptions.Current.TypewriterDelayMs);
             
             var consigliereResult = await router.GetAgent("consigliere-001")!
                 .ProcessMessageAsync(result.ForwardedMessages[0]);
@@ -337,7 +337,7 @@ class Program
             Console.ResetColor();
         }
         
-        await Task.Delay(1000);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.SceneTransitionMs);
     }
 
     static async Task Scenario6_CollectionDay()
@@ -350,7 +350,7 @@ class Program
         var router = BuildMafiaOrganization(logger);
 
         Console.WriteLine("\n💰 It's collection day in Little Italy...\n");
-        await Task.Delay(500);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.DialoguePauseMs);
 
         // Soldier collects from the streets
         var soldierMessage = new AgentMessage
@@ -369,7 +369,7 @@ class Program
         Console.WriteLine(soldierResult.Response);
         Console.ResetColor();
         
-        await Task.Delay(500);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.DialoguePauseMs);
         
         // Report up to Capo
         Console.WriteLine("\n---\n");
@@ -390,7 +390,7 @@ class Program
         Console.WriteLine(capoResult.Response);
         Console.ResetColor();
         
-        await Task.Delay(500);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.DialoguePauseMs);
         
         // Report to Underboss
         Console.WriteLine("\n---\n");
@@ -411,7 +411,7 @@ class Program
         Console.WriteLine(underbossResult.Response);
         Console.ResetColor();
         
-        await Task.Delay(1000);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.SceneTransitionMs);
     }
 
     static async Task Scenario7_ChainOfCommand()
@@ -424,7 +424,7 @@ class Program
         var router = BuildMafiaOrganization(logger);
 
         Console.WriteLine("\n📊 Demonstrating proper chain of command...\n");
-        await Task.Delay(500);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.DialoguePauseMs);
 
         var scenarios = new[]
         {
@@ -448,11 +448,11 @@ class Program
             var result = await router.RouteMessageAsync(message);
             
             Console.WriteLine($"  📌 {description,-30} → {message.ReceiverId}");
-            await Task.Delay(200);
+            await GameTimingOptions.DelayAsync(GameTimingOptions.Current.TypewriterDelayMs);
         }
 
         Console.WriteLine("\n✅ Chain of command working perfectly!");
-        await Task.Delay(1000);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.SceneTransitionMs);
     }
 
     static async Task Scenario8_FamilyMeeting()
@@ -465,7 +465,7 @@ class Program
         var router = BuildMafiaOrganization(logger);
 
         Console.WriteLine("\n🏛️  The Commission is meeting to discuss the future...\n");
-        await Task.Delay(800);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.DramaticPauseMs);
 
         var message = new AgentMessage
         {
@@ -478,7 +478,7 @@ class Program
         };
 
         Console.WriteLine("💊 Proposal presented to the Don...\n");
-        await Task.Delay(500);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.DialoguePauseMs);
         
         var result = await router.RouteMessageAsync(message);
         
@@ -487,25 +487,25 @@ class Program
         Console.WriteLine(result.Response);
         Console.ResetColor();
         
-        await Task.Delay(500);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.DialoguePauseMs);
         
         Console.WriteLine("\n---\n");
         Console.WriteLine("🎬 *The Don stands and addresses everyone in the room*\n");
-        await Task.Delay(300);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.TypewriterDelayMs);
         
         Console.ForegroundColor = ConsoleColor.DarkYellow;
         Console.WriteLine("\"I believe in America. I raised my family in the traditions of our people.\"");
-        await Task.Delay(300);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.TypewriterDelayMs);
         Console.WriteLine("\"We don't deal in narcotics. That's not our way.\"");
-        await Task.Delay(300);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.TypewriterDelayMs);
         Console.WriteLine("\"But I'm a superstitious man... and if some unlucky accident should befall\"");
-        await Task.Delay(300);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.TypewriterDelayMs);
         Console.WriteLine("\"my son... then I will blame the people in this room.\"");
-        await Task.Delay(500);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.DialoguePauseMs);
         Console.WriteLine("\n*The room falls silent*");
         Console.ResetColor();
         
-        await Task.Delay(1000);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.SceneTransitionMs);
     }
 
     static AgentRouter BuildMafiaOrganization(IAgentLogger logger)

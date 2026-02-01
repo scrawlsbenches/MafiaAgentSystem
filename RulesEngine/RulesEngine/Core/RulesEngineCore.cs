@@ -11,53 +11,113 @@ public class RulesEngineOptions
     /// Stop evaluating rules after the first match
     /// </summary>
     public bool StopOnFirstMatch { get; set; } = false;
-    
+
     /// <summary>
     /// Execute rules in parallel when possible
     /// </summary>
     public bool EnableParallelExecution { get; set; } = false;
-    
+
     /// <summary>
     /// Track performance metrics
     /// </summary>
     public bool TrackPerformance { get; set; } = true;
-    
+
     /// <summary>
     /// Maximum number of rules to execute
     /// </summary>
     public int? MaxRulesToExecute { get; set; } = null;
+
+    /// <summary>
+    /// Whether to allow duplicate rule IDs (default: false)
+    /// </summary>
+    public bool AllowDuplicateRuleIds { get; set; } = false;
 }
 
 /// <summary>
 /// Main rules engine that evaluates rules against facts
 /// </summary>
-public class RulesEngineCore<T>
+public class RulesEngineCore<T> : IDisposable
 {
     private readonly List<IRule<T>> _rules;
+    private readonly List<IAsyncRule<T>> _asyncRules;
     private readonly RulesEngineOptions _options;
     private readonly ConcurrentDictionary<string, RulePerformanceMetrics> _metrics;
-    
+    private readonly ReaderWriterLockSlim _lock = new(LockRecursionPolicy.SupportsRecursion);
+    private IReadOnlyList<IRule<T>>? _sortedRulesCache;
+    private IReadOnlyList<IAsyncRule<T>>? _sortedAsyncRulesCache;
+    private bool _disposed;
+
     public RulesEngineCore(RulesEngineOptions? options = null)
     {
         _rules = new List<IRule<T>>();
+        _asyncRules = new List<IAsyncRule<T>>();
         _options = options ?? new RulesEngineOptions();
         _metrics = new ConcurrentDictionary<string, RulePerformanceMetrics>();
     }
-    
+
     /// <summary>
     /// Registers a rule with the engine
     /// </summary>
+    /// <exception cref="ArgumentNullException">Thrown when rule is null</exception>
+    /// <exception cref="RuleValidationException">Thrown when rule fails validation</exception>
     public void RegisterRule(IRule<T> rule)
     {
-        _rules.Add(rule);
+        // Validation first (no lock needed)
+        if (rule == null) throw new ArgumentNullException(nameof(rule));
+        if (string.IsNullOrEmpty(rule.Id))
+            throw new RuleValidationException("Rule ID cannot be null or empty");
+        if (string.IsNullOrEmpty(rule.Name))
+            throw new RuleValidationException("Rule name cannot be null or empty", rule.Id);
+
+        _lock.EnterWriteLock();
+        try
+        {
+            // Check for duplicates inside the lock
+            if (!_options.AllowDuplicateRuleIds && _rules.Any(r => r.Id == rule.Id))
+                throw new RuleValidationException($"Rule with ID '{rule.Id}' already exists", rule.Id);
+            _rules.Add(rule);
+            _sortedRulesCache = null; // Invalidate cache
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
     }
-    
+
     /// <summary>
     /// Registers multiple rules
     /// </summary>
+    /// <exception cref="ArgumentNullException">Thrown when rules array is null</exception>
+    /// <exception cref="RuleValidationException">Thrown when any rule fails validation</exception>
     public void RegisterRules(params IRule<T>[] rules)
     {
-        _rules.AddRange(rules);
+        if (rules == null) throw new ArgumentNullException(nameof(rules));
+
+        // Validate all rules first (outside lock)
+        foreach (var rule in rules)
+        {
+            if (rule == null) throw new ArgumentNullException(nameof(rules), "Rules array contains null element");
+            if (string.IsNullOrEmpty(rule.Id))
+                throw new RuleValidationException("Rule ID cannot be null or empty");
+            if (string.IsNullOrEmpty(rule.Name))
+                throw new RuleValidationException("Rule name cannot be null or empty", rule.Id);
+        }
+
+        _lock.EnterWriteLock();
+        try
+        {
+            foreach (var rule in rules)
+            {
+                if (!_options.AllowDuplicateRuleIds && _rules.Any(r => r.Id == rule.Id))
+                    throw new RuleValidationException($"Rule with ID '{rule.Id}' already exists", rule.Id);
+                _rules.Add(rule);
+            }
+            _sortedRulesCache = null; // Invalidate cache
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
     }
 
     /// <summary>
@@ -68,9 +128,115 @@ public class RulesEngineCore<T>
     /// <param name="condition">Predicate that determines if rule applies</param>
     /// <param name="action">Action to execute when rule matches (modifies fact in-place)</param>
     /// <param name="priority">Rule priority (higher = evaluated first)</param>
+    /// <exception cref="RuleValidationException">Thrown when rule fails validation</exception>
     public void AddRule(string id, string name, Func<T, bool> condition, Action<T> action, int priority = 0)
     {
-        _rules.Add(new ActionRule<T>(id, name, condition, action, priority));
+        // Validation first (no lock needed)
+        if (string.IsNullOrEmpty(id))
+            throw new RuleValidationException("Rule ID cannot be null or empty");
+        if (string.IsNullOrEmpty(name))
+            throw new RuleValidationException("Rule name cannot be null or empty", id);
+        if (condition == null)
+            throw new ArgumentNullException(nameof(condition));
+        if (action == null)
+            throw new ArgumentNullException(nameof(action));
+
+        _lock.EnterWriteLock();
+        try
+        {
+            if (!_options.AllowDuplicateRuleIds && _rules.Any(r => r.Id == id))
+                throw new RuleValidationException($"Rule with ID '{id}' already exists", id);
+            _rules.Add(new ActionRule<T>(id, name, condition, action, priority));
+            _sortedRulesCache = null; // Invalidate cache
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
+    }
+
+    /// <summary>
+    /// Registers an async rule with the engine
+    /// </summary>
+    /// <exception cref="ArgumentNullException">Thrown when rule is null</exception>
+    /// <exception cref="RuleValidationException">Thrown when rule fails validation</exception>
+    public void RegisterAsyncRule(IAsyncRule<T> rule)
+    {
+        // Validation first (no lock needed)
+        if (rule == null) throw new ArgumentNullException(nameof(rule));
+        if (string.IsNullOrEmpty(rule.Id))
+            throw new RuleValidationException("Async rule ID cannot be null or empty");
+        if (string.IsNullOrEmpty(rule.Name))
+            throw new RuleValidationException("Async rule name cannot be null or empty", rule.Id);
+
+        _lock.EnterWriteLock();
+        try
+        {
+            // Check for duplicates across both sync and async rules
+            if (!_options.AllowDuplicateRuleIds &&
+                (_rules.Any(r => r.Id == rule.Id) || _asyncRules.Any(r => r.Id == rule.Id)))
+                throw new RuleValidationException($"Rule with ID '{rule.Id}' already exists", rule.Id);
+
+            _asyncRules.Add(rule);
+            _sortedAsyncRulesCache = null; // Invalidate async cache
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
+    }
+
+    /// <summary>
+    /// Registers multiple async rules
+    /// </summary>
+    /// <exception cref="ArgumentNullException">Thrown when rules array is null</exception>
+    /// <exception cref="RuleValidationException">Thrown when any rule fails validation</exception>
+    public void RegisterAsyncRules(params IAsyncRule<T>[] rules)
+    {
+        if (rules == null) throw new ArgumentNullException(nameof(rules));
+
+        // Validate all rules first (outside lock)
+        foreach (var rule in rules)
+        {
+            if (rule == null) throw new ArgumentNullException(nameof(rules), "Rules array contains null element");
+            if (string.IsNullOrEmpty(rule.Id))
+                throw new RuleValidationException("Async rule ID cannot be null or empty");
+            if (string.IsNullOrEmpty(rule.Name))
+                throw new RuleValidationException("Async rule name cannot be null or empty", rule.Id);
+        }
+
+        _lock.EnterWriteLock();
+        try
+        {
+            foreach (var rule in rules)
+            {
+                if (!_options.AllowDuplicateRuleIds &&
+                    (_rules.Any(r => r.Id == rule.Id) || _asyncRules.Any(r => r.Id == rule.Id)))
+                    throw new RuleValidationException($"Rule with ID '{rule.Id}' already exists", rule.Id);
+                _asyncRules.Add(rule);
+            }
+            _sortedAsyncRulesCache = null; // Invalidate cache
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
+    }
+
+    /// <summary>
+    /// Gets all registered async rules
+    /// </summary>
+    public IReadOnlyList<IAsyncRule<T>> GetAsyncRules()
+    {
+        _lock.EnterReadLock();
+        try
+        {
+            return _asyncRules.ToList().AsReadOnly();
+        }
+        finally
+        {
+            _lock.ExitReadLock();
+        }
     }
 
     /// <summary>
@@ -80,8 +246,9 @@ public class RulesEngineCore<T>
     /// </summary>
     public void EvaluateAll(T fact)
     {
-        var sortedRules = _rules.OrderByDescending(r => r.Priority).ToList();
+        var sortedRules = GetSortedRules();
 
+        // Execute outside the lock to avoid holding lock during potentially long-running rule execution
         foreach (var rule in sortedRules)
         {
             if (rule.Evaluate(fact))
@@ -92,32 +259,120 @@ public class RulesEngineCore<T>
     }
 
     /// <summary>
-    /// Removes a rule by ID
+    /// Removes a rule by ID (checks both sync and async rules)
     /// </summary>
     public bool RemoveRule(string ruleId)
     {
-        var rule = _rules.FirstOrDefault(r => r.Id == ruleId);
-        if (rule != null)
+        _lock.EnterWriteLock();
+        try
         {
-            _rules.Remove(rule);
-            return true;
+            var rule = _rules.FirstOrDefault(r => r.Id == ruleId);
+            if (rule != null)
+            {
+                _rules.Remove(rule);
+                _sortedRulesCache = null; // Invalidate cache
+                return true;
+            }
+
+            var asyncRule = _asyncRules.FirstOrDefault(r => r.Id == ruleId);
+            if (asyncRule != null)
+            {
+                _asyncRules.Remove(asyncRule);
+                _sortedAsyncRulesCache = null; // Invalidate cache
+                return true;
+            }
+
+            return false;
         }
-        return false;
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
     }
-    
+
     /// <summary>
-    /// Clears all rules
+    /// Clears all rules (both sync and async)
     /// </summary>
     public void ClearRules()
     {
-        _rules.Clear();
+        _lock.EnterWriteLock();
+        try
+        {
+            _rules.Clear();
+            _asyncRules.Clear();
+            _sortedRulesCache = null; // Invalidate cache
+            _sortedAsyncRulesCache = null; // Invalidate async cache
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
     }
-    
+
     /// <summary>
     /// Gets all registered rules
     /// </summary>
-    public IReadOnlyList<IRule<T>> GetRules() => _rules.AsReadOnly();
-    
+    public IReadOnlyList<IRule<T>> GetRules()
+    {
+        _lock.EnterReadLock();
+        try
+        {
+            return _rules.ToList().AsReadOnly();
+        }
+        finally
+        {
+            _lock.ExitReadLock();
+        }
+    }
+
+    /// <summary>
+    /// Gets or creates the cached sorted rules list
+    /// </summary>
+    private IReadOnlyList<IRule<T>> GetSortedRules()
+    {
+        if (_sortedRulesCache != null)
+            return _sortedRulesCache;
+
+        _lock.EnterWriteLock();
+        try
+        {
+            // Double-check after acquiring write lock
+            if (_sortedRulesCache != null)
+                return _sortedRulesCache;
+
+            _sortedRulesCache = _rules.OrderByDescending(r => r.Priority).ToList().AsReadOnly();
+            return _sortedRulesCache;
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
+    }
+
+    /// <summary>
+    /// Gets or creates the cached sorted async rules list
+    /// </summary>
+    private IReadOnlyList<IAsyncRule<T>> GetSortedAsyncRules()
+    {
+        if (_sortedAsyncRulesCache != null)
+            return _sortedAsyncRulesCache;
+
+        _lock.EnterWriteLock();
+        try
+        {
+            // Double-check after acquiring write lock
+            if (_sortedAsyncRulesCache != null)
+                return _sortedAsyncRulesCache;
+
+            _sortedAsyncRulesCache = _asyncRules.OrderByDescending(r => r.Priority).ToList().AsReadOnly();
+            return _sortedAsyncRulesCache;
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
+    }
+
     /// <summary>
     /// Evaluates all applicable rules against the fact
     /// </summary>
@@ -125,30 +380,119 @@ public class RulesEngineCore<T>
     {
         var result = new RulesEngineResult();
         var startTime = DateTime.UtcNow;
-        
-        // Sort rules by priority (descending)
-        var sortedRules = _rules.OrderByDescending(r => r.Priority).ToList();
-        
+
+        var cachedRules = GetSortedRules();
+
         // Limit rules if configured
+        IEnumerable<IRule<T>> rulesToExecute = cachedRules;
         if (_options.MaxRulesToExecute.HasValue)
         {
-            sortedRules = sortedRules.Take(_options.MaxRulesToExecute.Value).ToList();
+            rulesToExecute = cachedRules.Take(_options.MaxRulesToExecute.Value);
         }
-        
+
+        // Execute outside the lock to avoid holding lock during potentially long-running rule execution
         if (_options.EnableParallelExecution)
         {
-            ExecuteParallel(fact, sortedRules, result);
+            ExecuteParallel(fact, rulesToExecute, result);
         }
         else
         {
-            ExecuteSequential(fact, sortedRules, result);
+            ExecuteSequential(fact, rulesToExecute, result);
         }
-        
+
         result.TotalExecutionTime = DateTime.UtcNow - startTime;
         return result;
     }
-    
-    private void ExecuteSequential(T fact, List<IRule<T>> rules, RulesEngineResult result)
+
+    /// <summary>
+    /// Asynchronously executes all applicable rules against the fact with cancellation support.
+    /// Processes sync rules first, then async rules, both in priority order.
+    /// </summary>
+    /// <param name="fact">The fact to evaluate rules against</param>
+    /// <param name="cancellationToken">Token to cancel the operation</param>
+    /// <returns>A collection of rule execution results</returns>
+    public async Task<IEnumerable<RuleExecutionResult<T>>> ExecuteAsync(
+        T fact,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var results = new List<RuleExecutionResult<T>>();
+        var stopOnMatch = false;
+
+        // Process sync rules first
+        var rulesToExecute = GetSortedRules();
+
+        // Limit rules if configured
+        IEnumerable<IRule<T>> limitedRules = rulesToExecute;
+        if (_options.MaxRulesToExecute.HasValue)
+        {
+            limitedRules = rulesToExecute.Take(_options.MaxRulesToExecute.Value);
+        }
+
+        foreach (var rule in limitedRules)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // Yield to allow cancellation between rules
+            await Task.Yield();
+
+            try
+            {
+                bool matches = rule.Evaluate(fact);
+                if (matches)
+                {
+                    var result = rule.Execute(fact);
+                    results.Add(new RuleExecutionResult<T>(rule, result, true));
+
+                    if (_options.StopOnFirstMatch)
+                    {
+                        stopOnMatch = true;
+                        break;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                results.Add(new RuleExecutionResult<T>(rule,
+                    RuleResult.Failure(rule.Id, ex.Message), false, ex));
+            }
+        }
+
+        // If we stopped on first match, don't process async rules
+        if (stopOnMatch)
+            return results;
+
+        // Process async rules
+        var asyncRulesToExecute = GetSortedAsyncRules();
+
+        foreach (var asyncRule in asyncRulesToExecute)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                bool matches = await asyncRule.EvaluateAsync(fact, cancellationToken);
+                if (matches)
+                {
+                    var result = await asyncRule.ExecuteAsync(fact, cancellationToken);
+                    results.Add(new RuleExecutionResult<T>(asyncRule, result, true));
+
+                    if (_options.StopOnFirstMatch)
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                results.Add(new RuleExecutionResult<T>(asyncRule,
+                    RuleResult.Failure(asyncRule.Id, ex.Message), false, ex));
+            }
+        }
+
+        return results;
+    }
+
+    private void ExecuteSequential(T fact, IEnumerable<IRule<T>> rules, RulesEngineResult result)
     {
         foreach (var rule in rules)
         {
@@ -170,7 +514,7 @@ public class RulesEngineCore<T>
         }
     }
     
-    private void ExecuteParallel(T fact, List<IRule<T>> rules, RulesEngineResult result)
+    private void ExecuteParallel(T fact, IEnumerable<IRule<T>> rules, RulesEngineResult result)
     {
         var results = new ConcurrentBag<RuleResult>();
         
@@ -199,9 +543,22 @@ public class RulesEngineCore<T>
     /// </summary>
     public List<IRule<T>> GetMatchingRules(T fact)
     {
-        return _rules.Where(r => r.Evaluate(fact)).ToList();
+        List<IRule<T>> rulesCopy;
+
+        _lock.EnterReadLock();
+        try
+        {
+            rulesCopy = _rules.ToList();
+        }
+        finally
+        {
+            _lock.ExitReadLock();
+        }
+
+        // Evaluate outside the lock to avoid holding lock during potentially long-running evaluation
+        return rulesCopy.Where(r => r.Evaluate(fact)).ToList();
     }
-    
+
     /// <summary>
     /// Gets performance metrics for a specific rule
     /// </summary>
@@ -209,7 +566,7 @@ public class RulesEngineCore<T>
     {
         return _metrics.TryGetValue(ruleId, out var metrics) ? metrics : null;
     }
-    
+
     /// <summary>
     /// Gets all performance metrics
     /// </summary>
@@ -217,7 +574,31 @@ public class RulesEngineCore<T>
     {
         return new Dictionary<string, RulePerformanceMetrics>(_metrics);
     }
-    
+
+    /// <summary>
+    /// Disposes the rules engine and releases all resources
+    /// </summary>
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// Disposes the rules engine
+    /// </summary>
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!_disposed)
+        {
+            if (disposing)
+            {
+                _lock?.Dispose();
+            }
+            _disposed = true;
+        }
+    }
+
     private void TrackPerformance(string ruleId, TimeSpan duration)
     {
         _metrics.AddOrUpdate(
@@ -355,5 +736,75 @@ internal class ActionRule<T> : IRule<T>
             Matched = false,
             ActionExecuted = false
         };
+    }
+}
+
+/// <summary>
+/// Result of an individual rule execution in async context.
+/// Supports both sync rules (IRule) and async rules (IAsyncRule).
+/// </summary>
+/// <typeparam name="T">The type of fact the rule evaluated</typeparam>
+public class RuleExecutionResult<T>
+{
+    /// <summary>
+    /// The sync rule that was executed (null if async rule was executed)
+    /// </summary>
+    public IRule<T>? Rule { get; }
+
+    /// <summary>
+    /// The async rule that was executed (null if sync rule was executed)
+    /// </summary>
+    public IAsyncRule<T>? AsyncRule { get; }
+
+    /// <summary>
+    /// The ID of the rule that was executed
+    /// </summary>
+    public string RuleId => Rule?.Id ?? AsyncRule?.Id ?? "unknown";
+
+    /// <summary>
+    /// The name of the rule that was executed
+    /// </summary>
+    public string RuleName => Rule?.Name ?? AsyncRule?.Name ?? "unknown";
+
+    /// <summary>
+    /// Whether this result is from an async rule
+    /// </summary>
+    public bool IsAsyncRule => AsyncRule != null;
+
+    /// <summary>
+    /// The result of the rule execution
+    /// </summary>
+    public RuleResult Result { get; }
+
+    /// <summary>
+    /// Whether the rule was successfully executed without exceptions
+    /// </summary>
+    public bool Success { get; }
+
+    /// <summary>
+    /// The exception that occurred during execution, if any
+    /// </summary>
+    public Exception? Exception { get; }
+
+    /// <summary>
+    /// Creates a result for a sync rule execution
+    /// </summary>
+    public RuleExecutionResult(IRule<T> rule, RuleResult result, bool success, Exception? exception = null)
+    {
+        Rule = rule;
+        Result = result;
+        Success = success;
+        Exception = exception;
+    }
+
+    /// <summary>
+    /// Creates a result for an async rule execution
+    /// </summary>
+    public RuleExecutionResult(IAsyncRule<T> asyncRule, RuleResult result, bool success, Exception? exception = null)
+    {
+        AsyncRule = asyncRule;
+        Result = result;
+        Success = success;
+        Exception = exception;
     }
 }

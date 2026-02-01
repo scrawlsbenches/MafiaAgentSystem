@@ -1,4 +1,6 @@
 using AgentRouting.Core;
+using AgentRouting.MafiaDemo;
+using AgentRouting.MafiaDemo.Rules;
 using System.Collections.Concurrent;
 using System.Text;
 
@@ -22,6 +24,22 @@ public class GameState
 
     public bool GameOver { get; set; } = false;
     public string? GameOverReason { get; set; }
+
+    // Computed properties for rules engine compatibility
+    public int Day => Week; // Alias for Week
+    public int SoldierCount { get; set; } = 5;
+    public decimal TotalRevenue => Territories.Values.Sum(t => t.WeeklyRevenue);
+    public int TerritoryCount => Territories.Count;
+}
+
+/// <summary>
+/// Simple data class for game engine NPC tracking (not a full Agent)
+/// </summary>
+public class GameAgentData
+{
+    public string AgentId { get; set; } = "";
+    public AgentPersonality Personality { get; set; } = new();
+    public int ActionCooldown { get; set; } = 0;
 }
 
 public class Territory
@@ -81,7 +99,7 @@ public abstract class AutonomousAgent : AgentBase
         CancellationToken ct)
     {
         // Default implementation - can be overridden by derived classes
-        await Task.Delay(100, ct);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.SoldierThinkingMs, ct);
         return MessageResult.Ok($"Message received by {Name}");
     }
 }
@@ -129,10 +147,14 @@ public class AgentDecision
 public class MafiaGameEngine
 {
     private readonly GameState _state;
-    private readonly AgentRouter _router;
+    private readonly AgentRouter? _router;
+    private readonly IAgentLogger _logger;
+    private readonly Dictionary<string, GameAgentData> _gameAgents;
     private readonly Dictionary<string, AutonomousAgent> _autonomousAgents;
     private readonly Random _random = new();
     private readonly ConcurrentQueue<string> _messageLog = new();
+    private readonly RulesBasedGameEngine? _rulesEngine;
+    private CancellationTokenSource? _cts;
     private bool _running = false;
 
     public GameState State => _state;
@@ -140,9 +162,92 @@ public class MafiaGameEngine
     public MafiaGameEngine(AgentRouter router)
     {
         _router = router;
+        _logger = new ConsoleAgentLogger();
         _state = new GameState();
+        _gameAgents = new Dictionary<string, GameAgentData>();
         _autonomousAgents = new Dictionary<string, AutonomousAgent>();
         InitializeGame();
+        _rulesEngine = new RulesBasedGameEngine(_state);
+    }
+
+    public MafiaGameEngine(IAgentLogger logger)
+    {
+        _logger = logger;
+        _router = new AgentRouter(logger);
+        _state = new GameState();
+        _gameAgents = new Dictionary<string, GameAgentData>();
+        _autonomousAgents = new Dictionary<string, AutonomousAgent>();
+        InitializeGame();
+        _rulesEngine = new RulesBasedGameEngine(_state);
+    }
+
+    /// <summary>
+    /// Register an autonomous agent for the simulation
+    /// </summary>
+    public void RegisterAutonomousAgent(AutonomousAgent agent)
+    {
+        _autonomousAgents[agent.Id] = agent;
+        _router?.RegisterAgent(agent);
+    }
+
+    /// <summary>
+    /// Setup routing rules for the family hierarchy
+    /// </summary>
+    public void SetupRoutingRules()
+    {
+        if (_router == null) return;
+
+        // The Don handles final decisions
+        _router.AddRoutingRule("GODFATHER", "Godfather decisions",
+            ctx => ctx.Category == "FinalDecision" || ctx.Category == "MajorDispute",
+            "godfather-001", priority: 1000);
+
+        // Underboss handles daily operations
+        _router.AddRoutingRule("UNDERBOSS", "Underboss operations",
+            ctx => ctx.Category == "DailyOperations",
+            "underboss-001", priority: 800);
+
+        // Consigliere handles legal
+        _router.AddRoutingRule("CONSIGLIERE", "Legal matters",
+            ctx => ctx.Category == "Legal",
+            "consigliere-001", priority: 900);
+    }
+
+    /// <summary>
+    /// Start the autonomous game loop
+    /// </summary>
+    public async Task StartGameAsync()
+    {
+        _running = true;
+        _cts = new CancellationTokenSource();
+
+        Console.WriteLine("\n🎮 Game started! Press Ctrl+C to stop.\n");
+
+        while (_running && !_state.GameOver && !_cts.Token.IsCancellationRequested)
+        {
+            var events = await ExecuteTurnAsync();
+            foreach (var evt in events)
+            {
+                Console.WriteLine(evt);
+            }
+
+            if (_state.GameOver)
+            {
+                Console.WriteLine($"\n🎬 GAME OVER: {_state.GameOverReason}");
+                break;
+            }
+
+            await GameTimingOptions.DelayAsync(GameTimingOptions.Current.TurnDelayMs, _cts.Token);
+        }
+    }
+
+    /// <summary>
+    /// Stop the game
+    /// </summary>
+    public void StopGame()
+    {
+        _running = false;
+        _cts?.Cancel();
     }
 
     private void InitializeGame()
@@ -190,20 +295,20 @@ public class MafiaGameEngine
             Hostility = 30
         };
 
-        // Initialize autonomous agents
-        _autonomousAgents["underboss-001"] = new AutonomousAgent
+        // Initialize game agent data for simulation
+        _gameAgents["underboss-001"] = new GameAgentData
         {
             AgentId = "underboss-001",
             Personality = new AgentPersonality { Aggression = 60, Greed = 70, Loyalty = 90, Ambition = 40 }
         };
 
-        _autonomousAgents["capo-001"] = new AutonomousAgent
+        _gameAgents["capo-001"] = new GameAgentData
         {
             AgentId = "capo-001",
             Personality = new AgentPersonality { Aggression = 80, Greed = 60, Loyalty = 70, Ambition = 70 }
         };
 
-        _autonomousAgents["soldier-001"] = new AutonomousAgent
+        _gameAgents["soldier-001"] = new GameAgentData
         {
             AgentId = "soldier-001",
             Personality = new AgentPersonality { Aggression = 90, Greed = 40, Loyalty = 95, Ambition = 30 }
@@ -239,10 +344,17 @@ public class MafiaGameEngine
         var rivalActions = ProcessRivalFamilyActions();
         turnEvents.AddRange(rivalActions);
 
-        // 5. Update game state
+        // 5. Evaluate game rules (win/loss, consequences)
+        if (_rulesEngine != null)
+        {
+            var ruleEvents = _rulesEngine.EvaluateGameRules();
+            turnEvents.AddRange(ruleEvents);
+        }
+
+        // 6. Update game state
         UpdateGameState();
 
-        // 6. Check win/loss conditions
+        // 7. Check win/loss conditions
         CheckGameOver();
 
         turnEvents.Add($"\n💰 Family Wealth: ${_state.FamilyWealth:N0}");
@@ -284,6 +396,7 @@ public class MafiaGameEngine
 
         LogEvent("Collection", $"Weekly collection: ${totalRevenue:N0}", "capo-001");
 
+        await Task.CompletedTask; // Async-ready for future timing delays
         return events;
     }
 
@@ -291,8 +404,15 @@ public class MafiaGameEngine
     {
         var events = new List<string>();
 
-        // 20% chance of random event each turn
-        if (_random.Next(100) < 20)
+        // Use rules engine for events if available
+        if (_rulesEngine != null)
+        {
+            var ruleEvents = _rulesEngine.GenerateEvents();
+            events.AddRange(ruleEvents);
+        }
+
+        // Keep some random chance for variety (reduced from 20% to 10%)
+        if (_random.Next(100) < 10)
         {
             var eventType = _random.Next(6);
 
@@ -356,7 +476,7 @@ public class MafiaGameEngine
         events.Add("🤖 AUTONOMOUS AGENT ACTIONS");
         events.Add("───────────────────────────");
 
-        foreach (var agent in _autonomousAgents.Values)
+        foreach (var agent in _gameAgents.Values)
         {
             if (agent.ActionCooldown > 0)
             {
@@ -388,8 +508,19 @@ public class MafiaGameEngine
         return events;
     }
 
-    private string? DecideAction(AutonomousAgent agent)
+    private string? DecideAction(GameAgentData agent)
     {
+        // Use rules engine if available
+        if (_rulesEngine != null)
+        {
+            var action = _rulesEngine.GetAgentAction(agent);
+            if (action != "wait")
+            {
+                return action;
+            }
+        }
+
+        // Fallback to existing probability-based logic
         var roll = _random.Next(100);
 
         // High aggression = more likely to initiate violence
@@ -413,8 +544,9 @@ public class MafiaGameEngine
         return null;
     }
 
-    private async Task<string?> ExecuteAgentAction(AutonomousAgent agent, string action)
+    private async Task<string?> ExecuteAgentAction(GameAgentData agent, string action)
     {
+        await Task.CompletedTask; // Make async warning go away
         switch (action)
         {
             case "intimidate":
@@ -525,100 +657,103 @@ public class MafiaGameEngine
     /// <summary>
     /// Player actions - player can issue commands
     /// </summary>
-    public async Task<string> ExecutePlayerAction(string command)
+    public Task<string> ExecutePlayerAction(string command)
     {
         var parts = command.ToLowerInvariant().Split(' ');
         var action = parts[0];
 
-        switch (action)
+        string result = action switch
         {
-            case "status":
-                return GetStatusReport();
+            "status" => GetStatusReport(),
+            "territories" => GetTerritoryReport(),
+            "rivals" => GetRivalReport(),
+            "events" => GetRecentEvents(),
+            "help" => GetHelpText(),
+            "bribe" => ExecuteBribe(),
+            "expand" => ExecuteExpand(),
+            "hit" => ExecuteHit(parts),
+            "peace" => ExecutePeace(parts),
+            _ => $"❌ Unknown command: {action}. Type 'help' for commands."
+        };
 
-            case "territories":
-                return GetTerritoryReport();
+        return Task.FromResult(result);
+    }
 
-            case "rivals":
-                return GetRivalReport();
-
-            case "events":
-                return GetRecentEvents();
-
-            case "bribe":
-                if (_state.FamilyWealth >= 10000)
-                {
-                    _state.FamilyWealth -= 10000;
-                    _state.HeatLevel -= 20;
-                    LogEvent("Bribe", "Player bribed officials", "player");
-                    return "💰 Paid $10,000 in bribes. Heat reduced by 20.";
-                }
-                return "❌ Not enough money (need $10,000)";
-
-            case "expand":
-                if (_state.FamilyWealth >= 50000)
-                {
-                    _state.FamilyWealth -= 50000;
-                    _state.Territories[$"new-territory-{_state.Week}"] = new Territory
-                    {
-                        Name = $"New Territory (Week {_state.Week})",
-                        ControlledBy = "capo-001",
-                        WeeklyRevenue = 10000,
-                        HeatGeneration = 5,
-                        Type = "Protection"
-                    };
-                    LogEvent("Expand", "Player expanded into new territory", "player");
-                    return "🗺️  Expanded into new territory! (+$10,000/week)";
-                }
-                return "❌ Not enough money (need $50,000)";
-
-            case "hit":
-                if (parts.Length < 2) return "Usage: hit <rival-family-name>";
-                var rivalName = string.Join(" ", parts.Skip(1));
-                var target = _state.RivalFamilies.Values.FirstOrDefault(r =>
-                    r.Name.ToLowerInvariant().Contains(rivalName));
-
-                if (target != null)
-                {
-                    if (_state.FamilyWealth >= 25000)
-                    {
-                        _state.FamilyWealth -= 25000;
-                        target.Strength -= 20;
-                        target.Hostility += 30;
-                        _state.HeatLevel += 25;
-                        _state.Reputation += 10;
-                        LogEvent("Hit", $"Ordered hit on {target.Name}", "player");
-                        return $"💀 Hit executed on {target.Name}. They're weakened but very angry!";
-                    }
-                    return "❌ Not enough money (need $25,000)";
-                }
-                return "❌ Rival family not found";
-
-            case "peace":
-                if (parts.Length < 2) return "Usage: peace <rival-family-name>";
-                var peaceRival = string.Join(" ", parts.Skip(1));
-                var peaceTarget = _state.RivalFamilies.Values.FirstOrDefault(r =>
-                    r.Name.ToLowerInvariant().Contains(peaceRival));
-
-                if (peaceTarget != null)
-                {
-                    if (_state.FamilyWealth >= 30000)
-                    {
-                        _state.FamilyWealth -= 30000;
-                        peaceTarget.Hostility -= 40;
-                        peaceTarget.AtWar = false;
-                        LogEvent("Peace", $"Made peace with {peaceTarget.Name}", "player");
-                        return $"🕊️  Peace treaty signed with {peaceTarget.Name}. Cost $30,000.";
-                    }
-                    return "❌ Not enough money (need $30,000)";
-                }
-                return "❌ Rival family not found";
-
-            case "help":
-                return GetHelpText();
-
-            default:
-                return $"❌ Unknown command: {action}. Type 'help' for commands.";
+    private string ExecuteBribe()
+    {
+        if (_state.FamilyWealth >= 10000)
+        {
+            _state.FamilyWealth -= 10000;
+            _state.HeatLevel -= 20;
+            LogEvent("Bribe", "Player bribed officials", "player");
+            return "💰 Paid $10,000 in bribes. Heat reduced by 20.";
         }
+        return "❌ Not enough money (need $10,000)";
+    }
+
+    private string ExecuteExpand()
+    {
+        if (_state.FamilyWealth >= 50000)
+        {
+            _state.FamilyWealth -= 50000;
+            _state.Territories[$"new-territory-{_state.Week}"] = new Territory
+            {
+                Name = $"New Territory (Week {_state.Week})",
+                ControlledBy = "capo-001",
+                WeeklyRevenue = 10000,
+                HeatGeneration = 5,
+                Type = "Protection"
+            };
+            LogEvent("Expand", "Player expanded into new territory", "player");
+            return "🗺️  Expanded into new territory! (+$10,000/week)";
+        }
+        return "❌ Not enough money (need $50,000)";
+    }
+
+    private string ExecuteHit(string[] parts)
+    {
+        if (parts.Length < 2) return "Usage: hit <rival-family-name>";
+        var rivalName = string.Join(" ", parts.Skip(1));
+        var target = _state.RivalFamilies.Values.FirstOrDefault(r =>
+            r.Name.ToLowerInvariant().Contains(rivalName));
+
+        if (target != null)
+        {
+            if (_state.FamilyWealth >= 25000)
+            {
+                _state.FamilyWealth -= 25000;
+                target.Strength -= 20;
+                target.Hostility += 30;
+                _state.HeatLevel += 25;
+                _state.Reputation += 10;
+                LogEvent("Hit", $"Ordered hit on {target.Name}", "player");
+                return $"💀 Hit executed on {target.Name}. They're weakened but very angry!";
+            }
+            return "❌ Not enough money (need $25,000)";
+        }
+        return "❌ Rival family not found";
+    }
+
+    private string ExecutePeace(string[] parts)
+    {
+        if (parts.Length < 2) return "Usage: peace <rival-family-name>";
+        var peaceRival = string.Join(" ", parts.Skip(1));
+        var peaceTarget = _state.RivalFamilies.Values.FirstOrDefault(r =>
+            r.Name.ToLowerInvariant().Contains(peaceRival));
+
+        if (peaceTarget != null)
+        {
+            if (_state.FamilyWealth >= 30000)
+            {
+                _state.FamilyWealth -= 30000;
+                peaceTarget.Hostility -= 40;
+                peaceTarget.AtWar = false;
+                LogEvent("Peace", $"Made peace with {peaceTarget.Name}", "player");
+                return $"🕊️  Peace treaty signed with {peaceTarget.Name}. Cost $30,000.";
+            }
+            return "❌ Not enough money (need $30,000)";
+        }
+        return "❌ Rival family not found";
     }
 
     private string GetStatusReport()

@@ -397,8 +397,8 @@ public class RulesBasedGameEngine
             TerritoryCount = _state.Territories.Count
         };
         
-        var matchedRules = _gameRules.EvaluateAll(context);
-        
+        var matchedRules = _gameRules.GetMatchingRules(context);
+
         foreach (var rule in matchedRules)
         {
             events.Add($"[Rule: {rule.Name}]");
@@ -410,7 +410,7 @@ public class RulesBasedGameEngine
     /// <summary>
     /// Get agent action using rules
     /// </summary>
-    public string GetAgentAction(AutonomousAgent agent)
+    public string GetAgentAction(GameAgentData agent)
     {
         var context = new AgentDecisionContext
         {
@@ -423,7 +423,7 @@ public class RulesBasedGameEngine
         };
         
         // Evaluate rules and get highest priority matching rule
-        var matchedRules = _agentRules.EvaluateAll(context);
+        var matchedRules = _agentRules.GetMatchingRules(context);
         
         if (matchedRules.Any())
         {
@@ -468,7 +468,7 @@ public class RulesBasedGameEngine
                 : 0
         };
         
-        var matchedRules = _eventRules.EvaluateAll(context);
+        var matchedRules = _eventRules.GetMatchingRules(context);
         
         foreach (var rule in matchedRules.Take(2)) // Max 2 events per turn
         {
