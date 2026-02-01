@@ -13,7 +13,7 @@
 |----------|----------|--------|-----------|
 | P0 | Critical Fixes | ✅ **COMPLETE** | 0 tasks |
 | P1 | Core Library Improvements | ✅ **COMPLETE** | 0 tasks |
-| **P1-DI** | **Dependency Injection/IoC** | 🆕 **NEW** | **8 tasks** |
+| **P1-DI** | **Dependency Injection/IoC** | 🔄 **IN PROGRESS** | **7 tasks remaining** |
 | **P1-IF** | **Interface Extraction** | 🆕 **NEW** | **6 tasks** |
 | P2 | MafiaDemo Completion | ✅ **COMPLETE** | 0 tasks |
 | P3 | Testing & Quality | 🔄 **PARTIAL** | 7 tasks |
@@ -315,27 +315,34 @@ Add a lightweight IoC container and refactor core components for proper dependen
 > **Constraint**: Zero third-party dependencies - custom implementation required.
 > **Total Estimate**: 19-25 hours
 
-### Task P1-DI-1: Create Lightweight IoC Container
+### Task P1-DI-1: Create Lightweight IoC Container ✅ COMPLETE
 **Estimated Time**: 3-4 hours
+**Actual Time**: ~2 hours
 **Dependencies**: None
 **Files**:
 - `AgentRouting/AgentRouting/DependencyInjection/IServiceContainer.cs` (new)
 - `AgentRouting/AgentRouting/DependencyInjection/ServiceContainer.cs` (new)
+- `Tests/TestRunner/Tests/ServiceContainerTests.cs` (new - 37 tests)
 
 **Problem**: No central dependency resolution mechanism; all wiring is manual.
 
 **Subtasks**:
-- [ ] Create `IServiceContainer` interface with Register, RegisterSingleton, Resolve methods
-- [ ] Implement `ServiceContainer` with factory and singleton support
-- [ ] Add support for generic type resolution
-- [ ] Implement `IDisposable` for cleanup of singleton instances
-- [ ] Add thread-safety for concurrent resolution
+- [x] Create `IServiceContainer` interface with AddSingleton, AddTransient, AddScoped, Resolve methods
+- [x] Create `IServiceScope` interface for scoped resolution
+- [x] Implement `ServiceContainer` with lambda-based factory registration
+- [x] Implement `ServiceScope` for scoped lifetime management
+- [x] Implement `IDisposable` for cleanup of singleton and scoped instances
+- [x] Add thread-safety using `ConcurrentDictionary`
+- [x] Add 37 comprehensive tests covering all edge cases
 
-**Acceptance Criteria**:
+**Acceptance Criteria**: ✅ All met
 - Container resolves registered services
-- Singletons return same instance
-- Factories create new instances
-- Thread-safe under concurrent access
+- Singletons return same instance (5 tests)
+- Transients create new instances (3 tests)
+- Scoped services shared within scope, different across scopes (5 tests)
+- Thread-safe under concurrent access (3 tests)
+- Proper disposal of singletons and scoped instances (4 tests)
+- Clear error messages for common mistakes (5 tests)
 
 ---
 
