@@ -201,6 +201,92 @@ public class DynamicRuleFactoryTests
             )
         );
     }
+
+    // Theory-based comprehensive test for all numeric operators
+    [Theory]
+    [InlineData("Price", ">", 50.0, 100.0, true)]
+    [InlineData("Price", ">", 50.0, 30.0, false)]
+    [InlineData("Price", ">", 50.0, 50.0, false)]
+    [InlineData("Price", ">=", 50.0, 50.0, true)]
+    [InlineData("Price", ">=", 50.0, 49.0, false)]
+    [InlineData("Price", "<", 50.0, 30.0, true)]
+    [InlineData("Price", "<", 50.0, 60.0, false)]
+    [InlineData("Price", "<", 50.0, 50.0, false)]
+    [InlineData("Price", "<=", 50.0, 50.0, true)]
+    [InlineData("Price", "<=", 50.0, 51.0, false)]
+    [InlineData("Price", "==", 50.0, 50.0, true)]
+    [InlineData("Price", "==", 50.0, 30.0, false)]
+    [InlineData("Price", "!=", 50.0, 30.0, true)]
+    [InlineData("Price", "!=", 50.0, 50.0, false)]
+    public void DynamicRuleFactory_NumericComparisons_Theory(
+        string property, string op, double compareValue, double actualValue, bool expectedMatch)
+    {
+        var rule = DynamicRuleFactory.CreatePropertyRule<Product>(
+            "TEST",
+            "Test Rule",
+            property,
+            op,
+            (decimal)compareValue
+        );
+
+        var product = new Product { Price = (decimal)actualValue };
+
+        var matches = rule.Evaluate(product);
+
+        Assert.Equal(expectedMatch, matches);
+    }
+
+    // Theory-based test for string operators
+    [Theory]
+    [InlineData("Name", "contains", "phone", "Smartphone Pro", true)]
+    [InlineData("Name", "contains", "phone", "Laptop", false)]
+    [InlineData("Name", "contains", "Phone", "smartphone", false)]  // Case sensitive
+    [InlineData("Category", "startswith", "Elec", "Electronics", true)]
+    [InlineData("Category", "startswith", "Elec", "Furniture", false)]
+    [InlineData("Category", "endswith", "ics", "Electronics", true)]
+    [InlineData("Category", "endswith", "ics", "Furniture", false)]
+    [InlineData("Name", "==", "Laptop", "Laptop", true)]
+    [InlineData("Name", "==", "Laptop", "Desktop", false)]
+    public void DynamicRuleFactory_StringComparisons_Theory(
+        string property, string op, string compareValue, string actualValue, bool expectedMatch)
+    {
+        var rule = DynamicRuleFactory.CreatePropertyRule<Product>(
+            "TEST",
+            "Test Rule",
+            property,
+            op,
+            compareValue
+        );
+
+        var product = new Product();
+        if (property == "Name")
+            product.Name = actualValue;
+        else if (property == "Category")
+            product.Category = actualValue;
+
+        var matches = rule.Evaluate(product);
+
+        Assert.Equal(expectedMatch, matches);
+    }
+
+    // Theory-based test for boolean operators
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public void DynamicRuleFactory_BooleanEquals_Theory(bool inStockValue, bool expectedMatch)
+    {
+        var rule = DynamicRuleFactory.CreatePropertyRule<Product>(
+            "TEST",
+            "Test Rule",
+            "InStock",
+            "==",
+            true
+        );
+
+        var product = new Product { InStock = inStockValue };
+
+        Assert.Equal(expectedMatch, rule.Evaluate(product));
+    }
 }
 
 /// <summary>
