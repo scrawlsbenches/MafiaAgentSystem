@@ -106,7 +106,7 @@ public class AgentRouter
             return MessageResult.Fail($"Target agent {context.TargetAgentId} not found");
         }
         
-        _logger.LogMessageRouted(message, null!, targetAgent);
+        _logger.LogMessageRouted(message, null, targetAgent);
         
         // Route to the selected agent
         message.ReceiverId = targetAgent.Id;

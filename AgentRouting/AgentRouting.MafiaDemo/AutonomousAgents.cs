@@ -27,7 +27,7 @@ public class AutonomousGodfather : AutonomousAgent
     public override AgentDecision? MakeDecision(GameState gameState, Random random)
     {
         // The Don doesn't make frivolous decisions
-        if (DateTime.Now - _lastDecision < TimeSpan.FromSeconds(30))
+        if (DateTime.UtcNow - _lastDecision < TimeSpan.FromSeconds(30))
             return null;
         
         var roll = random.Next(0, 10);
@@ -35,7 +35,7 @@ public class AutonomousGodfather : AutonomousAgent
         // 30% chance to send strategic message
         if (roll < 3)
         {
-            _lastDecision = DateTime.Now;
+            _lastDecision = DateTime.UtcNow;
             
             var messages = new[]
             {

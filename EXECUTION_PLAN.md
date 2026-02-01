@@ -6,14 +6,27 @@
 
 ---
 
-## Execution State (Updated 2026-01-31)
+## Execution State (Updated 2026-02-01)
 
+### Phase 1: MVP Foundation ✅
 - [x] .NET SDK 8.0.122 installed ✅
 - [x] Build succeeds (0 errors in core + MafiaDemo) ✅
 - [x] Test baseline: 39 tests, all passing ✅
 - [x] MVP game verified: All 8 scenarios run ✅
+- [x] Centralized timing (GameTimingOptions.cs) ✅
 
-**ALL BATCHES COMPLETE**
+### Phase 2: Core Library Hardening (In Progress)
+- [ ] P0-4: Fix null reference in AgentRouter
+- [ ] P1-1: Thread safety for RulesEngineCore
+- [ ] P1-2: ExecuteAsync with Cancellation
+- [ ] P1-3: Cache Sorted Rules
+- [ ] P1-4: Cache Eviction for CachingMiddleware
+- [ ] P1-5: Extract Configuration Constants
+- [ ] P1-6: Rule Validation on Registration
+- [ ] P1-7: Async Rule Support
+- [ ] P1-8: Standardize DateTime Usage
+
+**PHASE 2 IN PROGRESS**
 
 ---
 
@@ -164,5 +177,91 @@ Each gate produces a git commit. If a batch fails:
 
 ### BATCH 4 Log
 ```
-[Pending execution]
+[Completed - MVP verified]
+```
+
+---
+
+## Phase 2: Core Library Hardening
+
+### BATCH 5: Parallel Foundation Improvements
+**Status**: IN PROGRESS
+**Agents**: 3 parallel sub-agents (no file conflicts)
+**Duration**: ~2-3 hours
+
+**Tasks (parallel - different files)**:
+| Task | Files | Agent |
+|------|-------|-------|
+| P0-4 | AgentRouter.cs, IAgentLogger, ConsoleAgentLogger | Agent-5A |
+| P1-5 | New AgentRoutingDefaults.cs, middleware updates | Agent-5B |
+| P1-8 | All DateTime.Now usages → DateTime.UtcNow | Agent-5C |
+
+**Gate G5**: All 3 tasks complete, build succeeds, tests pass
+
+---
+
+### BATCH 6: RulesEngine Thread Safety + Validation
+**Status**: PENDING
+**Agents**: 1 agent (sequential - same file)
+**Duration**: ~3-4 hours
+**Depends**: BATCH 5
+
+**Tasks (sequential - both touch RulesEngineCore.cs)**:
+- P1-1: Add ReaderWriterLockSlim for thread safety
+- P1-6: Add rule validation on registration
+
+**Gate G6**: Thread-safe engine, validation works, all tests pass
+
+---
+
+### BATCH 7: Async & Caching Improvements
+**Status**: PENDING
+**Agents**: 3 parallel sub-agents
+**Duration**: ~3-4 hours
+**Depends**: BATCH 6
+
+**Tasks (parallel - different files)**:
+| Task | Files | Agent |
+|------|-------|-------|
+| P1-2 | RulesEngineCore.cs (ExecuteAsync) | Agent-7A |
+| P1-3 | RulesEngineCore.cs (cache) | Agent-7B |
+| P1-4 | CommonMiddleware.cs (CachingMiddleware) | Agent-7C |
+
+**Note**: P1-2 and P1-3 touch same file but different methods - careful coordination needed
+
+**Gate G7**: Async execution works, caching works, all tests pass
+
+---
+
+### BATCH 8: Async Rules
+**Status**: PENDING
+**Agents**: 1 agent
+**Duration**: ~3-4 hours
+**Depends**: BATCH 7 (P1-2)
+
+**Tasks**:
+- P1-7: Add IAsyncRule<T> and AsyncRule<T>
+
+**Gate G8**: Async rules work, all tests pass
+
+---
+
+### BATCH 5 Log
+```
+[Executing...]
+```
+
+### BATCH 6 Log
+```
+[Pending]
+```
+
+### BATCH 7 Log
+```
+[Pending]
+```
+
+### BATCH 8 Log
+```
+[Pending]
 ```
