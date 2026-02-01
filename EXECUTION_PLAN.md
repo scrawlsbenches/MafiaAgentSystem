@@ -166,12 +166,17 @@ Completed:
   - Added `ISystemClock? clock` parameter to CircuitBreaker, RateLimit, Caching
   - Replaced `DateTime.UtcNow` with `_clock.UtcNow`
   - Defaults to `SystemClock.Instance` for backwards compatibility
+- [x] IStateStore interface for middleware state management
+  - Created `IStateStore` interface and `InMemoryStateStore` implementation
+  - Updated RateLimitMiddleware, CachingMiddleware, CircuitBreakerMiddleware to require IStateStore
+  - Updated all test files to provide InMemoryStateStore instances
+  - Enables future distributed state storage (Redis, etc.)
+- [x] RuleResult.Error edge case tests
+  - Added 9 comprehensive tests documenting RuleResult behavior
+  - Discovered inconsistency: ActionRule vs Rule<T> handle exceptions differently
+  - Documented in ARCHITECTURE_DECISIONS.md section 5
 
-Pending (from ARCHITECTURE_DECISIONS.md):
-- [ ] IStateStore interface for distributed state
-- [ ] RuleResult.Error edge case tests
-
-**Test count: 175 (all passing)**
+**Test count: 184 (all passing)**
 
 ---
 
