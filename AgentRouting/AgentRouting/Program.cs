@@ -1,17 +1,28 @@
 using AgentRouting.Core;
 using AgentRouting.Agents;
 using AgentRouting.Middleware;
+using AgentRouting.DependencyInjection;
+using AgentRouting.Infrastructure;
 
 namespace AgentRouting;
 
 class Program
 {
+    // Shared service container for demos
+    private static IServiceContainer _container = null!;
+
     static async Task Main(string[] args)
     {
         Console.WriteLine("╔════════════════════════════════════════════════════════════╗");
         Console.WriteLine("║      Agent-to-Agent Communication & Routing System         ║");
         Console.WriteLine("╚════════════════════════════════════════════════════════════╝");
         Console.WriteLine();
+
+        // Set up dependency injection container
+        _container = new ServiceContainer()
+            .AddSingleton<IAgentLogger>(c => new ConsoleAgentLogger())
+            .AddSingleton<ISystemClock>(c => SystemClock.Instance)
+            .AddSingleton<IStateStore>(c => new InMemoryStateStore());
 
         await Demo1_BasicRouting();
         await Demo2_PriorityBasedRouting();
@@ -32,7 +43,7 @@ class Program
         Console.WriteLine("═══ Demo 1: Basic Message Routing ═══");
         Console.WriteLine();
 
-        var logger = new ConsoleAgentLogger();
+        var logger = _container.Resolve<IAgentLogger>();
         var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         // Create agents
@@ -109,7 +120,7 @@ class Program
         Console.WriteLine("═══ Demo 2: Priority-Based Routing ═══");
         Console.WriteLine();
 
-        var logger = new ConsoleAgentLogger();
+        var logger = _container.Resolve<IAgentLogger>();
         var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         var customerService = new CustomerServiceAgent("cs-001", "Customer Service", logger);
@@ -182,7 +193,7 @@ class Program
         Console.WriteLine("═══ Demo 3: Triage Agent & Message Forwarding ═══");
         Console.WriteLine();
 
-        var logger = new ConsoleAgentLogger();
+        var logger = _container.Resolve<IAgentLogger>();
         var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         // Create all agents
@@ -242,7 +253,7 @@ class Program
         Console.WriteLine("═══ Demo 4: Broadcasting Messages ═══");
         Console.WriteLine();
 
-        var logger = new ConsoleAgentLogger();
+        var logger = _container.Resolve<IAgentLogger>();
         var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         var agent1 = new CustomerServiceAgent("cs-001", "CS Team 1", logger);
@@ -277,7 +288,7 @@ class Program
         Console.WriteLine("═══ Demo 5: Multi-Agent Collaboration ═══");
         Console.WriteLine();
 
-        var logger = new ConsoleAgentLogger();
+        var logger = _container.Resolve<IAgentLogger>();
         var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         var customerService = new CustomerServiceAgent("cs-001", "Customer Service", logger);
@@ -327,7 +338,7 @@ class Program
         Console.WriteLine("═══ Demo 6: Analytics & Reporting ═══");
         Console.WriteLine();
 
-        var logger = new ConsoleAgentLogger();
+        var logger = _container.Resolve<IAgentLogger>();
         var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         // Add analytics middleware - automatically tracks all messages

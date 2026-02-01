@@ -66,24 +66,28 @@ public CircuitBreakerMiddleware(IStateStore store, int failureThreshold, TimeSpa
 
 **Design Decision**: No convenience overloads. Callers provide all dependencies explicitly.
 
-#### 3. Manual Wiring in Program.cs Files
+#### 3. ~~Manual Wiring in Program.cs Files~~ ✅ RESOLVED (P1-DI-7)
 
-**Files**: All demo Program.cs files
+**Status**: Fixed. All Program.cs files now use ServiceContainer for dependency management.
 
 ```csharp
-// Every demo repeats this pattern
-var logger = new ConsoleAgentLogger();
-var router = new AgentRouterBuilder()
-    .WithLogger(logger)
-    .WithAgent(new CustomerServiceAgent(logger))
-    .WithMiddleware(new RateLimitMiddleware(new InMemoryStateStore(), 100, TimeSpan.FromMinutes(1)))
-    .Build();
+// NEW: Central container setup
+_container = new ServiceContainer()
+    .AddSingleton<IAgentLogger>(c => new ConsoleAgentLogger())
+    .AddSingleton<ISystemClock>(c => SystemClock.Instance)
+    .AddTransient<IStateStore>(c => new InMemoryStateStore());
+
+// Each demo resolves from container
+var logger = _container.Resolve<IAgentLogger>();
+var stateStore = _container.Resolve<IStateStore>();
+var clock = _container.Resolve<ISystemClock>();
+var router = new AgentRouterBuilder().WithLogger(logger).Build();
 ```
 
-**Impact**:
-- Boilerplate repeated across applications
-- Changes to dependencies require updates everywhere
-- Easy to forget required services (e.g., IStateStore)
+**Benefits**:
+- Central configuration at app startup
+- Consistent dependency resolution across demos
+- Easy to swap implementations (e.g., testing)
 
 #### 4. Static Configuration Dependencies
 
@@ -446,10 +450,10 @@ public class AgentRouterBuilder
 | P1-DI-4 | Refactor AgentRouter for DI | 3-4h | ✅ Complete |
 | P1-DI-5 | Standardize middleware constructors | 3-4h | ✅ Complete |
 | P1-DI-6 | Create service registration extensions | 2-3h | ⏳ Pending |
-| P1-DI-7 | Update demos to use container | 2-3h | ⏳ Pending |
+| P1-DI-7 | Update demos to use container | 2-3h | ✅ Complete |
 | P1-DI-8 | Add DI tests | 2-3h | ✅ Complete (in P1-DI-1) |
 
-**Total Estimated**: 19-25 hours | **Completed**: ~5 hours | **Remaining**: ~10-15 hours
+**Total Estimated**: 19-25 hours | **Completed**: ~16 hours | **Remaining**: ~3-4 hours
 
 ### Dependency Graph
 
@@ -522,7 +526,7 @@ P1-DI-3 ─┘
 - [x] `IServiceContainer` interface and implementation complete (P1-DI-1)
 - [x] AgentRouter accepts injected dependencies (P1-DI-4)
 - [x] Middleware constructors simplified and consistent (P1-DI-5)
-- [ ] All demos use container registration (P1-DI-7)
+- [x] All demos use container registration (P1-DI-7)
 - [x] Build succeeds with 0 errors
 - [x] All tests pass (221 tests)
 - [x] New DI tests added (37 tests in P1-DI-1)
