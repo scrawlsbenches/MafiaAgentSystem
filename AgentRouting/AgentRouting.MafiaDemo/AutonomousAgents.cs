@@ -69,7 +69,7 @@ public class AutonomousGodfather : AutonomousAgent
         AgentMessage message,
         CancellationToken ct)
     {
-        await Task.Delay(500, ct);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.GodfatherThinkingMs, ct);
         
         var content = message.Content.ToLowerInvariant();
         
@@ -233,7 +233,7 @@ public class AutonomousUnderboss : AutonomousAgent
         AgentMessage message,
         CancellationToken ct)
     {
-        await Task.Delay(200, ct);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.UnderbossThinkingMs, ct);
         
         var content = message.Content.ToLowerInvariant();
         
@@ -313,7 +313,7 @@ public class AutonomousConsigliere : AutonomousAgent
         AgentMessage message,
         CancellationToken ct)
     {
-        await Task.Delay(300, ct);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.ConsigliereThinkingMs, ct);
         
         var content = message.Content.ToLowerInvariant();
         
@@ -407,7 +407,7 @@ public class AutonomousCapo : AutonomousAgent
         AgentMessage message,
         CancellationToken ct)
     {
-        await Task.Delay(150, ct);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.CapoThinkingMs, ct);
         
         var content = message.Content.ToLowerInvariant();
         
@@ -504,7 +504,7 @@ public class AutonomousSoldier : AutonomousAgent
         AgentMessage message,
         CancellationToken ct)
     {
-        await Task.Delay(100, ct);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.SoldierThinkingMs, ct);
         
         return MessageResult.Ok(
             "Yeah, I'm on it. No problem.");

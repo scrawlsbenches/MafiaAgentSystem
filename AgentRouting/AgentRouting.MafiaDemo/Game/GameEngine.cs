@@ -1,4 +1,5 @@
 using AgentRouting.Core;
+using AgentRouting.MafiaDemo;
 using System.Collections.Concurrent;
 using System.Text;
 
@@ -97,7 +98,7 @@ public abstract class AutonomousAgent : AgentBase
         CancellationToken ct)
     {
         // Default implementation - can be overridden by derived classes
-        await Task.Delay(100, ct);
+        await GameTimingOptions.DelayAsync(GameTimingOptions.Current.SoldierThinkingMs, ct);
         return MessageResult.Ok($"Message received by {Name}");
     }
 }
@@ -232,7 +233,7 @@ public class MafiaGameEngine
                 break;
             }
 
-            await Task.Delay(2000, _cts.Token);
+            await GameTimingOptions.DelayAsync(GameTimingOptions.Current.TurnDelayMs, _cts.Token);
         }
     }
 
