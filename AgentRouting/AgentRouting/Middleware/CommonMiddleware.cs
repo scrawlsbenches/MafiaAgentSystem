@@ -146,7 +146,7 @@ public class RateLimitMiddleware : MiddlewareBase
 }
 
 /// <summary>
-/// Caches message results
+/// Caches message results with LRU eviction policy
 /// </summary>
 public class CachingMiddleware : MiddlewareBase
 {
@@ -181,53 +181,110 @@ public class CachingMiddleware : MiddlewareBase
         _ttl = ttl;
         _maxEntries = maxEntries;
     }
-    
+
+    /// <summary>
+    /// Gets the current number of entries in the cache.
+    /// </summary>
+    public int Count => _cache.Count;
+
     public override async Task<MessageResult> InvokeAsync(
         AgentMessage message,
         MessageDelegate next,
         CancellationToken ct)
     {
         var key = GenerateCacheKey(message);
-        
+
         // Check cache
         if (_cache.TryGetValue(key, out var entry))
         {
-            if (DateTime.UtcNow - entry.Timestamp < _ttl)
+            // Check expiration
+            if (DateTime.UtcNow - entry.CachedAt < _ttl)
             {
+                entry.LastAccessedAt = DateTime.UtcNow;
                 Console.WriteLine($"[Cache] HIT: {message.Subject}");
                 return entry.Result;
             }
-            
-            // Expired
+
+            // Expired, remove it
             _cache.TryRemove(key, out _);
         }
-        
+
         Console.WriteLine($"[Cache] MISS: {message.Subject}");
-        
+
         // Process and cache
         var result = await next(message, ct);
-        
+
         if (result.Success)
         {
+            var now = DateTime.UtcNow;
             _cache[key] = new CacheEntry
             {
                 Result = result,
-                Timestamp = DateTime.UtcNow
+                CachedAt = now,
+                LastAccessedAt = now
             };
+
+            // Evict if cache exceeds max size
+            EvictIfNeeded();
         }
-        
+
         return result;
     }
-    
+
+    /// <summary>
+    /// Evicts least recently used entries when cache exceeds max size.
+    /// Removes 10% extra entries as buffer to avoid frequent evictions.
+    /// </summary>
+    private void EvictIfNeeded()
+    {
+        if (_cache.Count <= _maxEntries)
+            return;
+
+        // Remove oldest by last access time (LRU)
+        var entriesToRemove = _cache
+            .OrderBy(kvp => kvp.Value.LastAccessedAt)
+            .Take(_cache.Count - _maxEntries + (_maxEntries / 10)) // Remove 10% extra for buffer
+            .Select(kvp => kvp.Key)
+            .ToList();
+
+        foreach (var key in entriesToRemove)
+            _cache.TryRemove(key, out _);
+    }
+
+    /// <summary>
+    /// Clears all entries from the cache.
+    /// </summary>
+    public void Clear()
+    {
+        _cache.Clear();
+    }
+
+    /// <summary>
+    /// Removes all expired entries from the cache.
+    /// Call this periodically to free memory from stale entries.
+    /// </summary>
+    public void CleanupExpired()
+    {
+        var now = DateTime.UtcNow;
+        var expiredKeys = _cache
+            .Where(kvp => now - kvp.Value.CachedAt >= _ttl)
+            .Select(kvp => kvp.Key)
+            .ToList();
+
+        foreach (var key in expiredKeys)
+            _cache.TryRemove(key, out _);
+    }
+
     private string GenerateCacheKey(AgentMessage message)
     {
         return $"{message.SenderId}:{message.Category}:{message.Subject}:{message.Content}";
     }
-    
+
     private class CacheEntry
     {
         public MessageResult Result { get; set; } = null!;
-        public DateTime Timestamp { get; set; }
+        public DateTime CachedAt { get; set; }
+        public DateTime LastAccessedAt { get; set; }
     }
 }
 

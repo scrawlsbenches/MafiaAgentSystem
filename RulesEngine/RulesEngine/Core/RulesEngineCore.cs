@@ -42,6 +42,7 @@ public class RulesEngineCore<T> : IDisposable
     private readonly RulesEngineOptions _options;
     private readonly ConcurrentDictionary<string, RulePerformanceMetrics> _metrics;
     private readonly ReaderWriterLockSlim _lock = new(LockRecursionPolicy.SupportsRecursion);
+    private IReadOnlyList<IRule<T>>? _sortedRulesCache;
     private bool _disposed;
 
     public RulesEngineCore(RulesEngineOptions? options = null)
@@ -72,6 +73,7 @@ public class RulesEngineCore<T> : IDisposable
             if (!_options.AllowDuplicateRuleIds && _rules.Any(r => r.Id == rule.Id))
                 throw new RuleValidationException($"Rule with ID '{rule.Id}' already exists", rule.Id);
             _rules.Add(rule);
+            _sortedRulesCache = null; // Invalidate cache
         }
         finally
         {
@@ -107,6 +109,7 @@ public class RulesEngineCore<T> : IDisposable
                     throw new RuleValidationException($"Rule with ID '{rule.Id}' already exists", rule.Id);
                 _rules.Add(rule);
             }
+            _sortedRulesCache = null; // Invalidate cache
         }
         finally
         {
@@ -141,6 +144,7 @@ public class RulesEngineCore<T> : IDisposable
             if (!_options.AllowDuplicateRuleIds && _rules.Any(r => r.Id == id))
                 throw new RuleValidationException($"Rule with ID '{id}' already exists", id);
             _rules.Add(new ActionRule<T>(id, name, condition, action, priority));
+            _sortedRulesCache = null; // Invalidate cache
         }
         finally
         {
@@ -155,17 +159,7 @@ public class RulesEngineCore<T> : IDisposable
     /// </summary>
     public void EvaluateAll(T fact)
     {
-        List<IRule<T>> sortedRules;
-
-        _lock.EnterReadLock();
-        try
-        {
-            sortedRules = _rules.OrderByDescending(r => r.Priority).ToList();
-        }
-        finally
-        {
-            _lock.ExitReadLock();
-        }
+        var sortedRules = GetSortedRules();
 
         // Execute outside the lock to avoid holding lock during potentially long-running rule execution
         foreach (var rule in sortedRules)
@@ -189,6 +183,7 @@ public class RulesEngineCore<T> : IDisposable
             if (rule != null)
             {
                 _rules.Remove(rule);
+                _sortedRulesCache = null; // Invalidate cache
                 return true;
             }
             return false;
@@ -208,6 +203,7 @@ public class RulesEngineCore<T> : IDisposable
         try
         {
             _rules.Clear();
+            _sortedRulesCache = null; // Invalidate cache
         }
         finally
         {
@@ -230,7 +226,31 @@ public class RulesEngineCore<T> : IDisposable
             _lock.ExitReadLock();
         }
     }
-    
+
+    /// <summary>
+    /// Gets or creates the cached sorted rules list
+    /// </summary>
+    private IReadOnlyList<IRule<T>> GetSortedRules()
+    {
+        if (_sortedRulesCache != null)
+            return _sortedRulesCache;
+
+        _lock.EnterWriteLock();
+        try
+        {
+            // Double-check after acquiring write lock
+            if (_sortedRulesCache != null)
+                return _sortedRulesCache;
+
+            _sortedRulesCache = _rules.OrderByDescending(r => r.Priority).ToList().AsReadOnly();
+            return _sortedRulesCache;
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
+    }
+
     /// <summary>
     /// Evaluates all applicable rules against the fact
     /// </summary>
@@ -239,40 +259,81 @@ public class RulesEngineCore<T> : IDisposable
         var result = new RulesEngineResult();
         var startTime = DateTime.UtcNow;
 
-        List<IRule<T>> sortedRules;
-
-        _lock.EnterReadLock();
-        try
-        {
-            // Sort rules by priority (descending)
-            sortedRules = _rules.OrderByDescending(r => r.Priority).ToList();
-        }
-        finally
-        {
-            _lock.ExitReadLock();
-        }
+        var cachedRules = GetSortedRules();
 
         // Limit rules if configured
+        IEnumerable<IRule<T>> rulesToExecute = cachedRules;
         if (_options.MaxRulesToExecute.HasValue)
         {
-            sortedRules = sortedRules.Take(_options.MaxRulesToExecute.Value).ToList();
+            rulesToExecute = cachedRules.Take(_options.MaxRulesToExecute.Value);
         }
 
         // Execute outside the lock to avoid holding lock during potentially long-running rule execution
         if (_options.EnableParallelExecution)
         {
-            ExecuteParallel(fact, sortedRules, result);
+            ExecuteParallel(fact, rulesToExecute, result);
         }
         else
         {
-            ExecuteSequential(fact, sortedRules, result);
+            ExecuteSequential(fact, rulesToExecute, result);
         }
 
         result.TotalExecutionTime = DateTime.UtcNow - startTime;
         return result;
     }
-    
-    private void ExecuteSequential(T fact, List<IRule<T>> rules, RulesEngineResult result)
+
+    /// <summary>
+    /// Asynchronously executes all applicable rules against the fact with cancellation support
+    /// </summary>
+    /// <param name="fact">The fact to evaluate rules against</param>
+    /// <param name="cancellationToken">Token to cancel the operation</param>
+    /// <returns>A collection of rule execution results</returns>
+    public async Task<IEnumerable<RuleExecutionResult<T>>> ExecuteAsync(
+        T fact,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var rulesToExecute = GetSortedRules();
+
+        // Limit rules if configured
+        IEnumerable<IRule<T>> limitedRules = rulesToExecute;
+        if (_options.MaxRulesToExecute.HasValue)
+        {
+            limitedRules = rulesToExecute.Take(_options.MaxRulesToExecute.Value);
+        }
+
+        var results = new List<RuleExecutionResult<T>>();
+        foreach (var rule in limitedRules)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // Yield to allow cancellation between rules
+            await Task.Yield();
+
+            try
+            {
+                bool matches = rule.Evaluate(fact);
+                if (matches)
+                {
+                    var result = rule.Execute(fact);
+                    results.Add(new RuleExecutionResult<T>(rule, result, true));
+
+                    if (_options.StopOnFirstMatch)
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                results.Add(new RuleExecutionResult<T>(rule,
+                    RuleResult.Failure(rule.Id, ex.Message), false, ex));
+            }
+        }
+
+        return results;
+    }
+
+    private void ExecuteSequential(T fact, IEnumerable<IRule<T>> rules, RulesEngineResult result)
     {
         foreach (var rule in rules)
         {
@@ -294,7 +355,7 @@ public class RulesEngineCore<T> : IDisposable
         }
     }
     
-    private void ExecuteParallel(T fact, List<IRule<T>> rules, RulesEngineResult result)
+    private void ExecuteParallel(T fact, IEnumerable<IRule<T>> rules, RulesEngineResult result)
     {
         var results = new ConcurrentBag<RuleResult>();
         
@@ -516,5 +577,40 @@ internal class ActionRule<T> : IRule<T>
             Matched = false,
             ActionExecuted = false
         };
+    }
+}
+
+/// <summary>
+/// Result of an individual rule execution in async context
+/// </summary>
+/// <typeparam name="T">The type of fact the rule evaluated</typeparam>
+public class RuleExecutionResult<T>
+{
+    /// <summary>
+    /// The rule that was executed
+    /// </summary>
+    public IRule<T> Rule { get; }
+
+    /// <summary>
+    /// The result of the rule execution
+    /// </summary>
+    public RuleResult Result { get; }
+
+    /// <summary>
+    /// Whether the rule was successfully executed without exceptions
+    /// </summary>
+    public bool Success { get; }
+
+    /// <summary>
+    /// The exception that occurred during execution, if any
+    /// </summary>
+    public Exception? Exception { get; }
+
+    public RuleExecutionResult(IRule<T> rule, RuleResult result, bool success, Exception? exception = null)
+    {
+        Rule = rule;
+        Result = result;
+        Success = success;
+        Exception = exception;
     }
 }
