@@ -6,6 +6,7 @@
 |------|------------------|
 | Build | `dotnet build AgentRouting/AgentRouting.sln` |
 | Test | `dotnet run --project Tests/TestRunner/` |
+| Coverage | `dotnet tools/coverage/coverlet/tools/net6.0/any/coverlet.console.dll` |
 | Constraints | Zero 3rd party dependencies |
 
 ## Skill Files (For Complex Work)
@@ -60,26 +61,68 @@ apt-get install -y dotnet-sdk-8.0 2>&1 | tail -20
 ```
 
 ## Build & Test
-```bash
-# Build everything
-dotnet build
 
-# Build test projects (must be built before running TestRunner)
-dotnet build Tests/RulesEngine.Tests/
-dotnet build Tests/AgentRouting.Tests/
-dotnet build Tests/MafiaDemo.Tests/
+**IMPORTANT: NuGet is blocked by the proxy and will never be available.** This project has zero NuGet dependencies, so use offline restore:
+
+```bash
+# Restore (offline - no NuGet access needed for zero-dependency projects)
+dotnet restore AgentRouting/AgentRouting.sln --source /nonexistent
+
+# Build everything (after restore)
+dotnet build AgentRouting/AgentRouting.sln --no-restore
+
+# Build test projects
+dotnet build Tests/RulesEngine.Tests/ --no-restore
+dotnet build Tests/AgentRouting.Tests/ --no-restore
+dotnet build Tests/MafiaDemo.Tests/ --no-restore
 
 # Run all tests (auto-discovers built test assemblies)
-dotnet run --project Tests/TestRunner/
-
-# Run with coverage report
-dotnet run --project Tests/TestRunner/ -- --coverage
+dotnet run --project Tests/TestRunner/ --no-build
 
 # Run specific test assembly
-dotnet run --project Tests/TestRunner/ -- Tests/RulesEngine.Tests/bin/Debug/net8.0/RulesEngine.Tests.dll
+dotnet run --project Tests/TestRunner/ --no-build -- Tests/RulesEngine.Tests/bin/Debug/net8.0/RulesEngine.Tests.dll
 ```
 
 The test runner has **zero NuGet dependencies** - it uses a custom lightweight test framework.
+
+## Code Coverage
+
+Line-by-line code coverage is available using Coverlet (included in `tools/coverage/`).
+
+### Running Coverage
+
+```bash
+# Coverage for RulesEngine
+dotnet tools/coverage/coverlet/tools/net6.0/any/coverlet.console.dll \
+  "Tests/RulesEngine.Tests/bin/Debug/net8.0/" \
+  -t "dotnet" \
+  -a "run --project Tests/TestRunner/ --no-build" \
+  -f cobertura \
+  -o coverage/rulesengine.xml
+
+# Coverage for AgentRouting
+dotnet tools/coverage/coverlet/tools/net6.0/any/coverlet.console.dll \
+  "Tests/AgentRouting.Tests/bin/Debug/net8.0/" \
+  -t "dotnet" \
+  -a "run --project Tests/TestRunner/ --no-build" \
+  -f cobertura \
+  -o coverage/agentrouting.xml
+```
+
+### Coverage Output Formats
+
+| Format | Flag | Use Case |
+|--------|------|----------|
+| Cobertura XML | `-f cobertura` | CI/CD integration, detailed reports |
+| LCOV | `-f lcov` | IDE integration, line highlighting |
+| JSON | `-f json` | Programmatic analysis |
+
+### Current Coverage (as of last run)
+
+| Module | Line | Branch | Method |
+|--------|------|--------|--------|
+| RulesEngine | 80.98% | 64.95% | 88.05% |
+| AgentRouting | 47.80% | 46.39% | 59.71% |
 
 ### Test Project Structure
 

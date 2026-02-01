@@ -19,7 +19,10 @@ packages/
 # Test results
 TestResults/
 *.trx
-coverage*/
+coverage.json
+
+# Coverage output (but not tools/coverage/)
+/coverage/
 
 # OS files
 .DS_Store

@@ -1,0 +1,65 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>coverlet.console</name>
+    </assembly>
+    <members>
+        <member name="T:CommandExitCodes">
+            <summary>
+            Exit Codes returned from Coverlet console process.
+            </summary>
+        </member>
+        <member name="F:CommandExitCodes.Success">
+            <summary>
+            Indicates successful run of dotnet test without any test failure and coverage percentage above threshold if provided.
+            </summary>
+        </member>
+        <member name="F:CommandExitCodes.TestFailed">
+            <summary>
+            Indicates test failure by dotnet test.
+            </summary>
+        </member>
+        <member name="F:CommandExitCodes.CoverageBelowThreshold">
+            <summary>
+            Indicates coverage percentage is below given threshold for one or more threshold type.
+            </summary>
+        </member>
+        <member name="F:CommandExitCodes.Exception">
+            <summary>
+            Indicates exception occurred during Coverlet process.
+            </summary>
+        </member>
+        <member name="F:CommandExitCodes.CommandParsingException">
+            <summary>
+            Indicates missing options or empty arguments for Coverlet process.
+            </summary>
+        </member>
+        <member name="T:Coverlet.Console.Logging.LogLevel">
+            <summary>
+            Defines logging severity levels.
+            </summary>
+        </member>
+        <member name="F:Coverlet.Console.Logging.LogLevel.Detailed">
+            <summary>
+            Logs that track the general flow of the application. These logs should have long-term value.
+            </summary>
+        </member>
+        <member name="F:Coverlet.Console.Logging.LogLevel.Normal">
+            <summary>
+            Logs that highlight an abnormal or unexpected event in the application flow, but do not otherwise cause the
+            application execution to stop.
+            </summary>
+        </member>
+        <member name="F:Coverlet.Console.Logging.LogLevel.Minimal">
+            <summary>
+            Logs that highlight when the current flow of execution is stopped due to a failure. These should indicate a
+            failure in the current activity, not an application-wide failure.
+            </summary>
+        </member>
+        <member name="F:Coverlet.Console.Logging.LogLevel.Quiet">
+            <summary>
+            Not used for writing log messages. Specifies that a logging category should not write any messages except warning and errors.
+            </summary>
+        </member>
+    </members>
+</doc>
