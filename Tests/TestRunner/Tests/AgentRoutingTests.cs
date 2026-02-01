@@ -36,7 +36,7 @@ public class AgentRoutingTests
     public async Task AgentRouter_RoutesToCorrectAgent_BasedOnCategory()
     {
         var logger = new TestLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         var techAgent = new TechnicalSupportAgent("tech-001", "Tech Support", logger);
         var csAgent = new CustomerServiceAgent("cs-001", "Customer Service", logger);
@@ -78,7 +78,7 @@ public class AgentRoutingTests
     public async Task AgentRouter_RoutesByPriority_HighestFirst()
     {
         var logger = new TestLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         var agent1 = new CustomerServiceAgent("cs-001", "CS 1", logger);
         var agent2 = new CustomerServiceAgent("cs-002", "CS 2", logger);
@@ -181,7 +181,7 @@ public class AgentRoutingTests
     public async Task AgentRouter_BroadcastsToMultipleAgents()
     {
         var logger = new TestLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         var agent1 = new CustomerServiceAgent("cs-001", "CS 1", logger);
         var agent2 = new CustomerServiceAgent("cs-002", "CS 2", logger);
@@ -246,7 +246,7 @@ public class AgentRoutingTests
     public async Task TriageAgent_ClassifiesAndForwards()
     {
         var logger = new TestLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         var techAgent = new TechnicalSupportAgent("tech-001", "Tech", logger);
         var triageAgent = new TriageAgent("triage-001", "Triage", logger, router);

@@ -11,20 +11,27 @@ namespace AgentRouting.Core;
 public class AgentRouter
 {
     private readonly List<IAgent> _agents = new();
-    private readonly RulesEngineCore<RoutingContext> _routingEngine;
+    private readonly IRulesEngine<RoutingContext> _routingEngine;
     private readonly IAgentLogger _logger;
     private readonly Dictionary<string, IAgent> _agentById = new();
-    private readonly MiddlewarePipeline _pipeline = new();
+    private readonly IMiddlewarePipeline _pipeline;
     private MessageDelegate? _builtPipeline;
 
-    public AgentRouter(IAgentLogger logger)
+    /// <summary>
+    /// Creates a new AgentRouter with explicit dependencies.
+    /// Use AgentRouterBuilder for convenient construction with defaults.
+    /// </summary>
+    /// <param name="logger">Logger for routing events</param>
+    /// <param name="pipeline">Middleware pipeline for cross-cutting concerns</param>
+    /// <param name="routingEngine">Rules engine for routing decisions</param>
+    public AgentRouter(
+        IAgentLogger logger,
+        IMiddlewarePipeline pipeline,
+        IRulesEngine<RoutingContext> routingEngine)
     {
-        _logger = logger;
-        _routingEngine = new RulesEngineCore<RoutingContext>(new RulesEngineOptions
-        {
-            StopOnFirstMatch = true,  // First matching rule wins
-            TrackPerformance = true
-        });
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
+        _routingEngine = routingEngine ?? throw new ArgumentNullException(nameof(routingEngine));
     }
 
     /// <summary>

@@ -13,11 +13,15 @@
 |----------|----------|--------|-----------|
 | P0 | Critical Fixes | ✅ **COMPLETE** | 0 tasks |
 | P1 | Core Library Improvements | ✅ **COMPLETE** | 0 tasks |
+| **P1-DI** | **Dependency Injection/IoC** | 🔄 **IN PROGRESS** | **2 tasks remaining** |
+| **P1-IF** | **Interface Extraction** | 🆕 **NEW** | **6 tasks** |
 | P2 | MafiaDemo Completion | ✅ **COMPLETE** | 0 tasks |
 | P3 | Testing & Quality | 🔄 **PARTIAL** | 7 tasks |
 | P4 | Documentation & Polish | ⏳ **PENDING** | 6 tasks |
 
 **Note**: P2-2 through P2-8 were already implemented. P2-10 integration tests added.
+**New**: P1-DI tasks added for Dependency Injection/IoC improvements (see investigation: `docs/DI_IOC_INVESTIGATION.md`).
+**New**: P1-IF tasks added for interface extraction to improve testability and extensibility.
 
 ---
 
@@ -300,6 +304,491 @@ Improvements to the RulesEngine and AgentRouting core libraries.
 - No `DateTime.Now` in codebase
 - Time-dependent tests are deterministic
 - Clock injection available for testing
+
+---
+
+## P1-DI: Dependency Injection & Inversion of Control 🆕 NEW
+
+Add a lightweight IoC container and refactor core components for proper dependency injection.
+
+> **Investigation**: See `docs/DI_IOC_INVESTIGATION.md` for full analysis.
+> **Constraint**: Zero third-party dependencies - custom implementation required.
+> **Total Estimate**: 19-25 hours
+
+### Task P1-DI-1: Create Lightweight IoC Container ✅ COMPLETE
+**Estimated Time**: 3-4 hours
+**Actual Time**: ~2 hours
+**Dependencies**: None
+**Files**:
+- `AgentRouting/AgentRouting/DependencyInjection/IServiceContainer.cs` (new)
+- `AgentRouting/AgentRouting/DependencyInjection/ServiceContainer.cs` (new)
+- `Tests/TestRunner/Tests/ServiceContainerTests.cs` (new - 37 tests)
+
+**Problem**: No central dependency resolution mechanism; all wiring is manual.
+
+**Subtasks**:
+- [x] Create `IServiceContainer` interface with AddSingleton, AddTransient, AddScoped, Resolve methods
+- [x] Create `IServiceScope` interface for scoped resolution
+- [x] Implement `ServiceContainer` with lambda-based factory registration
+- [x] Implement `ServiceScope` for scoped lifetime management
+- [x] Implement `IDisposable` for cleanup of singleton and scoped instances
+- [x] Add thread-safety using `ConcurrentDictionary`
+- [x] Add 37 comprehensive tests covering all edge cases
+
+**Acceptance Criteria**: ✅ All met
+- Container resolves registered services
+- Singletons return same instance (5 tests)
+- Transients create new instances (3 tests)
+- Scoped services shared within scope, different across scopes (5 tests)
+- Thread-safe under concurrent access (3 tests)
+- Proper disposal of singletons and scoped instances (4 tests)
+- Clear error messages for common mistakes (5 tests)
+
+---
+
+### Task P1-DI-2: Add IMiddlewarePipeline Interface ✅ COMPLETE
+**Estimated Time**: 2 hours
+**Actual Time**: ~30 minutes
+**Dependencies**: None
+**Files**:
+- `AgentRouting/AgentRouting/Middleware/MiddlewareInfrastructure.cs` (modified - interface added)
+
+**Problem**: `MiddlewarePipeline` is concrete class, cannot be substituted.
+
+**Subtasks**:
+- [x] Extract `IMiddlewarePipeline` interface from `MiddlewarePipeline`
+- [x] Include `Use()`, `Build()`, `HasMiddleware` in interface
+- [x] Update `MiddlewarePipeline` to implement interface
+- [x] Update extension methods to use interface
+
+**Acceptance Criteria**: ✅ All met
+- `MiddlewarePipeline` implements `IMiddlewarePipeline`
+- Existing code continues to work (221 tests pass)
+- Interface can be mocked in tests
+
+---
+
+### Task P1-DI-3: Add IRulesEngine Interface ✅ COMPLETE
+**Estimated Time**: 2 hours
+**Actual Time**: ~30 minutes
+**Dependencies**: None
+**Files**:
+- `RulesEngine/RulesEngine/Core/IRulesEngine.cs` (new)
+- `RulesEngine/RulesEngine/Core/RulesEngineCore.cs` (modified)
+
+**Problem**: `RulesEngineCore<T>` is concrete, hard-coded in `AgentRouter`.
+
+**Subtasks**:
+- [x] Extract `IRulesEngine<T>` interface from `RulesEngineCore<T>`
+- [x] Include `RegisterRule()`, `Execute()`, `ExecuteAsync()` in interface
+- [x] Update `RulesEngineCore<T>` to implement interface
+- [x] Update references to use interface where appropriate
+
+**Acceptance Criteria**: ✅ All met
+- `RulesEngineCore<T>` implements `IRulesEngine<T>`
+- Existing code continues to work (221 tests pass)
+- Interface can be mocked in tests
+
+---
+
+### Task P1-DI-4: Refactor AgentRouter for Dependency Injection ✅ COMPLETE
+**Estimated Time**: 3-4 hours
+**Actual Time**: ~45 minutes
+**Dependencies**: P1-DI-2, P1-DI-3
+**Files**:
+- `AgentRouting/AgentRouting/Core/AgentRouter.cs` (modified - new constructor)
+- `AgentRouting/AgentRouting/Core/AgentRouterBuilder.cs` (modified - creates defaults)
+- ~50 call sites updated to use builder
+
+**Problem**: AgentRouter creates `MiddlewarePipeline` and `RulesEngineCore` internally.
+
+**Subtasks**:
+- [x] Add constructor accepting `IMiddlewarePipeline`, `IRulesEngine<RoutingContext>`, `IAgentLogger`
+- [x] Remove internal instantiation - all dependencies now required
+- [x] Update `AgentRouterBuilder` to create defaults in `Build()`
+- [x] Add `WithPipeline()` and `WithRoutingEngine()` methods to builder
+- [x] Update all ~50 call sites to use `AgentRouterBuilder`
+
+**Acceptance Criteria**: ✅ All met
+- AgentRouter requires all dependencies via constructor (no hidden instantiation)
+- AgentRouterBuilder creates defaults when not explicitly provided
+- All 221 tests pass
+
+---
+
+### Task P1-DI-5: Standardize Middleware Constructors ✅ COMPLETE
+**Estimated Time**: 3-4 hours
+**Actual Time**: ~1 hour
+**Dependencies**: P1-DI-1
+**Files**:
+- `AgentRouting/AgentRouting/Middleware/CommonMiddleware.cs` (modified)
+- All test files and demos updated
+
+**Problem**: Complex overloaded constructors hide required dependencies (IStateStore, ISystemClock).
+
+**Subtasks**:
+- [x] Reduce to single constructor per middleware requiring all dependencies
+- [x] ~~Add factory method with sensible defaults~~ (Decided against - callers provide all deps)
+- [x] Ensure `IStateStore` and `ISystemClock` are always explicit
+- [x] Remove `SystemClock.Instance` fallbacks from constructors
+- [x] Update all test files to use explicit dependencies
+- [x] Update demo code
+
+**Acceptance Criteria**: ✅ All met
+- RateLimitMiddleware: `(IStateStore, int, TimeSpan, ISystemClock)`
+- CachingMiddleware: `(IStateStore, TimeSpan, int, ISystemClock)`
+- CircuitBreakerMiddleware: `(IStateStore, int, TimeSpan, TimeSpan, ISystemClock)`
+- No hidden static dependencies - all 221 tests pass
+
+---
+
+### Task P1-DI-6: Create Service Registration Extensions
+**Estimated Time**: 2-3 hours
+**Dependencies**: P1-DI-1
+**Files**: `AgentRouting/AgentRouting/DependencyInjection/ServiceExtensions.cs` (new)
+
+**Problem**: No convenient way to register standard services.
+
+**Subtasks**:
+- [ ] Create `AddAgentRouting()` extension for core services
+- [ ] Create `AddMiddleware<T>()` generic registration
+- [ ] Create `AddAgent<T>()` generic registration
+- [ ] Register defaults: `ISystemClock`, `IStateStore`, `IAgentLogger`
+- [ ] Add overloads for custom configuration
+
+**Acceptance Criteria**:
+- Single line registers all core services
+- Middleware and agents easily registered
+- Defaults sensible for common scenarios
+
+---
+
+### Task P1-DI-7: Update Demos to Use Container
+**Estimated Time**: 2-3 hours
+**Dependencies**: P1-DI-6
+**Files**:
+- `AgentRouting/AgentRouting/Program.cs`
+- `AgentRouting/AgentRouting.MiddlewareDemo/Program.cs`
+- `AgentRouting/AgentRouting.MafiaDemo/Program.cs`
+
+**Problem**: All demos manually wire dependencies with repeated boilerplate.
+
+**Subtasks**:
+- [ ] Update AgentRouting demo to use `ServiceContainer`
+- [ ] Update MiddlewareDemo to use container registration
+- [ ] Update MafiaDemo to use container registration
+- [ ] Verify all demos run correctly
+- [ ] Document container usage pattern
+
+**Acceptance Criteria**:
+- All demos use container for dependency resolution
+- Code is cleaner and more maintainable
+- All demos run without errors
+
+---
+
+### Task P1-DI-8: Add Dependency Injection Tests
+**Estimated Time**: 2-3 hours
+**Dependencies**: P1-DI-1
+**Files**: `Tests/TestRunner/Tests/DependencyInjectionTests.cs` (new)
+
+**Subtasks**:
+- [ ] Test: Singleton registration returns same instance
+- [ ] Test: Factory registration creates new instances
+- [ ] Test: Generic type resolution
+- [ ] Test: Missing service throws clear exception
+- [ ] Test: Circular dependency detection (if implemented)
+- [ ] Test: Dispose cleans up singletons
+- [ ] Test: Thread-safe concurrent resolution
+- [ ] Test: AgentRouter resolves from container
+
+**Acceptance Criteria**:
+- All container behaviors tested
+- Edge cases covered
+- Tests run in custom TestRunner
+
+---
+
+### P1-DI Dependency Graph
+
+```
+P1-DI-1 ─┬─→ P1-DI-5
+         ├─→ P1-DI-6 ─→ P1-DI-7
+         └─→ P1-DI-8
+
+P1-DI-2 ─┬─→ P1-DI-4
+P1-DI-3 ─┘
+```
+
+### P1-DI Batch Plan
+
+**Batch DI-A** (Parallel - new files): ✅ COMPLETE
+- P1-DI-1: ServiceContainer ✅
+- P1-DI-2: IMiddlewarePipeline ✅
+- P1-DI-3: IRulesEngine ✅
+
+**Batch DI-B** (Sequential - depends on Batch A):
+- P1-DI-4: AgentRouter refactoring
+- P1-DI-5: Middleware constructor updates
+
+**Batch DI-C** (Parallel - after Batch B):
+- P1-DI-6: ServiceExtensions (new)
+- P1-DI-7: Demo updates
+- P1-DI-8: DI tests
+
+---
+
+## P1-IF: Interface Extraction 🆕 NEW
+
+Extract interfaces from concrete classes to improve testability, extensibility, and adherence to SOLID principles.
+
+> **Investigation**: See `docs/DI_IOC_INVESTIGATION.md` - Interface Extraction Analysis section.
+> **Note**: P1-DI-2 (IMiddlewarePipeline) and P1-DI-3 (IRulesEngine) already cover two key interfaces.
+> **Total Estimate**: 12-16 hours
+
+### Task P1-IF-1: Extract IRulesEngineResult Interface
+**Estimated Time**: 2 hours
+**Dependencies**: None
+**Files**:
+- `RulesEngine/RulesEngine/Core/IRulesEngineResult.cs` (new)
+- `RulesEngine/RulesEngine/Core/RulesEngineCore.cs` (modify)
+
+**Problem**: `RulesEngineResult` is a concrete class returned from `Execute()`, making it hard to mock.
+
+**Subtasks**:
+- [ ] Create `IRulesEngineResult` interface with read-only contract
+- [ ] Update `RulesEngineResult` to implement interface
+- [ ] Update `RulesEngineCore.Execute()` return type to interface
+- [ ] Update consuming code to use interface
+
+**Interface Definition**:
+```csharp
+public interface IRulesEngineResult
+{
+    IReadOnlyList<RuleResult> RuleResults { get; }
+    TimeSpan TotalExecutionTime { get; }
+    int TotalRulesEvaluated { get; }
+    int MatchedRules { get; }
+    int ExecutedActions { get; }
+    int Errors { get; }
+    List<RuleResult> GetMatchedRules();
+}
+```
+
+**Acceptance Criteria**:
+- Interface extracted and implemented
+- Build succeeds
+- Existing tests pass
+
+---
+
+### Task P1-IF-2: Extract IRuleExecutionResult<T> Interface
+**Estimated Time**: 2 hours
+**Dependencies**: None
+**Files**:
+- `RulesEngine/RulesEngine/Core/IRuleExecutionResult.cs` (new)
+- `RulesEngine/RulesEngine/Core/RulesEngineCore.cs` (modify)
+
+**Problem**: `RuleExecutionResult<T>` is returned from `ExecuteAsync()`, hard to mock async results.
+
+**Subtasks**:
+- [ ] Create `IRuleExecutionResult<T>` interface
+- [ ] Update `RuleExecutionResult<T>` to implement interface
+- [ ] Update `ExecuteAsync()` return type to use interface
+- [ ] Update consuming code
+
+**Interface Definition**:
+```csharp
+public interface IRuleExecutionResult<T>
+{
+    IRule<T>? Rule { get; }
+    IAsyncRule<T>? AsyncRule { get; }
+    string RuleId { get; }
+    RuleResult ExecutionResult { get; }
+    bool WasEvaluated { get; }
+}
+```
+
+**Acceptance Criteria**:
+- Interface extracted and implemented
+- Async execution tests pass
+
+---
+
+### Task P1-IF-3: Extract ITraceSpan Interface
+**Estimated Time**: 2 hours
+**Dependencies**: None
+**Files**:
+- `AgentRouting/AgentRouting/Middleware/ITraceSpan.cs` (new)
+- `AgentRouting/AgentRouting/Middleware/AdvancedMiddleware.cs` (modify)
+
+**Problem**: `TraceSpan` is used in `DistributedTracingMiddleware`, could support multiple backends.
+
+**Subtasks**:
+- [ ] Create `ITraceSpan` interface
+- [ ] Update `TraceSpan` to implement interface
+- [ ] Update `DistributedTracingMiddleware` to use interface
+- [ ] Allow custom span factories for different backends
+
+**Interface Definition**:
+```csharp
+public interface ITraceSpan
+{
+    string TraceId { get; }
+    string SpanId { get; }
+    string? ParentSpanId { get; }
+    string ServiceName { get; }
+    string OperationName { get; }
+    DateTime StartTime { get; }
+    TimeSpan Duration { get; set; }
+    bool Success { get; set; }
+    IDictionary<string, string> Tags { get; }
+}
+```
+
+**Acceptance Criteria**:
+- Interface extracted
+- Tracing middleware uses interface
+- Custom span implementations possible
+
+---
+
+### Task P1-IF-4: Extract IMiddlewareContext Interface
+**Estimated Time**: 2 hours
+**Dependencies**: None
+**Files**:
+- `AgentRouting/AgentRouting/Middleware/IMiddlewareContext.cs` (new)
+- `AgentRouting/AgentRouting/Middleware/MiddlewareInfrastructure.cs` (modify)
+
+**Problem**: `MiddlewareContext` stores middleware data, could have distributed implementations.
+
+**Subtasks**:
+- [ ] Create `IMiddlewareContext` interface
+- [ ] Update `MiddlewareContext` to implement interface
+- [ ] Update middleware that uses context to depend on interface
+- [ ] Enable distributed context implementations
+
+**Interface Definition**:
+```csharp
+public interface IMiddlewareContext
+{
+    T? Get<T>(string key);
+    void Set<T>(string key, T value);
+    bool TryGet<T>(string key, out T? value);
+}
+```
+
+**Acceptance Criteria**:
+- Interface extracted
+- Middleware uses interface
+- Alternative implementations possible
+
+---
+
+### Task P1-IF-5: Extract IMetricsSnapshot and IAnalyticsReport Interfaces
+**Estimated Time**: 2-3 hours
+**Dependencies**: None
+**Files**:
+- `AgentRouting/AgentRouting/Middleware/IMetricsSnapshot.cs` (new)
+- `AgentRouting/AgentRouting/Middleware/IAnalyticsReport.cs` (new)
+- `AgentRouting/AgentRouting/Middleware/CommonMiddleware.cs` (modify)
+
+**Problem**: Metrics and analytics reports are concrete, preventing alternative reporting formats.
+
+**Subtasks**:
+- [ ] Create `IMetricsSnapshot` interface
+- [ ] Create `IAnalyticsReport` interface
+- [ ] Update `MetricsSnapshot` to implement interface
+- [ ] Update `AnalyticsReport` to implement interface
+- [ ] Update middleware `GetSnapshot()`/`GetReport()` return types
+
+**Interface Definitions**:
+```csharp
+public interface IMetricsSnapshot
+{
+    int TotalMessages { get; }
+    int SuccessCount { get; }
+    int FailureCount { get; }
+    double SuccessRate { get; }
+    double AverageProcessingTimeMs { get; }
+}
+
+public interface IAnalyticsReport
+{
+    int TotalMessages { get; }
+    IReadOnlyDictionary<string, int> CategoryCounts { get; }
+    IReadOnlyDictionary<string, int> AgentWorkload { get; }
+}
+```
+
+**Acceptance Criteria**:
+- Both interfaces extracted
+- Middleware returns interfaces
+- Different report formats possible
+
+---
+
+### Task P1-IF-6: Extract IWorkflowDefinition and IWorkflowStage Interfaces
+**Estimated Time**: 2-3 hours
+**Dependencies**: None
+**Files**:
+- `AgentRouting/AgentRouting/Middleware/IWorkflowDefinition.cs` (new)
+- `AgentRouting/AgentRouting/Middleware/AdvancedMiddleware.cs` (modify)
+
+**Problem**: Workflow definitions are concrete, limiting workflow engine extensibility.
+
+**Subtasks**:
+- [ ] Create `IWorkflowDefinition` interface
+- [ ] Create `IWorkflowStage` interface
+- [ ] Update `WorkflowDefinition` and `WorkflowStage` to implement interfaces
+- [ ] Update `WorkflowOrchestrationMiddleware` to use interfaces
+- [ ] Enable custom workflow implementations
+
+**Interface Definitions**:
+```csharp
+public interface IWorkflowDefinition
+{
+    string Id { get; }
+    IReadOnlyList<IWorkflowStage> Stages { get; }
+}
+
+public interface IWorkflowStage
+{
+    string Name { get; }
+    Func<AgentMessage, Task<bool>>? OnEnter { get; }
+    IReadOnlyList<(string condition, string nextStage)> Transitions { get; }
+}
+```
+
+**Acceptance Criteria**:
+- Workflow interfaces extracted
+- Orchestration middleware uses interfaces
+- Custom workflow engines possible
+
+---
+
+### P1-IF Dependency Graph
+
+All P1-IF tasks are independent and can run in parallel:
+
+```
+P1-IF-1 (IRulesEngineResult)      ─┐
+P1-IF-2 (IRuleExecutionResult<T>) ─┤
+P1-IF-3 (ITraceSpan)              ─┼─→ All independent, can parallelize
+P1-IF-4 (IMiddlewareContext)      ─┤
+P1-IF-5 (IMetrics/IAnalytics)     ─┤
+P1-IF-6 (IWorkflow)               ─┘
+```
+
+### P1-IF Batch Plan
+
+**Single Batch** (All parallel - no dependencies):
+- P1-IF-1: IRulesEngineResult
+- P1-IF-2: IRuleExecutionResult<T>
+- P1-IF-3: ITraceSpan
+- P1-IF-4: IMiddlewareContext
+- P1-IF-5: IMetricsSnapshot + IAnalyticsReport
+- P1-IF-6: IWorkflowDefinition + IWorkflowStage
 
 ---
 

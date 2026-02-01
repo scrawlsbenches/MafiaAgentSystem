@@ -95,15 +95,7 @@ public class RateLimitMiddleware : MiddlewareBase
     private readonly IStateStore _store;
 
     /// <summary>
-    /// Creates a rate limiter with default settings from MiddlewareDefaults.
-    /// </summary>
-    public RateLimitMiddleware(IStateStore store)
-        : this(store, MiddlewareDefaults.RateLimitDefaultMaxRequests, MiddlewareDefaults.RateLimitDefaultWindow, SystemClock.Instance)
-    {
-    }
-
-    /// <summary>
-    /// Creates a rate limiter with custom settings.
+    /// Creates a rate limiter with the specified settings.
     /// </summary>
     /// <param name="store">State store for persisting rate limit data.</param>
     /// <param name="maxRequests">Maximum requests allowed within the time window.</param>
@@ -111,10 +103,10 @@ public class RateLimitMiddleware : MiddlewareBase
     /// <param name="clock">Clock for time operations.</param>
     public RateLimitMiddleware(IStateStore store, int maxRequests, TimeSpan window, ISystemClock clock)
     {
-        _store = store;
+        _store = store ?? throw new ArgumentNullException(nameof(store));
         _maxRequests = maxRequests;
         _window = window;
-        _clock = clock;
+        _clock = clock ?? throw new ArgumentNullException(nameof(clock));
     }
 
     public override Task<MessageResult> InvokeAsync(
@@ -163,25 +155,7 @@ public class CachingMiddleware : MiddlewareBase
     private readonly IStateStore _store;
 
     /// <summary>
-    /// Creates a caching middleware with default settings from MiddlewareDefaults.
-    /// </summary>
-    public CachingMiddleware(IStateStore store)
-        : this(store, MiddlewareDefaults.CacheDefaultTtl, MiddlewareDefaults.CacheMaxEntries, SystemClock.Instance)
-    {
-    }
-
-    /// <summary>
-    /// Creates a caching middleware with custom TTL.
-    /// </summary>
-    /// <param name="store">State store for persisting cache data.</param>
-    /// <param name="ttl">Time-to-live for cached entries.</param>
-    public CachingMiddleware(IStateStore store, TimeSpan ttl)
-        : this(store, ttl, MiddlewareDefaults.CacheMaxEntries, SystemClock.Instance)
-    {
-    }
-
-    /// <summary>
-    /// Creates a caching middleware with custom TTL and max entries.
+    /// Creates a caching middleware with the specified settings.
     /// </summary>
     /// <param name="store">State store for persisting cache data.</param>
     /// <param name="ttl">Time-to-live for cached entries.</param>
@@ -189,10 +163,10 @@ public class CachingMiddleware : MiddlewareBase
     /// <param name="clock">Clock for time operations.</param>
     public CachingMiddleware(IStateStore store, TimeSpan ttl, int maxEntries, ISystemClock clock)
     {
-        _store = store;
+        _store = store ?? throw new ArgumentNullException(nameof(store));
         _ttl = ttl;
         _maxEntries = maxEntries;
-        _clock = clock;
+        _clock = clock ?? throw new ArgumentNullException(nameof(clock));
     }
 
     private CacheState GetCacheState() => _store.GetOrAdd(CacheStateKey, _ => new CacheState());
@@ -395,39 +369,25 @@ public class CircuitBreakerMiddleware : MiddlewareBase
     private readonly IStateStore _store;
 
     /// <summary>
-    /// Creates a circuit breaker with default settings from MiddlewareDefaults.
-    /// </summary>
-    /// <param name="store">State store for persisting circuit breaker state.</param>
-    public CircuitBreakerMiddleware(IStateStore store)
-        : this(
-            store,
-            MiddlewareDefaults.CircuitBreakerDefaultThreshold,
-            MiddlewareDefaults.CircuitBreakerDefaultTimeout,
-            MiddlewareDefaults.CircuitBreakerDefaultFailureWindow,
-            SystemClock.Instance)
-    {
-    }
-
-    /// <summary>
-    /// Creates a circuit breaker with custom settings.
+    /// Creates a circuit breaker with the specified settings.
     /// </summary>
     /// <param name="store">State store for persisting circuit breaker state.</param>
     /// <param name="failureThreshold">Number of failures within the window before opening.</param>
     /// <param name="resetTimeout">Time to wait before attempting to close an open circuit.</param>
-    /// <param name="failureWindow">Sliding time window for counting failures. Defaults to 60 seconds.</param>
-    /// <param name="clock">Clock for time operations. Defaults to SystemClock.Instance for testability.</param>
+    /// <param name="failureWindow">Sliding time window for counting failures.</param>
+    /// <param name="clock">Clock for time operations.</param>
     public CircuitBreakerMiddleware(
         IStateStore store,
         int failureThreshold,
-        TimeSpan? resetTimeout = null,
-        TimeSpan? failureWindow = null,
-        ISystemClock? clock = null)
+        TimeSpan resetTimeout,
+        TimeSpan failureWindow,
+        ISystemClock clock)
     {
-        _store = store;
+        _store = store ?? throw new ArgumentNullException(nameof(store));
         _failureThreshold = failureThreshold;
-        _resetTimeout = resetTimeout ?? MiddlewareDefaults.CircuitBreakerDefaultTimeout;
-        _failureWindow = failureWindow ?? MiddlewareDefaults.CircuitBreakerDefaultFailureWindow;
-        _clock = clock ?? SystemClock.Instance;
+        _resetTimeout = resetTimeout;
+        _failureWindow = failureWindow;
+        _clock = clock ?? throw new ArgumentNullException(nameof(clock));
     }
 
     private CircuitBreakerState GetState() => _store.GetOrAdd(CircuitBreakerStateKey, _ => new CircuitBreakerState());

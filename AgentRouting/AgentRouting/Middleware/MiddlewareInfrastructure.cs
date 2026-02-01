@@ -22,9 +22,36 @@ public interface IAgentMiddleware
 }
 
 /// <summary>
+/// Interface for middleware pipeline composition.
+/// Allows building a chain of middleware that process messages.
+/// </summary>
+public interface IMiddlewarePipeline
+{
+    /// <summary>
+    /// Returns true if any middleware has been added to the pipeline.
+    /// </summary>
+    bool HasMiddleware { get; }
+
+    /// <summary>
+    /// Add middleware to the pipeline.
+    /// </summary>
+    IMiddlewarePipeline Use(IAgentMiddleware middleware);
+
+    /// <summary>
+    /// Add middleware using a factory function.
+    /// </summary>
+    IMiddlewarePipeline Use(Func<MessageDelegate, MessageDelegate> middleware);
+
+    /// <summary>
+    /// Build the complete pipeline with a final handler.
+    /// </summary>
+    MessageDelegate Build(MessageDelegate finalHandler);
+}
+
+/// <summary>
 /// Builder for composing middleware pipeline
 /// </summary>
-public class MiddlewarePipeline
+public class MiddlewarePipeline : IMiddlewarePipeline
 {
     private readonly List<IAgentMiddleware> _middleware = new();
 
@@ -36,16 +63,16 @@ public class MiddlewarePipeline
     /// <summary>
     /// Add middleware to the pipeline
     /// </summary>
-    public MiddlewarePipeline Use(IAgentMiddleware middleware)
+    public IMiddlewarePipeline Use(IAgentMiddleware middleware)
     {
         _middleware.Add(middleware);
         return this;
     }
-    
+
     /// <summary>
     /// Add middleware using a factory function
     /// </summary>
-    public MiddlewarePipeline Use(Func<MessageDelegate, MessageDelegate> middleware)
+    public IMiddlewarePipeline Use(Func<MessageDelegate, MessageDelegate> middleware)
     {
         _middleware.Add(new DelegateMiddleware(middleware));
         return this;
@@ -239,8 +266,8 @@ public static class MiddlewarePipelineExtensions
     /// <summary>
     /// Add middleware that only executes when the condition is met.
     /// </summary>
-    public static MiddlewarePipeline UseWhen(
-        this MiddlewarePipeline pipeline,
+    public static IMiddlewarePipeline UseWhen(
+        this IMiddlewarePipeline pipeline,
         Func<AgentMessage, bool> condition,
         IAgentMiddleware middleware)
     {
@@ -250,8 +277,8 @@ public static class MiddlewarePipelineExtensions
     /// <summary>
     /// Add a callback middleware with before/after actions.
     /// </summary>
-    public static MiddlewarePipeline UseCallback(
-        this MiddlewarePipeline pipeline,
+    public static IMiddlewarePipeline UseCallback(
+        this IMiddlewarePipeline pipeline,
         Action<AgentMessage>? before = null,
         Action<AgentMessage, MessageResult>? after = null)
     {
@@ -262,7 +289,7 @@ public static class MiddlewarePipelineExtensions
     /// Execute the pipeline with the given terminal handler.
     /// </summary>
     public static async Task<MessageResult> ExecuteAsync(
-        this MiddlewarePipeline pipeline,
+        this IMiddlewarePipeline pipeline,
         AgentMessage message,
         MessageDelegate terminalHandler,
         CancellationToken ct = default)

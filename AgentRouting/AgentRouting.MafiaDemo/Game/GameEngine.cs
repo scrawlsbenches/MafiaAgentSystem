@@ -173,7 +173,7 @@ public class MafiaGameEngine
     public MafiaGameEngine(IAgentLogger logger)
     {
         _logger = logger;
-        _router = new AgentRouter(logger);
+        _router = new AgentRouterBuilder().WithLogger(logger).Build();
         _state = new GameState();
         _gameAgents = new Dictionary<string, GameAgentData>();
         _autonomousAgents = new Dictionary<string, AutonomousAgent>();

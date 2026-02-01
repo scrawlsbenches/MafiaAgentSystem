@@ -2,11 +2,16 @@ using AgentRouting.Core;
 using AgentRouting.Agents;
 using AgentRouting.Middleware;
 using AgentRouting.Middleware.Advanced;
+using AgentRouting.DependencyInjection;
+using AgentRouting.Infrastructure;
 
 namespace AgentRouting.AdvancedMiddlewareDemo;
 
 class Program
 {
+    // Shared service container for demos
+    private static IServiceContainer _container = null!;
+
     static async Task Main(string[] args)
     {
         Console.Clear();
@@ -23,6 +28,12 @@ class Program
         Console.WriteLine("  • Agent Health Monitoring");
         Console.WriteLine("  • Workflow Orchestration");
         Console.WriteLine();
+
+        // Set up dependency injection container
+        _container = new ServiceContainer()
+            .AddSingleton<IAgentLogger>(c => new ConsoleAgentLogger())
+            .AddSingleton<ISystemClock>(c => SystemClock.Instance)
+            .AddTransient<IStateStore>(c => new InMemoryStateStore());
 
         await Demo1_DistributedTracing();
         await Demo2_SemanticRouting();
@@ -56,8 +67,8 @@ class Program
         Console.WriteLine("Track messages across agent boundaries with OpenTelemetry-style tracing.");
         Console.WriteLine();
 
-        var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var logger = _container.Resolve<IAgentLogger>();
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
         
         var tracingMiddleware = new DistributedTracingMiddleware("CustomerServiceRouter");
         router.UseMiddleware(tracingMiddleware);
@@ -108,8 +119,8 @@ class Program
         Console.WriteLine("Automatically detect intent and sentiment, adjust routing accordingly.");
         Console.WriteLine();
 
-        var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var logger = _container.Resolve<IAgentLogger>();
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
         
         router.UseMiddleware(new SemanticRoutingMiddleware());
 
@@ -172,8 +183,8 @@ class Program
         Console.WriteLine("Normalize, sanitize, and enrich messages with extracted data.");
         Console.WriteLine();
 
-        var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var logger = _container.Resolve<IAgentLogger>();
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
         
         router.UseMiddleware(new MessageTransformationMiddleware());
 
@@ -216,8 +227,8 @@ class Program
         Console.WriteLine("Experiment with different routing strategies.");
         Console.WriteLine();
 
-        var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var logger = _container.Resolve<IAgentLogger>();
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
         
         var abTestMiddleware = new ABTestingMiddleware();
         abTestMiddleware.RegisterExperiment("RoutingStrategy", 0.5, "VariantA_Fast", "VariantB_Thorough");
@@ -256,8 +267,8 @@ class Program
         Console.WriteLine("Conditionally enable features based on criteria.");
         Console.WriteLine();
 
-        var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var logger = _container.Resolve<IAgentLogger>();
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
         
         var featureFlagsMiddleware = new FeatureFlagsMiddleware();
         
@@ -308,8 +319,8 @@ class Program
         Console.WriteLine("Detect unhealthy agents and reroute traffic automatically.");
         Console.WriteLine();
 
-        var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var logger = _container.Resolve<IAgentLogger>();
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
         
         var healthCheckMiddleware = new AgentHealthCheckMiddleware(TimeSpan.FromSeconds(2));
         
@@ -381,8 +392,8 @@ class Program
         Console.WriteLine("Orchestrate complex multi-agent workflows.");
         Console.WriteLine();
 
-        var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var logger = _container.Resolve<IAgentLogger>();
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
         
         var workflowMiddleware = new WorkflowOrchestrationMiddleware();
         
@@ -435,8 +446,8 @@ class Program
         Console.WriteLine("  6. Rate Limiting (from basic middleware)");
         Console.WriteLine();
 
-        var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var logger = _container.Resolve<IAgentLogger>();
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
         
         // Build complete stack
         router.UseMiddleware(new DistributedTracingMiddleware("ProductionRouter"));

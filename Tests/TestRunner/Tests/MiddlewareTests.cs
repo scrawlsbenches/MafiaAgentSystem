@@ -1,4 +1,5 @@
 using TestRunner.Framework;
+using AgentRouting.Configuration;
 using AgentRouting.Core;
 using AgentRouting.Infrastructure;
 using AgentRouting.Middleware;
@@ -277,7 +278,7 @@ public class MiddlewareTests
     [Test]
     public async Task CachingMiddleware_FirstRequest_CallsHandler()
     {
-        var middleware = new CachingMiddleware(new InMemoryStateStore(), TimeSpan.FromMinutes(5));
+        var middleware = new CachingMiddleware(new InMemoryStateStore(), TimeSpan.FromMinutes(5), MiddlewareDefaults.CacheMaxEntries, SystemClock.Instance);
         var handlerCallCount = 0;
 
         var result = await middleware.InvokeAsync(
@@ -296,7 +297,7 @@ public class MiddlewareTests
     [Test]
     public async Task CachingMiddleware_SecondRequest_ReturnsCached()
     {
-        var middleware = new CachingMiddleware(new InMemoryStateStore(), TimeSpan.FromMinutes(5));
+        var middleware = new CachingMiddleware(new InMemoryStateStore(), TimeSpan.FromMinutes(5), MiddlewareDefaults.CacheMaxEntries, SystemClock.Instance);
         var handlerCallCount = 0;
         var message = CreateTestMessage();
 
@@ -327,7 +328,7 @@ public class MiddlewareTests
     [Test]
     public async Task CachingMiddleware_FailedResult_NotCached()
     {
-        var middleware = new CachingMiddleware(new InMemoryStateStore(), TimeSpan.FromMinutes(5));
+        var middleware = new CachingMiddleware(new InMemoryStateStore(), TimeSpan.FromMinutes(5), MiddlewareDefaults.CacheMaxEntries, SystemClock.Instance);
         var handlerCallCount = 0;
         var message = CreateTestMessage();
 
@@ -357,7 +358,7 @@ public class MiddlewareTests
     [Test]
     public void CachingMiddleware_Clear_RemovesAllEntries()
     {
-        var middleware = new CachingMiddleware(new InMemoryStateStore(), TimeSpan.FromMinutes(5));
+        var middleware = new CachingMiddleware(new InMemoryStateStore(), TimeSpan.FromMinutes(5), MiddlewareDefaults.CacheMaxEntries, SystemClock.Instance);
 
         // Add some entries
         middleware.InvokeAsync(
@@ -384,7 +385,7 @@ public class MiddlewareTests
     [Test]
     public async Task CircuitBreaker_InitiallyClosed_AllowsRequests()
     {
-        var middleware = new CircuitBreakerMiddleware(new InMemoryStateStore(), 3, TimeSpan.FromSeconds(30));
+        var middleware = new CircuitBreakerMiddleware(new InMemoryStateStore(), 3, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(60), SystemClock.Instance);
 
         var result = await middleware.InvokeAsync(
             CreateTestMessage(),
@@ -397,7 +398,7 @@ public class MiddlewareTests
     [Test]
     public async Task CircuitBreaker_FailuresBelowThreshold_StaysClosed()
     {
-        var middleware = new CircuitBreakerMiddleware(new InMemoryStateStore(), 3, TimeSpan.FromSeconds(30));
+        var middleware = new CircuitBreakerMiddleware(new InMemoryStateStore(), 3, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(60), SystemClock.Instance);
 
         // 2 failures (below threshold of 3)
         await middleware.InvokeAsync(
@@ -427,7 +428,7 @@ public class MiddlewareTests
     [Test]
     public async Task CircuitBreaker_FailuresReachThreshold_Opens()
     {
-        var middleware = new CircuitBreakerMiddleware(new InMemoryStateStore(), 3, TimeSpan.FromSeconds(30));
+        var middleware = new CircuitBreakerMiddleware(new InMemoryStateStore(), 3, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(60), SystemClock.Instance);
 
         // 3 failures (reaches threshold)
         for (int i = 0; i < 3; i++)
@@ -451,7 +452,7 @@ public class MiddlewareTests
     [Test]
     public async Task CircuitBreaker_ExceptionCountsAsFailure()
     {
-        var middleware = new CircuitBreakerMiddleware(new InMemoryStateStore(), 2, TimeSpan.FromSeconds(30));
+        var middleware = new CircuitBreakerMiddleware(new InMemoryStateStore(), 2, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(60), SystemClock.Instance);
 
         // 2 exceptions (reaches threshold)
         for (int i = 0; i < 2; i++)

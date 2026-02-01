@@ -1,11 +1,17 @@
 using AgentRouting.Core;
 using AgentRouting.Agents;
 using AgentRouting.Middleware;
+using AgentRouting.Configuration;
+using AgentRouting.DependencyInjection;
+using AgentRouting.Infrastructure;
 
 namespace AgentRouting.MiddlewareDemo;
 
 class Program
 {
+    // Shared service container for demos
+    private static IServiceContainer _container = null!;
+
     static async Task Main(string[] args)
     {
         Console.Clear();
@@ -15,6 +21,12 @@ class Program
         Console.WriteLine();
         Console.WriteLine("Demonstrating middleware patterns for agent message processing");
         Console.WriteLine();
+
+        // Set up dependency injection container
+        _container = new ServiceContainer()
+            .AddSingleton<IAgentLogger>(c => new ConsoleAgentLogger())
+            .AddSingleton<ISystemClock>(c => SystemClock.Instance)
+            .AddTransient<IStateStore>(c => new InMemoryStateStore());
 
         await Demo1_BasicMiddleware();
         await Demo2_RateLimiting();
@@ -43,8 +55,8 @@ class Program
         Console.WriteLine("Shows middleware wrapping agent processing.");
         Console.WriteLine();
 
-        var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var logger = _container.Resolve<IAgentLogger>();
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         // Add middleware
         router.UseMiddleware(new LoggingMiddleware(logger));
@@ -82,11 +94,13 @@ class Program
         Console.WriteLine("Limit: 3 requests per 5 seconds");
         Console.WriteLine();
 
-        var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var logger = _container.Resolve<IAgentLogger>();
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         // Rate limit: 3 requests per 5 seconds
-        router.UseMiddleware(new RateLimitMiddleware(3, TimeSpan.FromSeconds(5)));
+        var stateStore = _container.Resolve<IStateStore>();
+        var clock = _container.Resolve<ISystemClock>();
+        router.UseMiddleware(new RateLimitMiddleware(stateStore, 3, TimeSpan.FromSeconds(5), clock));
 
         var csAgent = new CustomerServiceAgent("cs-001", "CS", logger);
         router.RegisterAgent(csAgent);
@@ -132,11 +146,13 @@ class Program
         Console.WriteLine("Cache TTL: 5 seconds");
         Console.WriteLine();
 
-        var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var logger = _container.Resolve<IAgentLogger>();
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         // Cache for 5 seconds
-        router.UseMiddleware(new CachingMiddleware(TimeSpan.FromSeconds(5)));
+        var stateStore = _container.Resolve<IStateStore>();
+        var clock = _container.Resolve<ISystemClock>();
+        router.UseMiddleware(new CachingMiddleware(stateStore, TimeSpan.FromSeconds(5), MiddlewareDefaults.CacheMaxEntries, clock));
 
         var techAgent = new TechnicalSupportAgent("tech-001", "Tech", logger);
         router.RegisterAgent(techAgent);
@@ -174,8 +190,8 @@ class Program
         Console.WriteLine("Max attempts: 3, with exponential backoff");
         Console.WriteLine();
 
-        var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var logger = _container.Resolve<IAgentLogger>();
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         // Retry up to 3 times
         router.UseMiddleware(new RetryMiddleware(maxAttempts: 3, delay: TimeSpan.FromMilliseconds(50)));
@@ -213,11 +229,13 @@ class Program
         Console.WriteLine("Threshold: 3 failures, Reset: after 5 seconds");
         Console.WriteLine();
 
-        var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var logger = _container.Resolve<IAgentLogger>();
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         // Circuit breaker: open after 3 failures
-        router.UseMiddleware(new CircuitBreakerMiddleware(failureThreshold: 3, resetTimeout: TimeSpan.FromSeconds(5)));
+        var stateStore = _container.Resolve<IStateStore>();
+        var clock = _container.Resolve<ISystemClock>();
+        router.UseMiddleware(new CircuitBreakerMiddleware(stateStore, 3, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(60), clock));
 
         var failingAgent = new FailingAgent("failing-001", "Failing Agent", logger);
         router.RegisterAgent(failingAgent);
@@ -277,14 +295,16 @@ class Program
         Console.WriteLine("  6. Timing");
         Console.WriteLine();
 
-        var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var logger = _container.Resolve<IAgentLogger>();
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         // Build complete middleware pipeline
+        var stateStore = _container.Resolve<IStateStore>();
+        var clock = _container.Resolve<ISystemClock>();
         router.UseMiddleware(new ValidationMiddleware());
         router.UseMiddleware(new AuthenticationMiddleware("customer-1", "customer-2", "vip-customer"));
         router.UseMiddleware(new PriorityBoostMiddleware("vip-customer"));
-        router.UseMiddleware(new RateLimitMiddleware(5, TimeSpan.FromSeconds(10)));
+        router.UseMiddleware(new RateLimitMiddleware(stateStore, 5, TimeSpan.FromSeconds(10), clock));
         router.UseMiddleware(new LoggingMiddleware(logger));
         router.UseMiddleware(new TimingMiddleware());
 
@@ -344,7 +364,7 @@ class Program
         Console.WriteLine("Apply middleware only when conditions are met.");
         Console.WriteLine();
 
-        var logger = new ConsoleAgentLogger();
+        var logger = _container.Resolve<IAgentLogger>();
         var pipeline = new MiddlewarePipeline();
 
         // Only log urgent messages
@@ -386,8 +406,8 @@ class Program
         Console.WriteLine("Track performance metrics across all messages.");
         Console.WriteLine();
 
-        var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var logger = _container.Resolve<IAgentLogger>();
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         var metricsMiddleware = new MetricsMiddleware();
         router.UseMiddleware(metricsMiddleware);

@@ -36,7 +36,7 @@ public class RulesEngineOptions
 /// <summary>
 /// Main rules engine that evaluates rules against facts
 /// </summary>
-public class RulesEngineCore<T> : IDisposable
+public class RulesEngineCore<T> : IRulesEngine<T>
 {
     private readonly List<IRule<T>> _rules;
     private readonly List<IAsyncRule<T>> _asyncRules;

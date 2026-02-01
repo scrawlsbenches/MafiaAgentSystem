@@ -180,6 +180,82 @@ Completed:
 
 ---
 
+### Phase 6: Dependency Injection & Inversion of Control (Planned)
+
+**Investigation**: 2026-02-01
+**Status**: PLANNED
+**Branch**: `claude/investigate-dependency-injection-B6xCF`
+**Documentation**: `docs/DI_IOC_INVESTIGATION.md`
+
+**Problem Summary**:
+- AgentRouter creates `MiddlewarePipeline` and `RulesEngineCore` internally (not injectable)
+- Middleware constructors have complex overloads hiding required dependencies
+- No central dependency resolution mechanism
+- All demos manually wire dependencies with repeated boilerplate
+
+**Proposed Solution**:
+- Create lightweight custom IoC container (zero 3rd party deps)
+- Extract `IMiddlewarePipeline` and `IRulesEngine<T>` interfaces
+- Refactor AgentRouter to accept injected dependencies
+- Standardize middleware constructor patterns
+- Add service registration extensions
+
+**P1-DI Tasks** (8 tasks, 19-25h estimated):
+
+| Task ID | Description | Status |
+|---------|-------------|--------|
+| P1-DI-1 | Create lightweight IoC container | ✅ Complete (37 tests) |
+| P1-DI-2 | Add IMiddlewarePipeline interface | ✅ Complete |
+| P1-DI-3 | Add IRulesEngine interface | ✅ Complete |
+| P1-DI-4 | Refactor AgentRouter for DI | ✅ Complete |
+| P1-DI-5 | Standardize middleware constructors | ✅ Complete |
+| P1-DI-6 | Create service registration extensions | ⏳ Pending |
+| P1-DI-7 | Update demos to use container | ⏳ Pending |
+| P1-DI-8 | Add DI tests | ✅ Complete (included in P1-DI-1) |
+
+**P1-IF Tasks** (6 tasks, 12-16h estimated):
+
+| Task ID | Description | Status |
+|---------|-------------|--------|
+| P1-IF-1 | Extract IRulesEngineResult interface | ⏳ Pending |
+| P1-IF-2 | Extract IRuleExecutionResult<T> interface | ⏳ Pending |
+| P1-IF-3 | Extract ITraceSpan interface | ⏳ Pending |
+| P1-IF-4 | Extract IMiddlewareContext interface | ⏳ Pending |
+| P1-IF-5 | Extract IMetricsSnapshot + IAnalyticsReport | ⏳ Pending |
+| P1-IF-6 | Extract IWorkflowDefinition + IWorkflowStage | ⏳ Pending |
+
+**Batch Plan**:
+
+```
+Batch DI-A (Parallel - new files): ✅ COMPLETE
+├── P1-DI-1: ServiceContainer ✅
+├── P1-DI-2: IMiddlewarePipeline ✅
+└── P1-DI-3: IRulesEngine ✅
+
+Batch IF-A (Parallel - all independent, can run with DI-A):
+├── P1-IF-1: IRulesEngineResult
+├── P1-IF-2: IRuleExecutionResult<T>
+├── P1-IF-3: ITraceSpan
+├── P1-IF-4: IMiddlewareContext
+├── P1-IF-5: IMetricsSnapshot + IAnalyticsReport
+└── P1-IF-6: IWorkflowDefinition + IWorkflowStage
+
+Batch DI-B (Sequential - depends on DI-A): ✅ COMPLETE
+├── P1-DI-4: AgentRouter refactoring ✅
+└── P1-DI-5: Middleware constructors ✅
+
+Batch DI-C (Parallel - after DI-B):
+├── P1-DI-6: ServiceExtensions
+├── P1-DI-7: Demo updates
+└── P1-DI-8: DI tests
+```
+
+**Gate G6**: Build succeeds, all tests pass (184+), new DI tests pass
+
+**Total Phase 6 Estimate**: 31-41 hours (14 tasks)
+
+---
+
 ## Success Criteria
 
 | Gate | Criteria | Verified |

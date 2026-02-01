@@ -40,7 +40,9 @@ public class CircuitBreakerTests
         var middleware = new CircuitBreakerMiddleware(
             new InMemoryStateStore(),
             failureThreshold: 5,
-            resetTimeout: TimeSpan.FromSeconds(30));
+            resetTimeout: TimeSpan.FromSeconds(30),
+            failureWindow: TimeSpan.FromSeconds(60),
+            clock: SystemClock.Instance);
 
         var result = await middleware.InvokeAsync(
             CreateTestMessage(),
@@ -56,7 +58,9 @@ public class CircuitBreakerTests
         var middleware = new CircuitBreakerMiddleware(
             new InMemoryStateStore(),
             failureThreshold: 5,
-            resetTimeout: TimeSpan.FromSeconds(30));
+            resetTimeout: TimeSpan.FromSeconds(30),
+            failureWindow: TimeSpan.FromSeconds(60),
+            clock: SystemClock.Instance);
 
         // 4 failures should not open the circuit
         for (int i = 0; i < 4; i++)
@@ -82,7 +86,9 @@ public class CircuitBreakerTests
         var middleware = new CircuitBreakerMiddleware(
             new InMemoryStateStore(),
             failureThreshold: 3,
-            resetTimeout: TimeSpan.FromSeconds(30));
+            resetTimeout: TimeSpan.FromSeconds(30),
+            failureWindow: TimeSpan.FromSeconds(60),
+            clock: SystemClock.Instance);
 
         // 3 failures should open the circuit
         for (int i = 0; i < 3; i++)
@@ -110,7 +116,9 @@ public class CircuitBreakerTests
         var middleware = new CircuitBreakerMiddleware(
             new InMemoryStateStore(),
             failureThreshold: 2,
-            resetTimeout: TimeSpan.FromSeconds(30));
+            resetTimeout: TimeSpan.FromSeconds(30),
+            failureWindow: TimeSpan.FromSeconds(60),
+            clock: SystemClock.Instance);
 
         // Open the circuit
         for (int i = 0; i < 2; i++)
@@ -146,7 +154,9 @@ public class CircuitBreakerTests
         var middleware = new CircuitBreakerMiddleware(
             new InMemoryStateStore(),
             failureThreshold: 3,
-            resetTimeout: TimeSpan.FromSeconds(30));
+            resetTimeout: TimeSpan.FromSeconds(30),
+            failureWindow: TimeSpan.FromSeconds(60),
+            clock: SystemClock.Instance);
 
         // 2 failures
         await middleware.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
@@ -173,7 +183,9 @@ public class CircuitBreakerTests
         var middleware = new CircuitBreakerMiddleware(
             new InMemoryStateStore(),
             failureThreshold: 50,
-            resetTimeout: TimeSpan.FromSeconds(30));
+            resetTimeout: TimeSpan.FromSeconds(30),
+            failureWindow: TimeSpan.FromSeconds(60),
+            clock: SystemClock.Instance);
 
         var tasks = new List<Task>();
 
@@ -206,7 +218,9 @@ public class CircuitBreakerTests
         var middleware = new CircuitBreakerMiddleware(
             new InMemoryStateStore(),
             failureThreshold: 2,
-            resetTimeout: TimeSpan.FromSeconds(30));
+            resetTimeout: TimeSpan.FromSeconds(30),
+            failureWindow: TimeSpan.FromSeconds(60),
+            clock: SystemClock.Instance);
 
         MessageDelegate throwingHandler = (msg, ct) =>
         {
@@ -246,7 +260,9 @@ public class CircuitBreakerTests
         var middleware = new CircuitBreakerMiddleware(
             new InMemoryStateStore(),
             failureThreshold: 1,
-            resetTimeout: TimeSpan.FromSeconds(30));
+            resetTimeout: TimeSpan.FromSeconds(30),
+            failureWindow: TimeSpan.FromSeconds(60),
+            clock: SystemClock.Instance);
 
         // Single failure should open
         await middleware.InvokeAsync(
@@ -269,7 +285,8 @@ public class CircuitBreakerTests
             new InMemoryStateStore(),
             failureThreshold: 10,
             resetTimeout: TimeSpan.FromSeconds(30),
-            failureWindow: TimeSpan.FromSeconds(60));
+            failureWindow: TimeSpan.FromSeconds(60),
+            clock: SystemClock.Instance);
 
         // Initially zero
         Assert.Equal(0, middleware.CurrentFailureCount);
@@ -291,7 +308,8 @@ public class CircuitBreakerTests
             new InMemoryStateStore(),
             failureThreshold: 5,
             resetTimeout: TimeSpan.FromSeconds(30),
-            failureWindow: TimeSpan.FromMilliseconds(100));
+            failureWindow: TimeSpan.FromMilliseconds(100),
+            clock: SystemClock.Instance);
 
         // Add 3 failures
         await middleware.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
@@ -330,7 +348,8 @@ public class CircuitBreakerTests
             new InMemoryStateStore(),
             failureThreshold: 3,
             resetTimeout: TimeSpan.FromSeconds(30),
-            failureWindow: TimeSpan.FromMilliseconds(100));
+            failureWindow: TimeSpan.FromMilliseconds(100),
+            clock: SystemClock.Instance);
 
         // Add 2 failures
         await middleware.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
