@@ -13,7 +13,7 @@
 |----------|----------|--------|-----------|
 | P0 | Critical Fixes | ✅ **COMPLETE** | 0 tasks |
 | P1 | Core Library Improvements | ✅ **COMPLETE** | 0 tasks |
-| **P1-DI** | **Dependency Injection/IoC** | 🔄 **IN PROGRESS** | **5 tasks remaining** |
+| **P1-DI** | **Dependency Injection/IoC** | 🔄 **IN PROGRESS** | **4 tasks remaining** |
 | **P1-IF** | **Interface Extraction** | 🆕 **NEW** | **6 tasks** |
 | P2 | MafiaDemo Completion | ✅ **COMPLETE** | 0 tasks |
 | P3 | Testing & Quality | 🔄 **PARTIAL** | 7 tasks |
@@ -368,24 +368,25 @@ Add a lightweight IoC container and refactor core components for proper dependen
 
 ---
 
-### Task P1-DI-3: Add IRulesEngine Interface
+### Task P1-DI-3: Add IRulesEngine Interface ✅ COMPLETE
 **Estimated Time**: 2 hours
+**Actual Time**: ~30 minutes
 **Dependencies**: None
 **Files**:
 - `RulesEngine/RulesEngine/Core/IRulesEngine.cs` (new)
-- `RulesEngine/RulesEngine/Core/RulesEngineCore.cs` (modify)
+- `RulesEngine/RulesEngine/Core/RulesEngineCore.cs` (modified)
 
 **Problem**: `RulesEngineCore<T>` is concrete, hard-coded in `AgentRouter`.
 
 **Subtasks**:
-- [ ] Extract `IRulesEngine<T>` interface from `RulesEngineCore<T>`
-- [ ] Include `RegisterRule()`, `Execute()`, `ExecuteAsync()` in interface
-- [ ] Update `RulesEngineCore<T>` to implement interface
-- [ ] Update references to use interface where appropriate
+- [x] Extract `IRulesEngine<T>` interface from `RulesEngineCore<T>`
+- [x] Include `RegisterRule()`, `Execute()`, `ExecuteAsync()` in interface
+- [x] Update `RulesEngineCore<T>` to implement interface
+- [x] Update references to use interface where appropriate
 
-**Acceptance Criteria**:
+**Acceptance Criteria**: ✅ All met
 - `RulesEngineCore<T>` implements `IRulesEngine<T>`
-- Existing code continues to work
+- Existing code continues to work (221 tests pass)
 - Interface can be mocked in tests
 
 ---
@@ -518,10 +519,10 @@ P1-DI-3 ─┘
 
 ### P1-DI Batch Plan
 
-**Batch DI-A** (Parallel - new files):
-- P1-DI-1: ServiceContainer (new)
-- P1-DI-2: IMiddlewarePipeline (new)
-- P1-DI-3: IRulesEngine (new)
+**Batch DI-A** (Parallel - new files): ✅ COMPLETE
+- P1-DI-1: ServiceContainer ✅
+- P1-DI-2: IMiddlewarePipeline ✅
+- P1-DI-3: IRulesEngine ✅
 
 **Batch DI-B** (Sequential - depends on Batch A):
 - P1-DI-4: AgentRouter refactoring
