@@ -1,5 +1,6 @@
 using AgentRouting.Core;
 using AgentRouting.MafiaDemo;
+using AgentRouting.MafiaDemo.Rules;
 using System.Collections.Concurrent;
 using System.Text;
 
@@ -152,6 +153,7 @@ public class MafiaGameEngine
     private readonly Dictionary<string, AutonomousAgent> _autonomousAgents;
     private readonly Random _random = new();
     private readonly ConcurrentQueue<string> _messageLog = new();
+    private readonly RulesBasedGameEngine? _rulesEngine;
     private CancellationTokenSource? _cts;
     private bool _running = false;
 
@@ -165,6 +167,7 @@ public class MafiaGameEngine
         _gameAgents = new Dictionary<string, GameAgentData>();
         _autonomousAgents = new Dictionary<string, AutonomousAgent>();
         InitializeGame();
+        _rulesEngine = new RulesBasedGameEngine(_state);
     }
 
     public MafiaGameEngine(IAgentLogger logger)
@@ -175,6 +178,7 @@ public class MafiaGameEngine
         _gameAgents = new Dictionary<string, GameAgentData>();
         _autonomousAgents = new Dictionary<string, AutonomousAgent>();
         InitializeGame();
+        _rulesEngine = new RulesBasedGameEngine(_state);
     }
 
     /// <summary>
@@ -340,10 +344,17 @@ public class MafiaGameEngine
         var rivalActions = ProcessRivalFamilyActions();
         turnEvents.AddRange(rivalActions);
 
-        // 5. Update game state
+        // 5. Evaluate game rules (win/loss, consequences)
+        if (_rulesEngine != null)
+        {
+            var ruleEvents = _rulesEngine.EvaluateGameRules();
+            turnEvents.AddRange(ruleEvents);
+        }
+
+        // 6. Update game state
         UpdateGameState();
 
-        // 6. Check win/loss conditions
+        // 7. Check win/loss conditions
         CheckGameOver();
 
         turnEvents.Add($"\n💰 Family Wealth: ${_state.FamilyWealth:N0}");
@@ -392,8 +403,15 @@ public class MafiaGameEngine
     {
         var events = new List<string>();
 
-        // 20% chance of random event each turn
-        if (_random.Next(100) < 20)
+        // Use rules engine for events if available
+        if (_rulesEngine != null)
+        {
+            var ruleEvents = _rulesEngine.GenerateEvents();
+            events.AddRange(ruleEvents);
+        }
+
+        // Keep some random chance for variety (reduced from 20% to 10%)
+        if (_random.Next(100) < 10)
         {
             var eventType = _random.Next(6);
 
@@ -491,6 +509,17 @@ public class MafiaGameEngine
 
     private string? DecideAction(GameAgentData agent)
     {
+        // Use rules engine if available
+        if (_rulesEngine != null)
+        {
+            var action = _rulesEngine.GetAgentAction(agent);
+            if (action != "wait")
+            {
+                return action;
+            }
+        }
+
+        // Fallback to existing probability-based logic
         var roll = _random.Next(100);
 
         // High aggression = more likely to initiate violence
