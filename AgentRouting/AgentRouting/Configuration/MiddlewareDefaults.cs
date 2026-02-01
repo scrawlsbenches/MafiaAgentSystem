@@ -37,7 +37,7 @@ public static class MiddlewareDefaults
     #region Circuit Breaker Middleware Defaults
 
     /// <summary>
-    /// Default number of consecutive failures before the circuit opens.
+    /// Default number of failures within the window before the circuit opens.
     /// </summary>
     public const int CircuitBreakerDefaultThreshold = 5;
 
@@ -45,6 +45,12 @@ public static class MiddlewareDefaults
     /// Default timeout before attempting to close an open circuit (half-open state).
     /// </summary>
     public static readonly TimeSpan CircuitBreakerDefaultTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Default sliding time window for counting failures.
+    /// Only failures within this window are counted toward the threshold.
+    /// </summary>
+    public static readonly TimeSpan CircuitBreakerDefaultFailureWindow = TimeSpan.FromSeconds(60);
 
     #endregion
 

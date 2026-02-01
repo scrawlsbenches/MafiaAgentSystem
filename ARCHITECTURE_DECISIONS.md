@@ -10,26 +10,34 @@ This document tracks architectural discussions, decisions, and open questions fo
 
 ### 1. Circuit Breaker Time Window
 
-**Status:** 🔄 In Progress
+**Status:** ✅ Completed (2026-02-01)
 
-**Problem:** Current circuit breaker accumulates ALL failures indefinitely. A success in Closed state does NOT reset the count. This causes circuits to open even with healthy services that have occasional transient errors.
+**Problem:** Circuit breaker accumulated ALL failures indefinitely. A success in Closed state did NOT reset the count. This caused circuits to open even with healthy services that had occasional transient errors.
 
 **Decision:** Implement time-windowed failure counting (industry standard).
 
-**Implementation Plan:**
-- Add `TimeSpan failureWindow` parameter
-- Track failures with timestamps
-- Only count failures within the window
-- Clean up old failure timestamps periodically
+**Resolution:**
+- Added `TimeSpan failureWindow` parameter (default: 60 seconds)
+- Replaced `int _failureCount` with `Queue<DateTime> _failureTimestamps`
+- Added `PruneOldFailures()` to remove expired timestamps
+- Added `CurrentFailureCount` property for monitoring
+- Added thread safety with `lock` for concurrent access
+- Added `CircuitBreakerDefaultFailureWindow` to MiddlewareDefaults
+- Added 3 new tests for time-window behavior
 
-**Example:**
+**Usage:**
 ```csharp
 // "Open circuit after 5 failures within 30 seconds"
 var circuitBreaker = new CircuitBreakerMiddleware(
     failureThreshold: 5,
-    failureWindow: TimeSpan.FromSeconds(30),
-    resetTimeout: TimeSpan.FromSeconds(60));
+    resetTimeout: TimeSpan.FromSeconds(60),
+    failureWindow: TimeSpan.FromSeconds(30));
 ```
+
+**Files changed:**
+- `AgentRouting/Middleware/CommonMiddleware.cs` - CircuitBreakerMiddleware
+- `AgentRouting/Configuration/MiddlewareDefaults.cs` - Added default
+- `Tests/TestRunner/Tests/CircuitBreakerTests.cs` - 3 new tests
 
 ---
 

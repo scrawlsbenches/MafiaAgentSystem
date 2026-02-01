@@ -360,95 +360,148 @@ public class RetryMiddleware : MiddlewareBase
 }
 
 /// <summary>
-/// Circuit breaker pattern - protects downstream services from cascading failures
+/// Circuit breaker pattern - protects downstream services from cascading failures.
+/// Uses a sliding time window for failure counting (industry standard approach).
 /// </summary>
 public class CircuitBreakerMiddleware : MiddlewareBase
 {
     private readonly int _failureThreshold;
     private readonly TimeSpan _resetTimeout;
+    private readonly TimeSpan _failureWindow;
+    private readonly Queue<DateTime> _failureTimestamps = new();
+    private readonly object _lock = new();
     private CircuitState _state = CircuitState.Closed;
-    private int _failureCount = 0;
     private DateTime? _openedAt;
 
     /// <summary>
     /// Creates a circuit breaker with default settings from MiddlewareDefaults.
     /// </summary>
     public CircuitBreakerMiddleware()
-        : this(MiddlewareDefaults.CircuitBreakerDefaultThreshold, MiddlewareDefaults.CircuitBreakerDefaultTimeout)
+        : this(
+            MiddlewareDefaults.CircuitBreakerDefaultThreshold,
+            MiddlewareDefaults.CircuitBreakerDefaultTimeout,
+            MiddlewareDefaults.CircuitBreakerDefaultFailureWindow)
     {
     }
 
     /// <summary>
     /// Creates a circuit breaker with custom settings.
     /// </summary>
-    /// <param name="failureThreshold">Number of consecutive failures before opening the circuit.</param>
+    /// <param name="failureThreshold">Number of failures within the window before opening.</param>
     /// <param name="resetTimeout">Time to wait before attempting to close an open circuit.</param>
-    public CircuitBreakerMiddleware(int failureThreshold, TimeSpan? resetTimeout = null)
+    /// <param name="failureWindow">Sliding time window for counting failures. Defaults to 60 seconds.</param>
+    public CircuitBreakerMiddleware(int failureThreshold, TimeSpan? resetTimeout = null, TimeSpan? failureWindow = null)
     {
         _failureThreshold = failureThreshold;
         _resetTimeout = resetTimeout ?? MiddlewareDefaults.CircuitBreakerDefaultTimeout;
+        _failureWindow = failureWindow ?? MiddlewareDefaults.CircuitBreakerDefaultFailureWindow;
     }
-    
+
+    /// <summary>
+    /// Gets the current number of failures within the sliding window.
+    /// </summary>
+    public int CurrentFailureCount
+    {
+        get
+        {
+            lock (_lock)
+            {
+                PruneOldFailures();
+                return _failureTimestamps.Count;
+            }
+        }
+    }
+
     public override async Task<MessageResult> InvokeAsync(
         AgentMessage message,
         MessageDelegate next,
         CancellationToken ct)
     {
-        // Check if we should reset
-        if (_state == CircuitState.Open && _openedAt.HasValue)
+        // Check if we should transition from Open to HalfOpen
+        lock (_lock)
         {
-            if (DateTime.UtcNow - _openedAt.Value > _resetTimeout)
+            if (_state == CircuitState.Open && _openedAt.HasValue)
             {
-                Console.WriteLine("[Circuit] Attempting to close circuit (half-open state)");
-                _state = CircuitState.HalfOpen;
+                if (DateTime.UtcNow - _openedAt.Value > _resetTimeout)
+                {
+                    Console.WriteLine("[Circuit] Attempting to close circuit (half-open state)");
+                    _state = CircuitState.HalfOpen;
+                }
+            }
+
+            // If circuit is open, fail fast
+            if (_state == CircuitState.Open)
+            {
+                return ShortCircuit("Circuit breaker is OPEN - service unavailable");
             }
         }
-        
-        // If circuit is open, fail fast
-        if (_state == CircuitState.Open)
-        {
-            return ShortCircuit("Circuit breaker is OPEN - service unavailable");
-        }
-        
+
         try
         {
             var result = await next(message, ct);
-            
-            if (result.Success)
+
+            lock (_lock)
             {
-                if (_state == CircuitState.HalfOpen)
+                if (result.Success)
                 {
-                    Console.WriteLine("[Circuit] Closing circuit - service recovered");
-                    _state = CircuitState.Closed;
-                    _failureCount = 0;
+                    if (_state == CircuitState.HalfOpen)
+                    {
+                        Console.WriteLine("[Circuit] Closing circuit - service recovered");
+                        _state = CircuitState.Closed;
+                        _failureTimestamps.Clear();
+                    }
+                    return result;
                 }
-                return result;
-            }
-            else
-            {
-                RecordFailure();
-                return result;
+                else
+                {
+                    RecordFailure();
+                    return result;
+                }
             }
         }
         catch (Exception ex)
         {
-            RecordFailure();
+            lock (_lock)
+            {
+                RecordFailure();
+            }
             return MessageResult.Fail($"Circuit breaker caught exception: {ex.Message}");
         }
     }
-    
+
+    /// <summary>
+    /// Records a failure and checks if circuit should open.
+    /// Must be called within a lock.
+    /// </summary>
     private void RecordFailure()
     {
-        _failureCount++;
-        
-        if (_failureCount >= _failureThreshold && _state != CircuitState.Open)
+        var now = DateTime.UtcNow;
+        _failureTimestamps.Enqueue(now);
+
+        // Prune failures outside the window
+        PruneOldFailures();
+
+        if (_failureTimestamps.Count >= _failureThreshold && _state != CircuitState.Open)
         {
-            Console.WriteLine($"[Circuit] OPENING circuit - {_failureCount} failures");
+            Console.WriteLine($"[Circuit] OPENING circuit - {_failureTimestamps.Count} failures in {_failureWindow.TotalSeconds}s window");
             _state = CircuitState.Open;
-            _openedAt = DateTime.UtcNow;
+            _openedAt = now;
         }
     }
-    
+
+    /// <summary>
+    /// Removes failure timestamps that are outside the sliding window.
+    /// Must be called within a lock.
+    /// </summary>
+    private void PruneOldFailures()
+    {
+        var cutoff = DateTime.UtcNow - _failureWindow;
+        while (_failureTimestamps.Count > 0 && _failureTimestamps.Peek() < cutoff)
+        {
+            _failureTimestamps.Dequeue();
+        }
+    }
+
     private enum CircuitState
     {
         Closed,

@@ -156,14 +156,19 @@ Completed:
   - Renamed `AgentRouterWithMiddleware.cs` to `AgentRouterBuilder.cs`
   - Updated all usages across codebase
   - Updated documentation (MIDDLEWARE_INTEGRATION.md, TASK_LIST.md)
+- [x] CircuitBreaker time-windowed failure counting
+  - Replaced counter with `Queue<DateTime>` for sliding window
+  - Added `failureWindow` parameter (default: 60s)
+  - Added `CurrentFailureCount` property for monitoring
+  - Added thread-safe locking
+  - Added 3 new tests
 
 Pending (from ARCHITECTURE_DECISIONS.md):
-- [ ] CircuitBreaker time-windowed failure counting
 - [ ] SystemClock constructor injection refactor
 - [ ] IStateStore interface for distributed state
 - [ ] RuleResult.Error edge case tests
 
-**Test count: 172 (all passing)**
+**Test count: 175 (all passing)**
 
 ---
 

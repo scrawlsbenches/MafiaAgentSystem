@@ -252,4 +252,92 @@ public class CircuitBreakerTests
 
         Assert.False(result.Success);
     }
+
+    [Test]
+    public async Task CurrentFailureCount_TracksFailuresWithinWindow()
+    {
+        var middleware = new CircuitBreakerMiddleware(
+            failureThreshold: 10,
+            resetTimeout: TimeSpan.FromSeconds(30),
+            failureWindow: TimeSpan.FromSeconds(60));
+
+        // Initially zero
+        Assert.Equal(0, middleware.CurrentFailureCount);
+
+        // Add some failures
+        await middleware.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
+        await middleware.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
+        await middleware.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
+
+        // Should track all 3
+        Assert.Equal(3, middleware.CurrentFailureCount);
+    }
+
+    [Test]
+    public async Task FailuresOutsideWindow_AreNotCounted()
+    {
+        // Use a very short window for testing
+        var middleware = new CircuitBreakerMiddleware(
+            failureThreshold: 5,
+            resetTimeout: TimeSpan.FromSeconds(30),
+            failureWindow: TimeSpan.FromMilliseconds(100));
+
+        // Add 3 failures
+        await middleware.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
+        await middleware.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
+        await middleware.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
+
+        Assert.Equal(3, middleware.CurrentFailureCount);
+
+        // Wait for failures to expire from window
+        await Task.Delay(150);
+
+        // Old failures should be pruned
+        Assert.Equal(0, middleware.CurrentFailureCount);
+
+        // Add 2 more failures - these won't trigger threshold by themselves
+        await middleware.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
+        await middleware.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
+
+        Assert.Equal(2, middleware.CurrentFailureCount);
+
+        // Circuit should still be closed since we only have 2 failures now
+        var result = await middleware.InvokeAsync(
+            CreateTestMessage(),
+            CreateSuccessHandler(),
+            CancellationToken.None);
+
+        Assert.True(result.Success);
+    }
+
+    [Test]
+    public async Task SlidingWindow_PreventsStaleFailuresFromOpeningCircuit()
+    {
+        // This is the key behavior fix:
+        // Failures from long ago should NOT count toward opening the circuit
+        var middleware = new CircuitBreakerMiddleware(
+            failureThreshold: 3,
+            resetTimeout: TimeSpan.FromSeconds(30),
+            failureWindow: TimeSpan.FromMilliseconds(100));
+
+        // Add 2 failures
+        await middleware.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
+        await middleware.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
+
+        // Wait for them to expire
+        await Task.Delay(150);
+
+        // Add 2 more failures - total historical is 4, but within window is only 2
+        await middleware.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
+        await middleware.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
+
+        // Circuit should still be closed (only 2 failures in window, need 3)
+        var result = await middleware.InvokeAsync(
+            CreateTestMessage(),
+            CreateSuccessHandler(),
+            CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Equal(2, middleware.CurrentFailureCount);
+    }
 }
