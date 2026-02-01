@@ -17,6 +17,11 @@ public class DynamicRuleFactoryTests
         public bool InStock { get; set; }
     }
 
+    #region Individual Operator Tests (Redundant - kept for API documentation)
+    // NOTE: These individual tests are now redundant with the Theory-based tests below
+    // (DynamicRuleFactory_NumericComparisons_Theory, DynamicRuleFactory_StringComparisons_Theory).
+    // They are kept as explicit examples of the API usage and for documentation purposes.
+
     [Test]
     public void DynamicRuleFactory_NumericGreaterThan_WorksCorrectly()
     {
@@ -126,6 +131,8 @@ public class DynamicRuleFactoryTests
         Assert.True(rule.Evaluate(matching));
         Assert.False(rule.Evaluate(notMatching));
     }
+
+    #endregion
 
     [Test]
     public void DynamicRuleFactory_MultiCondition_CombinesCorrectly()
