@@ -1,8 +1,8 @@
-using Xunit;
+using TestRunner.Framework;
 using RulesEngine.Core;
 using RulesEngine.Examples;
 
-namespace RulesEngine.Tests;
+namespace TestRunner.Tests;
 
 /// <summary>
 /// Tests for dynamic rule factory
@@ -16,39 +16,84 @@ public class DynamicRuleFactoryTests
         public string Category { get; set; } = "";
         public bool InStock { get; set; }
     }
-    
-    [Theory]
-    [InlineData("Price", ">", 50.0, 100.0, true)]
-    [InlineData("Price", ">", 50.0, 30.0, false)]
-    [InlineData("Price", "==", 50.0, 50.0, true)]
-    [InlineData("Price", "!=", 50.0, 30.0, true)]
-    [InlineData("Price", "<=", 50.0, 40.0, true)]
-    [InlineData("Price", "<=", 50.0, 60.0, false)]
-    public void DynamicRuleFactory_NumericComparisons_WorkCorrectly(
-        string property, string op, double compareValue, double actualValue, bool expectedMatch)
+
+    [Test]
+    public void DynamicRuleFactory_NumericGreaterThan_WorksCorrectly()
     {
-        // Arrange
         var rule = DynamicRuleFactory.CreatePropertyRule<Product>(
             "TEST",
             "Test Rule",
-            property,
-            op,
-            (decimal)compareValue
+            "Price",
+            ">",
+            50m
         );
-        
-        var product = new Product { Price = (decimal)actualValue };
-        
-        // Act
-        var matches = rule.Evaluate(product);
-        
-        // Assert
-        Assert.Equal(expectedMatch, matches);
+
+        var expensive = new Product { Price = 100m };
+        var cheap = new Product { Price = 30m };
+
+        Assert.True(rule.Evaluate(expensive));
+        Assert.False(rule.Evaluate(cheap));
     }
-    
-    [Fact]
+
+    [Test]
+    public void DynamicRuleFactory_NumericEquals_WorksCorrectly()
+    {
+        var rule = DynamicRuleFactory.CreatePropertyRule<Product>(
+            "TEST",
+            "Test Rule",
+            "Price",
+            "==",
+            50m
+        );
+
+        var exact = new Product { Price = 50m };
+        var different = new Product { Price = 30m };
+
+        Assert.True(rule.Evaluate(exact));
+        Assert.False(rule.Evaluate(different));
+    }
+
+    [Test]
+    public void DynamicRuleFactory_NumericNotEquals_WorksCorrectly()
+    {
+        var rule = DynamicRuleFactory.CreatePropertyRule<Product>(
+            "TEST",
+            "Test Rule",
+            "Price",
+            "!=",
+            50m
+        );
+
+        var different = new Product { Price = 30m };
+        var same = new Product { Price = 50m };
+
+        Assert.True(rule.Evaluate(different));
+        Assert.False(rule.Evaluate(same));
+    }
+
+    [Test]
+    public void DynamicRuleFactory_NumericLessThanOrEqual_WorksCorrectly()
+    {
+        var rule = DynamicRuleFactory.CreatePropertyRule<Product>(
+            "TEST",
+            "Test Rule",
+            "Price",
+            "<=",
+            50m
+        );
+
+        var under = new Product { Price = 40m };
+        var exact = new Product { Price = 50m };
+        var over = new Product { Price = 60m };
+
+        Assert.True(rule.Evaluate(under));
+        Assert.True(rule.Evaluate(exact));
+        Assert.False(rule.Evaluate(over));
+    }
+
+    [Test]
     public void DynamicRuleFactory_StringContains_WorksCorrectly()
     {
-        // Arrange
         var rule = DynamicRuleFactory.CreatePropertyRule<Product>(
             "NAME_CHECK",
             "Name Contains",
@@ -56,19 +101,17 @@ public class DynamicRuleFactoryTests
             "contains",
             "phone"
         );
-        
+
         var matching = new Product { Name = "Smartphone Pro" };
         var notMatching = new Product { Name = "Laptop" };
-        
-        // Act & Assert
+
         Assert.True(rule.Evaluate(matching));
         Assert.False(rule.Evaluate(notMatching));
     }
-    
-    [Fact]
+
+    [Test]
     public void DynamicRuleFactory_StringStartsWith_WorksCorrectly()
     {
-        // Arrange
         var rule = DynamicRuleFactory.CreatePropertyRule<Product>(
             "PREFIX_CHECK",
             "Name Prefix",
@@ -76,19 +119,17 @@ public class DynamicRuleFactoryTests
             "startswith",
             "Elec"
         );
-        
+
         var matching = new Product { Category = "Electronics" };
         var notMatching = new Product { Category = "Furniture" };
-        
-        // Act & Assert
+
         Assert.True(rule.Evaluate(matching));
         Assert.False(rule.Evaluate(notMatching));
     }
-    
-    [Fact]
+
+    [Test]
     public void DynamicRuleFactory_MultiCondition_CombinesCorrectly()
     {
-        // Arrange
         var rule = DynamicRuleFactory.CreateMultiConditionRule<Product>(
             "MULTI",
             "Multi Condition",
@@ -96,30 +137,28 @@ public class DynamicRuleFactoryTests
             ("InStock", "==", true),
             ("Category", "==", "Electronics")
         );
-        
-        var matching = new Product 
-        { 
-            Price = 100, 
-            InStock = true, 
-            Category = "Electronics" 
+
+        var matching = new Product
+        {
+            Price = 100,
+            InStock = true,
+            Category = "Electronics"
         };
-        
-        var notMatching = new Product 
-        { 
-            Price = 100, 
+
+        var notMatching = new Product
+        {
+            Price = 100,
             InStock = false,  // Fails this condition
-            Category = "Electronics" 
+            Category = "Electronics"
         };
-        
-        // Act & Assert
+
         Assert.True(rule.Evaluate(matching));
         Assert.False(rule.Evaluate(notMatching));
     }
-    
-    [Fact]
+
+    [Test]
     public void DynamicRuleFactory_FromDefinitions_CreatesRules()
     {
-        // Arrange
         var definitions = new List<RuleDefinition>
         {
             new RuleDefinition
@@ -139,22 +178,19 @@ public class DynamicRuleFactoryTests
                 }
             }
         };
-        
-        // Act
+
         var rules = DynamicRuleFactory.CreateRulesFromDefinitions<Product>(definitions);
-        
-        // Assert
+
         Assert.Single(rules);
         Assert.Equal("RULE1", rules[0].Id);
         Assert.Equal("Expensive Items", rules[0].Name);
         Assert.True(rules[0].Evaluate(new Product { Price = 150 }));
         Assert.False(rules[0].Evaluate(new Product { Price = 50 }));
     }
-    
-    [Fact]
+
+    [Test]
     public void DynamicRuleFactory_InvalidOperator_ThrowsException()
     {
-        // Act & Assert
         Assert.Throws<ArgumentException>(() =>
             DynamicRuleFactory.CreatePropertyRule<Product>(
                 "BAD",
@@ -172,10 +208,9 @@ public class DynamicRuleFactoryTests
 /// </summary>
 public class DiscountRulesTests
 {
-    [Fact]
+    [Test]
     public void DiscountEngine_VIPCustomer_Receives20PercentDiscount()
     {
-        // Arrange
         var engine = DiscountRulesExample.CreateDiscountEngine();
         var order = new Order
         {
@@ -184,20 +219,19 @@ public class DiscountRulesTests
             CustomerType = "VIP",
             ItemCount = 1
         };
-        
-        // Act
-        var result = engine.Execute(order);
-        
-        // Assert
-        Assert.True(result.MatchedRules > 0);
-        Assert.Equal(200m, order.DiscountAmount); // 20% of 1000
+
+        engine.Execute(order);
+
+        // VIP gets 20% ($200) + large order discount ($50 for orders > $500) + free shipping
+        Assert.Equal(250m, order.DiscountAmount);
         Assert.Contains("VIP", order.DiscountReason);
+        Assert.Contains("large order", order.DiscountReason);
+        Assert.True(order.FreeShipping);
     }
-    
-    [Fact]
+
+    [Test]
     public void DiscountEngine_LargeOrder_ReceivesFixedDiscount()
     {
-        // Arrange
         var engine = DiscountRulesExample.CreateDiscountEngine();
         var order = new Order
         {
@@ -206,19 +240,16 @@ public class DiscountRulesTests
             CustomerType = "Regular",
             ItemCount = 1
         };
-        
-        // Act
-        var result = engine.Execute(order);
-        
-        // Assert
+
+        engine.Execute(order);
+
         Assert.Equal(50m, order.DiscountAmount);
         Assert.Contains("large order", order.DiscountReason);
     }
-    
-    [Fact]
+
+    [Test]
     public void DiscountEngine_FirstOrder_Receives15PercentDiscount()
     {
-        // Arrange
         var engine = DiscountRulesExample.CreateDiscountEngine();
         var order = new Order
         {
@@ -228,19 +259,16 @@ public class DiscountRulesTests
             IsFirstOrder = true,
             ItemCount = 1
         };
-        
-        // Act
-        var result = engine.Execute(order);
-        
-        // Assert
+
+        engine.Execute(order);
+
         Assert.Equal(15m, order.DiscountAmount); // 15% of 100
         Assert.Contains("First order", order.DiscountReason);
     }
-    
-    [Fact]
+
+    [Test]
     public void DiscountEngine_ElectronicsBundle_ReceivesDiscount()
     {
-        // Arrange
         var engine = DiscountRulesExample.CreateDiscountEngine();
         var order = new Order
         {
@@ -250,19 +278,16 @@ public class DiscountRulesTests
             ProductCategory = "Electronics",
             ItemCount = 3
         };
-        
-        // Act
-        var result = engine.Execute(order);
-        
-        // Assert
+
+        engine.Execute(order);
+
         Assert.Equal(50m, order.DiscountAmount); // 10% of 500
         Assert.Contains("Electronics bundle", order.DiscountReason);
     }
-    
-    [Fact]
+
+    [Test]
     public void DiscountEngine_PremiumWithLargeOrder_GetsFreeShipping()
     {
-        // Arrange
         var engine = DiscountRulesExample.CreateDiscountEngine();
         var order = new Order
         {
@@ -271,19 +296,16 @@ public class DiscountRulesTests
             CustomerType = "Premium",
             ItemCount = 1
         };
-        
-        // Act
-        var result = engine.Execute(order);
-        
-        // Assert
+
+        engine.Execute(order);
+
         Assert.True(order.FreeShipping);
         Assert.Contains("Free shipping", order.DiscountReason);
     }
-    
-    [Fact]
+
+    [Test]
     public void DiscountEngine_MultipleRulesApply_StacksDiscounts()
     {
-        // Arrange
         var engine = DiscountRulesExample.CreateDiscountEngine();
         var order = new Order
         {
@@ -292,11 +314,9 @@ public class DiscountRulesTests
             CustomerType = "VIP",
             ItemCount = 1
         };
-        
-        // Act
-        var result = engine.Execute(order);
-        
-        // Assert
+
+        engine.Execute(order);
+
         // Should get both VIP (20% = 120) and large order ($50) discounts
         Assert.Equal(170m, order.DiscountAmount);
         Assert.Contains("VIP", order.DiscountReason);
@@ -309,10 +329,9 @@ public class DiscountRulesTests
 /// </summary>
 public class ApprovalWorkflowTests
 {
-    [Fact]
+    [Test]
     public void ApprovalEngine_SmallPurchase_RequiresManagerApproval()
     {
-        // Arrange
         var engine = ApprovalWorkflowExample.CreateApprovalEngine();
         var request = new PurchaseRequest
         {
@@ -320,19 +339,16 @@ public class ApprovalWorkflowTests
             Amount = 5000m,
             Department = "IT"
         };
-        
-        // Act
-        var result = engine.Execute(request);
-        
-        // Assert
+
+        engine.Execute(request);
+
         Assert.Equal("Manager", request.ApprovalLevel);
         Assert.Contains("Manager", request.RequiredApprovers);
     }
-    
-    [Fact]
+
+    [Test]
     public void ApprovalEngine_MediumPurchase_RequiresDirectorApproval()
     {
-        // Arrange
         var engine = ApprovalWorkflowExample.CreateApprovalEngine();
         var request = new PurchaseRequest
         {
@@ -340,19 +356,16 @@ public class ApprovalWorkflowTests
             Amount = 25000m,
             Department = "Marketing"
         };
-        
-        // Act
-        var result = engine.Execute(request);
-        
-        // Assert
+
+        engine.Execute(request);
+
         Assert.Equal("Director", request.ApprovalLevel);
         Assert.Contains("Director", request.RequiredApprovers);
     }
-    
-    [Fact]
+
+    [Test]
     public void ApprovalEngine_LargePurchase_RequiresCFOApproval()
     {
-        // Arrange
         var engine = ApprovalWorkflowExample.CreateApprovalEngine();
         var request = new PurchaseRequest
         {
@@ -360,19 +373,16 @@ public class ApprovalWorkflowTests
             Amount = 75000m,
             Department = "Operations"
         };
-        
-        // Act
-        var result = engine.Execute(request);
-        
-        // Assert
+
+        engine.Execute(request);
+
         Assert.Equal("CFO", request.ApprovalLevel);
         Assert.Contains("CFO", request.RequiredApprovers);
     }
-    
-    [Fact]
+
+    [Test]
     public void ApprovalEngine_VeryLargePurchase_RequiresCEOApproval()
     {
-        // Arrange
         var engine = ApprovalWorkflowExample.CreateApprovalEngine();
         var request = new PurchaseRequest
         {
@@ -380,19 +390,16 @@ public class ApprovalWorkflowTests
             Amount = 150000m,
             Department = "Operations"
         };
-        
-        // Act
-        var result = engine.Execute(request);
-        
-        // Assert
+
+        engine.Execute(request);
+
         Assert.Equal("CEO", request.ApprovalLevel);
         Assert.Contains("CEO", request.RequiredApprovers);
     }
-    
-    [Fact]
+
+    [Test]
     public void ApprovalEngine_FinanceDepartment_RequiresCFO()
     {
-        // Arrange
         var engine = ApprovalWorkflowExample.CreateApprovalEngine();
         var request = new PurchaseRequest
         {
@@ -400,34 +407,29 @@ public class ApprovalWorkflowTests
             Amount = 5000m, // Small amount
             Department = "Finance" // But finance department
         };
-        
-        // Act
-        var result = engine.Execute(request);
-        
-        // Assert
+
+        engine.Execute(request);
+
         Assert.Equal("CFO", request.ApprovalLevel);
         Assert.Contains("CFO", request.RequiredApprovers);
     }
-    
-    [Fact]
+
+    [Test]
     public void ApprovalEngine_ITEquipmentReview_RequiresAdditionalApproval()
     {
-        // Arrange
         var mainEngine = ApprovalWorkflowExample.CreateApprovalEngine();
         var reviewEngine = ApprovalWorkflowExample.CreateAdditionalReviewEngine();
-        
+
         var request = new PurchaseRequest
         {
             RequestId = "PR006",
             Amount = 30000m,
             Category = "IT Equipment"
         };
-        
-        // Act
+
         mainEngine.Execute(request);
         reviewEngine.Execute(request);
-        
-        // Assert
+
         Assert.True(request.RequiresAdditionalReview);
         Assert.Contains("IT Director", request.RequiredApprovers);
     }
