@@ -3,8 +3,6 @@ using System.Runtime.Loader;
 using TestRunner.Framework;
 
 // Parse command-line arguments
-var showCoverage = args.Contains("--coverage") || args.Contains("-c");
-var showDetailedCoverage = args.Contains("--coverage-detailed") || args.Contains("-cd");
 var showHelp = args.Contains("--help") || args.Contains("-h");
 var discoverArg = args.FirstOrDefault(a => a.StartsWith("--discover="));
 
@@ -24,9 +22,9 @@ if (showHelp)
     Console.WriteLine();
     Console.WriteLine("Options:");
     Console.WriteLine("  --discover=<dir>        Discover *.Tests.dll files in directory");
-    Console.WriteLine("  --coverage, -c          Show API coverage summary");
-    Console.WriteLine("  --coverage-detailed, -cd Show detailed API coverage by type");
     Console.WriteLine("  --help, -h              Show this help message");
+    Console.WriteLine();
+    Console.WriteLine("For code coverage, use Coverlet (see CLAUDE.md for instructions).");
     Console.WriteLine();
     Console.WriteLine("Examples:");
     Console.WriteLine("  # Run tests from specific assemblies");
@@ -34,9 +32,6 @@ if (showHelp)
     Console.WriteLine();
     Console.WriteLine("  # Discover and run all test assemblies in a directory");
     Console.WriteLine("  dotnet run --project Tests/TestRunner/ -- --discover=Tests/bin");
-    Console.WriteLine();
-    Console.WriteLine("  # Run with coverage report");
-    Console.WriteLine("  dotnet run --project Tests/TestRunner/ -- --coverage --discover=Tests/bin");
     return 0;
 }
 
@@ -142,51 +137,6 @@ var testRunnerAssembly = Assembly.GetExecutingAssembly();
 runner.DiscoverTests(testRunnerAssembly);
 
 var failedCount = await runner.RunAllAsync();
-
-// Setup coverage tracking if requested
-if (showCoverage || showDetailedCoverage)
-{
-    var coverageTracker = new CoverageTracker();
-
-    // Add target assemblies to track (find them from the loaded assemblies' references)
-    var targetAssemblies = AppDomain.CurrentDomain.GetAssemblies()
-        .Where(a =>
-        {
-            var name = a.GetName().Name;
-            return name == "RulesEngine" || name == "AgentRouting" || name == "AgentRouting.MafiaDemo";
-        })
-        .ToList();
-
-    foreach (var assembly in targetAssemblies)
-    {
-        coverageTracker.AddAssembly(assembly);
-    }
-
-    if (targetAssemblies.Count == 0)
-    {
-        Console.WriteLine("Warning: No target assemblies (RulesEngine, AgentRouting) found for coverage tracking");
-    }
-
-    coverageTracker.StartTracking();
-
-    // Analyze all loaded test assemblies
-    foreach (var assembly in loadedAssemblies)
-    {
-        coverageTracker.AnalyzeTestAssembly(assembly);
-    }
-    coverageTracker.AnalyzeTestAssembly(testRunnerAssembly);
-
-    coverageTracker.StopTracking();
-
-    var report = coverageTracker.GenerateReport();
-
-    if (showDetailedCoverage)
-    {
-        report.PrintDetailed();
-    }
-
-    report.PrintSummary();
-}
 
 return failedCount;
 
