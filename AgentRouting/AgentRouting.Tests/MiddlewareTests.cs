@@ -303,7 +303,7 @@ public class MiddlewareTests
     }
 
     [Fact]
-    public async Task AgentRouterWithMiddleware_IntegratesMiddleware()
+    public async Task AgentRouter_IntegratesMiddleware()
     {
         // Arrange
         var logger = new TestLogger();
