@@ -33,19 +33,25 @@ The MafiaAgentSystem codebase already uses good dependency injection patterns (c
 
 ### Pain Points
 
-#### 1. Hard-coded Instantiation in AgentRouter
+#### 1. ~~Hard-coded Instantiation in AgentRouter~~ ✅ RESOLVED (P1-DI-4)
 
-**File**: `AgentRouting/AgentRouting/Core/AgentRouter.cs` (Lines 17, 23)
+**Status**: Fixed. AgentRouter now requires all dependencies via constructor injection.
 
 ```csharp
-private readonly MiddlewarePipeline _pipeline = new();  // Created internally
-private readonly RulesEngineCore<RoutingContext> _routingEngine = new RulesEngineCore<RoutingContext>(...);
-```
+// NEW: Clean DI constructor - no hidden instantiation
+public AgentRouter(
+    IAgentLogger logger,
+    IMiddlewarePipeline pipeline,
+    IRulesEngine<RoutingContext> routingEngine)
+{
+    _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    _pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
+    _routingEngine = routingEngine ?? throw new ArgumentNullException(nameof(routingEngine));
+}
 
-**Impact**:
-- Tightly couples AgentRouter to concrete implementations
-- Cannot substitute alternative rules engine or pipeline
-- Difficult to test in isolation
+// AgentRouterBuilder creates defaults when not provided
+var router = new AgentRouterBuilder().WithLogger(logger).Build();
+```
 
 #### 2. Inconsistent Middleware Constructors
 
@@ -388,38 +394,45 @@ public static class ServiceExtensions
 }
 ```
 
-### Refactored AgentRouter
+### Refactored AgentRouter ✅ IMPLEMENTED (P1-DI-4)
 
 ```csharp
-// Proposed changes to AgentRouter.cs
+// ACTUAL implementation in AgentRouter.cs
 
-public class AgentRouter : IDisposable
+public class AgentRouter
 {
     private readonly IMiddlewarePipeline _pipeline;
     private readonly IRulesEngine<RoutingContext> _routingEngine;
     private readonly IAgentLogger _logger;
 
-    // Constructor injection
+    // Pure DI constructor - all dependencies required
     public AgentRouter(
+        IAgentLogger logger,
         IMiddlewarePipeline pipeline,
-        IRulesEngine<RoutingContext> routingEngine,
-        IAgentLogger logger)
+        IRulesEngine<RoutingContext> routingEngine)
     {
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
         _routingEngine = routingEngine ?? throw new ArgumentNullException(nameof(routingEngine));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
+}
 
-    // Convenience factory for backwards compatibility
-    public static AgentRouter Create(IAgentLogger? logger = null)
+// AgentRouterBuilder creates defaults when not provided
+public class AgentRouterBuilder
+{
+    public AgentRouter Build()
     {
-        return new AgentRouter(
-            new MiddlewarePipeline(),
-            new RulesEngineCore<RoutingContext>(),
-            logger ?? new ConsoleAgentLogger());
+        var logger = _logger ?? new ConsoleAgentLogger();
+        var pipeline = _pipeline ?? new MiddlewarePipeline();
+        var routingEngine = _routingEngine ?? new RulesEngineCore<RoutingContext>(
+            new RulesEngineOptions { StopOnFirstMatch = true, TrackPerformance = true });
+
+        return new AgentRouter(logger, pipeline, routingEngine);
     }
 }
 ```
+
+**Design Decision**: No convenience factory on AgentRouter. All code uses `AgentRouterBuilder` for construction.
 
 ---
 
@@ -427,18 +440,18 @@ public class AgentRouter : IDisposable
 
 ### P1-DI: Core DI/IoC Tasks (High Priority)
 
-| Task ID | Name | Est. Hours | Dependencies |
-|---------|------|------------|--------------|
-| P1-DI-1 | Create lightweight IoC container | 3-4h | None |
-| P1-DI-2 | Add IMiddlewarePipeline interface | 2h | None |
-| P1-DI-3 | Add IRulesEngine interface | 2h | None |
-| P1-DI-4 | Refactor AgentRouter for DI | 3-4h | P1-DI-2, P1-DI-3 |
-| P1-DI-5 | Standardize middleware constructors | 3-4h | P1-DI-1 |
-| P1-DI-6 | Create service registration extensions | 2-3h | P1-DI-1 |
-| P1-DI-7 | Update demos to use container | 2-3h | P1-DI-6 |
-| P1-DI-8 | Add DI tests | 2-3h | P1-DI-1 |
+| Task ID | Name | Est. Hours | Status |
+|---------|------|------------|--------|
+| P1-DI-1 | Create lightweight IoC container | 3-4h | ✅ Complete (37 tests) |
+| P1-DI-2 | Add IMiddlewarePipeline interface | 2h | ✅ Complete |
+| P1-DI-3 | Add IRulesEngine interface | 2h | ✅ Complete |
+| P1-DI-4 | Refactor AgentRouter for DI | 3-4h | ✅ Complete |
+| P1-DI-5 | Standardize middleware constructors | 3-4h | ⏳ Pending |
+| P1-DI-6 | Create service registration extensions | 2-3h | ⏳ Pending |
+| P1-DI-7 | Update demos to use container | 2-3h | ⏳ Pending |
+| P1-DI-8 | Add DI tests | 2-3h | ✅ Complete (in P1-DI-1) |
 
-**Total Estimated**: 19-25 hours
+**Total Estimated**: 19-25 hours | **Completed**: ~5 hours | **Remaining**: ~10-15 hours
 
 ### Dependency Graph
 
@@ -508,13 +521,13 @@ P1-DI-3 ─┘
 
 ## Success Criteria
 
-- [ ] `IServiceContainer` interface and implementation complete
-- [ ] AgentRouter accepts injected dependencies
-- [ ] Middleware constructors simplified and consistent
-- [ ] All demos use container registration
-- [ ] Build succeeds with 0 errors
-- [ ] All tests pass (184+)
-- [ ] New DI tests added (10+ tests)
+- [x] `IServiceContainer` interface and implementation complete (P1-DI-1)
+- [x] AgentRouter accepts injected dependencies (P1-DI-4)
+- [ ] Middleware constructors simplified and consistent (P1-DI-5)
+- [ ] All demos use container registration (P1-DI-7)
+- [x] Build succeeds with 0 errors
+- [x] All tests pass (221 tests)
+- [x] New DI tests added (37 tests in P1-DI-1)
 
 ---
 
@@ -522,12 +535,12 @@ P1-DI-3 ─┘
 
 Beyond the IoC container work, several concrete classes would benefit from interface extraction.
 
-### Already Planned (in P1-DI)
+### Already Planned (in P1-DI) ✅ COMPLETE
 
-| Interface | Class | Task |
-|-----------|-------|------|
-| `IRulesEngine<T>` | `RulesEngineCore<T>` | P1-DI-3 |
-| `IMiddlewarePipeline` | `MiddlewarePipeline` | P1-DI-2 |
+| Interface | Class | Task | Status |
+|-----------|-------|------|--------|
+| `IRulesEngine<T>` | `RulesEngineCore<T>` | P1-DI-3 | ✅ Complete |
+| `IMiddlewarePipeline` | `MiddlewarePipeline` | P1-DI-2 | ✅ Complete |
 
 ### High Priority Additions
 
