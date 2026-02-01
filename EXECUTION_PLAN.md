@@ -144,6 +144,29 @@ dotnet run --project Tests/TestRunner/
 
 ---
 
+### Phase 5: Architectural Improvements (In Progress)
+
+**Session: 2026-02-01**
+
+Completed:
+- [x] Router Consolidation - Merged `MiddlewareAgentRouter` and `AgentRouterWithMiddleware` into `AgentRouter`
+  - Added native middleware support to AgentRouter
+  - Added `HasMiddleware` property to MiddlewarePipeline
+  - Added `CallbackMiddleware`, `ConditionalMiddleware`, and pipeline extensions
+  - Renamed `AgentRouterWithMiddleware.cs` to `AgentRouterBuilder.cs`
+  - Updated all usages across codebase
+  - Updated documentation (MIDDLEWARE_INTEGRATION.md, TASK_LIST.md)
+
+Pending (from ARCHITECTURE_DECISIONS.md):
+- [ ] CircuitBreaker time-windowed failure counting
+- [ ] SystemClock constructor injection refactor
+- [ ] IStateStore interface for distributed state
+- [ ] RuleResult.Error edge case tests
+
+**Test count: 172 (all passing)**
+
+---
+
 ## Success Criteria
 
 | Gate | Criteria | Verified |
