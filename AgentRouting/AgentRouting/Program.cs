@@ -328,7 +328,7 @@ class Program
         Console.WriteLine();
 
         var logger = new ConsoleAgentLogger();
-        var router = new MiddlewareAgentRouter(logger);
+        var router = new AgentRouter(logger);
 
         // Add analytics middleware - automatically tracks all messages
         var analytics = new AnalyticsMiddleware();

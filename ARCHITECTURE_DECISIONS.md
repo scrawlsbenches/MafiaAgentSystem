@@ -67,17 +67,22 @@ public CircuitBreakerMiddleware(ISystemClock? clock = null)
 
 ### 3. Router Consolidation
 
-**Status:** 🔍 Investigating
+**Status:** ✅ Completed (2026-02-01)
 
 **Question:** Why do we have both `AgentRouter` and `MiddlewareAgentRouter`?
 
-**Investigation needed:**
-- [ ] Compare the two classes
-- [ ] Identify unique functionality in each
-- [ ] Determine if consolidation is possible
-- [ ] Check for breaking changes
+**Investigation:**
+- MiddlewareAgentRouter extended AgentRouter using `new` keyword (code smell)
+- AgentRouterWithMiddleware was also redundant
+- Both provided middleware support that could be integrated into base class
 
-**Outcome:** TBD after investigation
+**Resolution:**
+- Added native middleware support to `AgentRouter` (UseMiddleware methods)
+- Added `HasMiddleware` property to `MiddlewarePipeline`
+- Updated all usages across codebase to use `AgentRouter` directly
+- Deleted `MiddlewareAgentRouter` class
+- Converted `AgentRouterWithMiddleware.cs` to only contain `AgentRouterBuilder`
+- Added missing `CallbackMiddleware`, `ConditionalMiddleware`, and extension methods
 
 ---
 

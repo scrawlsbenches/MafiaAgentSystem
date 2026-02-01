@@ -70,12 +70,12 @@ public class PlayerAgent
     private readonly MissionEvaluator _missionEvaluator;
     private readonly RulesEngineCore<PlayerDecisionContext> _decisionRules;
     private readonly Random _random = new();
-    private readonly MiddlewareAgentRouter? _router;
-    
+    private readonly AgentRouter? _router;
+
     public PlayerCharacter Character => _character;
-    public MiddlewareAgentRouter? Router => _router;
-    
-    public PlayerAgent(string name, PlayerPersonality? personality = null, MiddlewareAgentRouter? router = null)
+    public AgentRouter? Router => _router;
+
+    public PlayerAgent(string name, PlayerPersonality? personality = null, AgentRouter? router = null)
     {
         _character = new PlayerCharacter
         {

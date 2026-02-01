@@ -44,7 +44,7 @@ class Program
         Console.WriteLine();
 
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouterWithMiddleware(logger);
+        var router = new AgentRouter(logger);
 
         // Add middleware
         router.UseMiddleware(new LoggingMiddleware(logger));
@@ -83,7 +83,7 @@ class Program
         Console.WriteLine();
 
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouterWithMiddleware(logger);
+        var router = new AgentRouter(logger);
 
         // Rate limit: 3 requests per 5 seconds
         router.UseMiddleware(new RateLimitMiddleware(3, TimeSpan.FromSeconds(5)));
@@ -133,7 +133,7 @@ class Program
         Console.WriteLine();
 
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouterWithMiddleware(logger);
+        var router = new AgentRouter(logger);
 
         // Cache for 5 seconds
         router.UseMiddleware(new CachingMiddleware(TimeSpan.FromSeconds(5)));
@@ -175,7 +175,7 @@ class Program
         Console.WriteLine();
 
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouterWithMiddleware(logger);
+        var router = new AgentRouter(logger);
 
         // Retry up to 3 times
         router.UseMiddleware(new RetryMiddleware(maxAttempts: 3, delay: TimeSpan.FromMilliseconds(50)));
@@ -214,7 +214,7 @@ class Program
         Console.WriteLine();
 
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouterWithMiddleware(logger);
+        var router = new AgentRouter(logger);
 
         // Circuit breaker: open after 3 failures
         router.UseMiddleware(new CircuitBreakerMiddleware(failureThreshold: 3, resetTimeout: TimeSpan.FromSeconds(5)));
@@ -278,7 +278,7 @@ class Program
         Console.WriteLine();
 
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouterWithMiddleware(logger);
+        var router = new AgentRouter(logger);
 
         // Build complete middleware pipeline
         router.UseMiddleware(new ValidationMiddleware());
@@ -387,7 +387,7 @@ class Program
         Console.WriteLine();
 
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouterWithMiddleware(logger);
+        var router = new AgentRouter(logger);
 
         var metricsMiddleware = new MetricsMiddleware();
         router.UseMiddleware(metricsMiddleware);

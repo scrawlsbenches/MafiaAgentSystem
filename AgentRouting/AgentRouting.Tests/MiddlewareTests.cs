@@ -307,7 +307,7 @@ public class MiddlewareTests
     {
         // Arrange
         var logger = new TestLogger();
-        var router = new AgentRouterWithMiddleware(logger);
+        var router = new AgentRouter(logger);
 
         var validationCalled = false;
         router.UseMiddleware(new CallbackMiddleware(before: _ => validationCalled = true));

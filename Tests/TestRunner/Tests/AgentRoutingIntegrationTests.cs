@@ -262,7 +262,7 @@ public class AgentRoutingIntegrationTests
     public async Task RouterWithMiddleware_ExecutesMiddlewarePipeline()
     {
         var logger = new ConsoleAgentLogger();
-        var router = new MiddlewareAgentRouter(logger);
+        var router = new AgentRouter(logger);
 
         var agent = new TestAgent("agent-001", "Agent 1");
         router.RegisterAgent(agent);
@@ -284,7 +284,7 @@ public class AgentRoutingIntegrationTests
     public async Task RouterWithMiddleware_ValidationMiddleware_RejectsInvalidMessage()
     {
         var logger = new ConsoleAgentLogger();
-        var router = new MiddlewareAgentRouter(logger);
+        var router = new AgentRouter(logger);
 
         var agent = new TestAgent("agent-001", "Agent 1");
         router.RegisterAgent(agent);
@@ -313,7 +313,7 @@ public class AgentRoutingIntegrationTests
     public async Task RouterWithMiddleware_TimingMiddleware_AddsProcessingTime()
     {
         var logger = new ConsoleAgentLogger();
-        var router = new MiddlewareAgentRouter(logger);
+        var router = new AgentRouter(logger);
 
         var agent = new TestAgent("agent-001", "Agent 1");
         router.RegisterAgent(agent);
@@ -334,7 +334,7 @@ public class AgentRoutingIntegrationTests
     public async Task RouterWithMiddleware_MultipleMiddleware_ExecuteInOrder()
     {
         var logger = new ConsoleAgentLogger();
-        var router = new MiddlewareAgentRouter(logger);
+        var router = new AgentRouter(logger);
 
         var agent = new TestAgent("agent-001", "Agent 1");
         router.RegisterAgent(agent);

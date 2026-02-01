@@ -27,7 +27,12 @@ public interface IAgentMiddleware
 public class MiddlewarePipeline
 {
     private readonly List<IAgentMiddleware> _middleware = new();
-    
+
+    /// <summary>
+    /// Returns true if any middleware has been added to the pipeline.
+    /// </summary>
+    public bool HasMiddleware => _middleware.Count > 0;
+
     /// <summary>
     /// Add middleware to the pipeline
     /// </summary>
@@ -88,58 +93,6 @@ public class MiddlewarePipeline
             var wrappedNext = _middleware(next);
             return wrappedNext(message, ct);
         }
-    }
-}
-
-/// <summary>
-/// Router with middleware support
-/// </summary>
-public class MiddlewareAgentRouter : AgentRouter
-{
-    private readonly MiddlewarePipeline _pipeline;
-    private MessageDelegate? _builtPipeline;
-    
-    public MiddlewareAgentRouter(IAgentLogger logger) : base(logger)
-    {
-        _pipeline = new MiddlewarePipeline();
-    }
-    
-    /// <summary>
-    /// Add middleware to the routing pipeline
-    /// </summary>
-    public MiddlewareAgentRouter UseMiddleware(IAgentMiddleware middleware)
-    {
-        _pipeline.Use(middleware);
-        _builtPipeline = null; // Invalidate cached pipeline
-        return this;
-    }
-    
-    /// <summary>
-    /// Add middleware using a delegate
-    /// </summary>
-    public MiddlewareAgentRouter UseMiddleware(Func<MessageDelegate, MessageDelegate> middleware)
-    {
-        _pipeline.Use(middleware);
-        _builtPipeline = null;
-        return this;
-    }
-    
-    /// <summary>
-    /// Route message through middleware pipeline
-    /// </summary>
-    public new async Task<MessageResult> RouteMessageAsync(
-        AgentMessage message,
-        CancellationToken ct = default)
-    {
-        // Build pipeline on first use
-        if (_builtPipeline == null)
-        {
-            _builtPipeline = _pipeline.Build(
-                async (msg, token) => await base.RouteMessageAsync(msg, token)
-            );
-        }
-        
-        return await _builtPipeline(message, ct);
     }
 }
 
@@ -211,7 +164,7 @@ public class MiddlewareContext
 public static class MessageContextExtensions
 {
     private const string ContextKey = "__MiddlewareContext__";
-    
+
     public static MiddlewareContext GetContext(this AgentMessage message)
     {
         if (!message.Metadata.TryGetValue(ContextKey, out var context))
@@ -220,5 +173,101 @@ public static class MessageContextExtensions
             message.Metadata[ContextKey] = context;
         }
         return (MiddlewareContext)context;
+    }
+}
+
+/// <summary>
+/// Middleware that allows specifying before/after callbacks.
+/// </summary>
+public class CallbackMiddleware : MiddlewareBase
+{
+    private readonly Action<AgentMessage>? _before;
+    private readonly Action<AgentMessage, MessageResult>? _after;
+
+    public CallbackMiddleware(
+        Action<AgentMessage>? before = null,
+        Action<AgentMessage, MessageResult>? after = null)
+    {
+        _before = before;
+        _after = after;
+    }
+
+    public override async Task<MessageResult> InvokeAsync(
+        AgentMessage message,
+        MessageDelegate next,
+        CancellationToken ct = default)
+    {
+        _before?.Invoke(message);
+        var result = await next(message, ct);
+        _after?.Invoke(message, result);
+        return result;
+    }
+}
+
+/// <summary>
+/// Middleware that only executes when a condition is met.
+/// </summary>
+public class ConditionalMiddleware : MiddlewareBase
+{
+    private readonly Func<AgentMessage, bool> _condition;
+    private readonly IAgentMiddleware _innerMiddleware;
+
+    public ConditionalMiddleware(Func<AgentMessage, bool> condition, IAgentMiddleware innerMiddleware)
+    {
+        _condition = condition;
+        _innerMiddleware = innerMiddleware;
+    }
+
+    public override async Task<MessageResult> InvokeAsync(
+        AgentMessage message,
+        MessageDelegate next,
+        CancellationToken ct = default)
+    {
+        if (_condition(message))
+        {
+            return await _innerMiddleware.InvokeAsync(message, next, ct);
+        }
+        return await next(message, ct);
+    }
+}
+
+/// <summary>
+/// Extension methods for MiddlewarePipeline convenience.
+/// </summary>
+public static class MiddlewarePipelineExtensions
+{
+    /// <summary>
+    /// Add middleware that only executes when the condition is met.
+    /// </summary>
+    public static MiddlewarePipeline UseWhen(
+        this MiddlewarePipeline pipeline,
+        Func<AgentMessage, bool> condition,
+        IAgentMiddleware middleware)
+    {
+        return pipeline.Use(new ConditionalMiddleware(condition, middleware));
+    }
+
+    /// <summary>
+    /// Add a callback middleware with before/after actions.
+    /// </summary>
+    public static MiddlewarePipeline UseCallback(
+        this MiddlewarePipeline pipeline,
+        Action<AgentMessage>? before = null,
+        Action<AgentMessage, MessageResult>? after = null)
+    {
+        return pipeline.Use(new CallbackMiddleware(before, after));
+    }
+
+    /// <summary>
+    /// Execute the pipeline with the given terminal handler.
+    /// </summary>
+    public static async Task<MessageResult> ExecuteAsync(
+        this MiddlewarePipeline pipeline,
+        AgentMessage message,
+        MessageDelegate terminalHandler,
+        CancellationToken ct = default)
+    {
+        var executor = pipeline.Build(terminalHandler);
+        return await executor(message, ct);
     }
 }
