@@ -86,7 +86,7 @@ class Program
         var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         // Rate limit: 3 requests per 5 seconds
-        router.UseMiddleware(new RateLimitMiddleware(3, TimeSpan.FromSeconds(5)));
+        router.UseMiddleware(new RateLimitMiddleware(new InMemoryStateStore(), 3, TimeSpan.FromSeconds(5), SystemClock.Instance));
 
         var csAgent = new CustomerServiceAgent("cs-001", "CS", logger);
         router.RegisterAgent(csAgent);
@@ -136,7 +136,7 @@ class Program
         var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         // Cache for 5 seconds
-        router.UseMiddleware(new CachingMiddleware(TimeSpan.FromSeconds(5)));
+        router.UseMiddleware(new CachingMiddleware(new InMemoryStateStore(), TimeSpan.FromSeconds(5), MiddlewareDefaults.CacheMaxEntries, SystemClock.Instance));
 
         var techAgent = new TechnicalSupportAgent("tech-001", "Tech", logger);
         router.RegisterAgent(techAgent);
@@ -217,7 +217,7 @@ class Program
         var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         // Circuit breaker: open after 3 failures
-        router.UseMiddleware(new CircuitBreakerMiddleware(failureThreshold: 3, resetTimeout: TimeSpan.FromSeconds(5)));
+        router.UseMiddleware(new CircuitBreakerMiddleware(new InMemoryStateStore(), 3, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(60), SystemClock.Instance));
 
         var failingAgent = new FailingAgent("failing-001", "Failing Agent", logger);
         router.RegisterAgent(failingAgent);
@@ -284,7 +284,7 @@ class Program
         router.UseMiddleware(new ValidationMiddleware());
         router.UseMiddleware(new AuthenticationMiddleware("customer-1", "customer-2", "vip-customer"));
         router.UseMiddleware(new PriorityBoostMiddleware("vip-customer"));
-        router.UseMiddleware(new RateLimitMiddleware(5, TimeSpan.FromSeconds(10)));
+        router.UseMiddleware(new RateLimitMiddleware(new InMemoryStateStore(), 5, TimeSpan.FromSeconds(10), SystemClock.Instance));
         router.UseMiddleware(new LoggingMiddleware(logger));
         router.UseMiddleware(new TimingMiddleware());
 

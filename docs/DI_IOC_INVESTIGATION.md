@@ -53,20 +53,18 @@ public AgentRouter(
 var router = new AgentRouterBuilder().WithLogger(logger).Build();
 ```
 
-#### 2. Inconsistent Middleware Constructors
+#### 2. ~~Inconsistent Middleware Constructors~~ ✅ RESOLVED (P1-DI-5)
 
-**Files**: `RateLimitMiddleware`, `CachingMiddleware`, `CircuitBreakerMiddleware`
+**Status**: Fixed. All middleware now have single constructors requiring all dependencies.
 
 ```csharp
-// Multiple overloads with different dependencies
-public RateLimitMiddleware(IStateStore store, int maxRequests, TimeSpan window, ISystemClock? clock = null)
-public RateLimitMiddleware(int maxRequests, TimeSpan window)  // Uses static defaults
+// NEW: Single constructor per middleware - all dependencies required
+public RateLimitMiddleware(IStateStore store, int maxRequests, TimeSpan window, ISystemClock clock)
+public CachingMiddleware(IStateStore store, TimeSpan ttl, int maxEntries, ISystemClock clock)
+public CircuitBreakerMiddleware(IStateStore store, int failureThreshold, TimeSpan resetTimeout, TimeSpan failureWindow, ISystemClock clock)
 ```
 
-**Impact**:
-- Complex overload chains hide dependencies
-- `IStateStore` is required but not obvious from simpler overloads
-- Inconsistent whether clock is injected or uses static instance
+**Design Decision**: No convenience overloads. Callers provide all dependencies explicitly.
 
 #### 3. Manual Wiring in Program.cs Files
 
@@ -446,7 +444,7 @@ public class AgentRouterBuilder
 | P1-DI-2 | Add IMiddlewarePipeline interface | 2h | ✅ Complete |
 | P1-DI-3 | Add IRulesEngine interface | 2h | ✅ Complete |
 | P1-DI-4 | Refactor AgentRouter for DI | 3-4h | ✅ Complete |
-| P1-DI-5 | Standardize middleware constructors | 3-4h | ⏳ Pending |
+| P1-DI-5 | Standardize middleware constructors | 3-4h | ✅ Complete |
 | P1-DI-6 | Create service registration extensions | 2-3h | ⏳ Pending |
 | P1-DI-7 | Update demos to use container | 2-3h | ⏳ Pending |
 | P1-DI-8 | Add DI tests | 2-3h | ✅ Complete (in P1-DI-1) |
@@ -523,7 +521,7 @@ P1-DI-3 ─┘
 
 - [x] `IServiceContainer` interface and implementation complete (P1-DI-1)
 - [x] AgentRouter accepts injected dependencies (P1-DI-4)
-- [ ] Middleware constructors simplified and consistent (P1-DI-5)
+- [x] Middleware constructors simplified and consistent (P1-DI-5)
 - [ ] All demos use container registration (P1-DI-7)
 - [x] Build succeeds with 0 errors
 - [x] All tests pass (221 tests)
