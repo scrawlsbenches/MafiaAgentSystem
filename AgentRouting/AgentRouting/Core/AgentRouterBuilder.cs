@@ -4,58 +4,7 @@ using AgentRouting.Middleware;
 namespace AgentRouting.Core;
 
 /// <summary>
-/// Extension to AgentRouter to support middleware
-/// </summary>
-public class AgentRouterWithMiddleware : AgentRouter
-{
-    private readonly MiddlewarePipeline _pipeline;
-    private readonly List<IAgentMiddleware> _middlewareList = new();
-    private MessageDelegate? _builtPipeline;
-
-    public AgentRouterWithMiddleware(IAgentLogger logger) : base(logger)
-    {
-        _pipeline = new MiddlewarePipeline();
-    }
-
-    /// <summary>
-    /// Add middleware to the processing pipeline
-    /// </summary>
-    public void UseMiddleware(IAgentMiddleware middleware)
-    {
-        _pipeline.Use(middleware);
-        _middlewareList.Add(middleware);
-        _builtPipeline = null; // Invalidate cached pipeline
-    }
-
-    /// <summary>
-    /// Route message through middleware pipeline
-    /// </summary>
-    public new async Task<MessageResult> RouteMessageAsync(
-        AgentMessage message,
-        CancellationToken ct = default)
-    {
-        // Build pipeline on first use
-        if (_builtPipeline == null)
-        {
-            _builtPipeline = _pipeline.Build(
-                async (msg, token) => await base.RouteMessageAsync(msg, token)
-            );
-        }
-
-        return await _builtPipeline(message, ct);
-    }
-
-    /// <summary>
-    /// Get configured middleware
-    /// </summary>
-    public IReadOnlyList<IAgentMiddleware> GetMiddleware()
-    {
-        return _middlewareList.AsReadOnly();
-    }
-}
-
-/// <summary>
-/// Fluent builder for router with middleware
+/// Fluent builder for creating AgentRouter instances with middleware.
 /// </summary>
 public class AgentRouterBuilder
 {
@@ -93,10 +42,10 @@ public class AgentRouterBuilder
         return this;
     }
 
-    public AgentRouterWithMiddleware Build()
+    public AgentRouter Build()
     {
         var logger = _logger ?? new ConsoleAgentLogger();
-        var router = new AgentRouterWithMiddleware(logger);
+        var router = new AgentRouter(logger);
 
         // Add middleware
         foreach (var middleware in _middleware)

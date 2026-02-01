@@ -285,10 +285,32 @@ SystemClock.Instance = new FakeClock(fixedTime);
 
 ## Historical Context
 
-This codebase was built across multiple sessions. Key transcripts are in `transcripts.zip`:
-- Expression trees tutorial → RulesEngine foundation
-- Agent routing implementation → AgentRouting core
-- Middleware system → Pipeline architecture
-- MafiaDemo → Game that exercises both systems
+This codebase was built across multiple sessions, evolving from expression tree exploration to a full agent communication platform.
 
-If files appear missing, check transcripts for code that may not have been saved to disk.
+**Read `ORIGINS.md`** for the story of how expression trees led to the rules engine and agent routing design.
+
+### Archives
+
+| File | Contents |
+|------|----------|
+| `transcripts.zip` | Session transcripts showing development evolution |
+| `Archive.zip` | Additional code files from development |
+| `docs/archive/` | Historical documentation (completed reviews, workflows) |
+
+Key transcripts:
+- `2026-01-31-14-19-45-expression-trees-tutorial.txt` - Foundation
+- `2026-01-31-14-39-00-rules-engine-expression-trees.txt` - Rules engine design
+- `2026-01-31-16-29-36-agent-routing-systems-implementation.txt` - AgentRouting
+- `2026-01-31-17-22-45-mafia-agent-hierarchy-demo.txt` - MafiaDemo
+
+## Documentation Structure
+
+| Document | Purpose |
+|----------|---------|
+| `ORIGINS.md` | Why expression trees → rules engine → agent routing |
+| `TASK_LIST.md` | Remaining work with priorities |
+| `EXECUTION_PLAN.md` | Completed phases and batch logs |
+| `RulesEngine/ISSUES_AND_ENHANCEMENTS.md` | Design decisions with resolution status |
+| `AgentRouting/MIDDLEWARE_EXPLAINED.md` | Middleware concepts tutorial |
+| `AgentRouting/MIDDLEWARE_POTENTIAL.md` | Advanced middleware patterns |
+| `AgentRouting/AgentRouting.MafiaDemo/ARCHITECTURE.md` | Game architecture |

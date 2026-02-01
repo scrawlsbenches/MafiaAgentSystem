@@ -1,10 +1,12 @@
 using RulesEngine.Core;
 using System.Linq.Expressions;
+using AgentRouting.Middleware;
 
 namespace AgentRouting.Core;
 
 /// <summary>
-/// Routes messages to appropriate agents based on rules
+/// Routes messages to appropriate agents based on rules.
+/// Supports optional middleware pipeline for cross-cutting concerns.
 /// </summary>
 public class AgentRouter
 {
@@ -12,7 +14,9 @@ public class AgentRouter
     private readonly RulesEngineCore<RoutingContext> _routingEngine;
     private readonly IAgentLogger _logger;
     private readonly Dictionary<string, IAgent> _agentById = new();
-    
+    private readonly MiddlewarePipeline _pipeline = new();
+    private MessageDelegate? _builtPipeline;
+
     public AgentRouter(IAgentLogger logger)
     {
         _logger = logger;
@@ -22,7 +26,28 @@ public class AgentRouter
             TrackPerformance = true
         });
     }
-    
+
+    /// <summary>
+    /// Add middleware to the routing pipeline.
+    /// Middleware executes in the order added, wrapping the core routing logic.
+    /// </summary>
+    public AgentRouter UseMiddleware(IAgentMiddleware middleware)
+    {
+        _pipeline.Use(middleware);
+        _builtPipeline = null; // Invalidate cached pipeline
+        return this;
+    }
+
+    /// <summary>
+    /// Add middleware using a delegate function.
+    /// </summary>
+    public AgentRouter UseMiddleware(Func<MessageDelegate, MessageDelegate> middleware)
+    {
+        _pipeline.Use(middleware);
+        _builtPipeline = null;
+        return this;
+    }
+
     /// <summary>
     /// Register an agent with the router
     /// </summary>
@@ -75,39 +100,58 @@ public class AgentRouter
     }
     
     /// <summary>
-    /// Route a message to the appropriate agent
+    /// Route a message to the appropriate agent.
+    /// If middleware is configured, the message passes through the middleware pipeline first.
     /// </summary>
-    public async Task<MessageResult> RouteMessageAsync(
+    public virtual async Task<MessageResult> RouteMessageAsync(
         AgentMessage message,
         CancellationToken ct = default)
+    {
+        // If middleware is configured, route through the pipeline
+        if (_pipeline.HasMiddleware)
+        {
+            _builtPipeline ??= _pipeline.Build(CoreRouteAsync);
+            return await _builtPipeline(message, ct);
+        }
+
+        // No middleware - route directly
+        return await CoreRouteAsync(message, ct);
+    }
+
+    /// <summary>
+    /// Core routing logic without middleware.
+    /// </summary>
+    private async Task<MessageResult> CoreRouteAsync(
+        AgentMessage message,
+        CancellationToken ct)
     {
         var context = new RoutingContext
         {
             Message = message,
             AvailableAgents = _agents.Where(a => a.Status == AgentStatus.Available).ToList()
         };
-        
+
         // Apply routing rules
         var result = _routingEngine.Execute(context);
-        
+
         if (string.IsNullOrEmpty(context.TargetAgentId))
         {
             // No rule matched, try default routing
             context.TargetAgentId = FindDefaultAgent(message)?.Id;
         }
-        
+
         if (string.IsNullOrEmpty(context.TargetAgentId))
         {
             return MessageResult.Fail("No agent available to handle this message");
         }
-        
+
         if (!_agentById.TryGetValue(context.TargetAgentId, out var targetAgent))
         {
             return MessageResult.Fail($"Target agent {context.TargetAgentId} not found");
         }
-        
+
         _logger.LogMessageRouted(message, null, targetAgent);
-        
+
         // Route to the selected agent
         message.ReceiverId = targetAgent.Id;
         return await targetAgent.ProcessMessageAsync(message, ct);

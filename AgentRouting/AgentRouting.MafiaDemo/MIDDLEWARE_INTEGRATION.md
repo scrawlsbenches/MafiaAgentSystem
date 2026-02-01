@@ -20,7 +20,7 @@ public MissionExecutionResult ExecuteMission(...)
 
 **AFTER:**
 ```csharp
-private readonly MiddlewareAgentRouter? _router;  // NEW!
+private readonly AgentRouter? _router;  // Supports middleware natively!
 
 public async Task<MissionExecutionResult> ExecuteMissionAsync(...)
 {
@@ -41,7 +41,7 @@ var player = new PlayerAgent(name, personality);
 
 **AFTER:**
 ```csharp
-var router = new MiddlewareAgentRouter(logger);
+var router = new AgentRouter(logger);
 router.RegisterAgent(new GodfatherAgent(...));
 router.UseMiddleware(new LoggingMiddleware(logger));
 var player = new PlayerAgent(name, personality, router);
@@ -75,7 +75,7 @@ Response
 
 ## 📊 What We're Using NOW
 
-- ✅ MiddlewareAgentRouter
+- ✅ AgentRouter (with native middleware support)
 - ✅ 4 Middleware (Logging, Timing, Validation, Metrics)
 - ✅ 5 Mafia Agents
 - ✅ 5 Routing Rules

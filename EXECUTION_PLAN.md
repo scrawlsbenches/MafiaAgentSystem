@@ -144,6 +144,42 @@ dotnet run --project Tests/TestRunner/
 
 ---
 
+### Phase 5: Architectural Improvements (In Progress)
+
+**Session: 2026-02-01**
+
+Completed:
+- [x] Router Consolidation - Merged `MiddlewareAgentRouter` and `AgentRouterWithMiddleware` into `AgentRouter`
+  - Added native middleware support to AgentRouter
+  - Added `HasMiddleware` property to MiddlewarePipeline
+  - Added `CallbackMiddleware`, `ConditionalMiddleware`, and pipeline extensions
+  - Renamed `AgentRouterWithMiddleware.cs` to `AgentRouterBuilder.cs`
+  - Updated all usages across codebase
+  - Updated documentation (MIDDLEWARE_INTEGRATION.md, TASK_LIST.md)
+- [x] CircuitBreaker time-windowed failure counting
+  - Replaced counter with `Queue<DateTime>` for sliding window
+  - Added `failureWindow` parameter (default: 60s)
+  - Added `CurrentFailureCount` property for monitoring
+  - Added thread-safe locking
+  - Added 3 new tests
+- [x] SystemClock constructor injection
+  - Added `ISystemClock? clock` parameter to CircuitBreaker, RateLimit, Caching
+  - Replaced `DateTime.UtcNow` with `_clock.UtcNow`
+  - Defaults to `SystemClock.Instance` for backwards compatibility
+- [x] IStateStore interface for middleware state management
+  - Created `IStateStore` interface and `InMemoryStateStore` implementation
+  - Updated RateLimitMiddleware, CachingMiddleware, CircuitBreakerMiddleware to require IStateStore
+  - Updated all test files to provide InMemoryStateStore instances
+  - Enables future distributed state storage (Redis, etc.)
+- [x] RuleResult.Error edge case tests
+  - Added 9 comprehensive tests documenting RuleResult behavior
+  - Discovered inconsistency: ActionRule vs Rule<T> handle exceptions differently
+  - Documented in ARCHITECTURE_DECISIONS.md section 5
+
+**Test count: 184 (all passing)**
+
+---
+
 ## Success Criteria
 
 | Gate | Criteria | Verified |
@@ -179,27 +215,38 @@ Each gate produces a git commit. If a batch fails:
 
 ### BATCH 0 Log
 ```
-[Pending execution]
+✅ .NET SDK 8.0.122 installed
+✅ dotnet --version returns 8.0.122
+Gate G0 PASSED
 ```
 
 ### BATCH 1 Log
 ```
-[Pending execution]
+✅ Build assessment complete
+✅ Errors catalogued and prioritized
+Gate G1 PASSED
 ```
 
 ### BATCH 2 Log
 ```
-[Pending execution]
+✅ Critical fixes applied (abstract class, type mismatches, null refs)
+✅ Build succeeds with 0 errors
+Gate G2 PASSED
 ```
 
 ### BATCH 3 Log
 ```
-[Pending execution]
+✅ TestRunner: 39 tests passing
+✅ Baseline documented
+Gate G3 PASSED
 ```
 
 ### BATCH 4 Log
 ```
-[Completed - MVP verified]
+✅ MVP game runs all 8 scenarios
+✅ Interactive game loop functional
+✅ GameTimingOptions.cs centralizes delays
+Gate G4 PASSED
 ```
 
 ---

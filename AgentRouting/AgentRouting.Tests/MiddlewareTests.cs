@@ -1,5 +1,6 @@
 using Xunit;
 using AgentRouting.Core;
+using AgentRouting.Infrastructure;
 using AgentRouting.Middleware;
 using AgentRouting.Agents;
 
@@ -73,7 +74,7 @@ public class MiddlewareTests
     public async Task RateLimitMiddleware_BlocksExcessiveRequests()
     {
         // Arrange
-        var middleware = new RateLimitMiddleware(maxRequests: 2, window: TimeSpan.FromSeconds(1));
+        var middleware = new RateLimitMiddleware(new InMemoryStateStore(), maxRequests: 2, window: TimeSpan.FromSeconds(1), SystemClock.Instance);
         var message = new AgentMessage { SenderId = "user1" };
 
         MessageDelegate next = (msg, ct) => Task.FromResult(MessageResult.Ok());
@@ -96,7 +97,7 @@ public class MiddlewareTests
     public async Task CachingMiddleware_ReturnsCachedResults()
     {
         // Arrange
-        var middleware = new CachingMiddleware(TimeSpan.FromMinutes(1));
+        var middleware = new CachingMiddleware(new InMemoryStateStore(), TimeSpan.FromMinutes(1));
         var message = new AgentMessage
         {
             SenderId = "user1",
@@ -153,6 +154,7 @@ public class MiddlewareTests
     {
         // Arrange
         var middleware = new CircuitBreakerMiddleware(
+            new InMemoryStateStore(),
             failureThreshold: 3,
             resetTimeout: TimeSpan.FromSeconds(1)
         );
@@ -303,11 +305,11 @@ public class MiddlewareTests
     }
 
     [Fact]
-    public async Task AgentRouterWithMiddleware_IntegratesMiddleware()
+    public async Task AgentRouter_IntegratesMiddleware()
     {
         // Arrange
         var logger = new TestLogger();
-        var router = new AgentRouterWithMiddleware(logger);
+        var router = new AgentRouter(logger);
 
         var validationCalled = false;
         router.UseMiddleware(new CallbackMiddleware(before: _ => validationCalled = true));
