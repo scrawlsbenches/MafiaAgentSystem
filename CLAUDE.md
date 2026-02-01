@@ -17,6 +17,27 @@ When working on complex multi-step tasks, consult:
 - **`EXECUTION_PLAN.md`** - Current project state and completed batches
 - **`TASK_LIST.md`** - Full prioritized task list with estimates
 
+### Keeping Project State Updated
+
+**IMPORTANT**: The director agent must update tracking files after sub-agents complete work:
+
+1. **After each batch completes**:
+   - Update `EXECUTION_PLAN.md` with batch status and log
+   - Mark completed tasks in the execution state section
+   - Commit the update
+
+2. **When tasks are discovered to be already done**:
+   - Update `TASK_LIST.md` to mark as complete or revise scope
+   - Update `EXECUTION_PLAN.md` with discovery notes
+   - Adjust time estimates based on actual findings
+
+3. **Before starting new work**:
+   - Read `EXECUTION_PLAN.md` to understand current state
+   - Read `TASK_LIST.md` to see remaining work
+   - Verify build and tests still pass
+
+This ensures future sessions can continue seamlessly.
+
 ## Prerequisites
 - .NET 8.0 SDK required (`dotnet --version` should show 8.x)
 
