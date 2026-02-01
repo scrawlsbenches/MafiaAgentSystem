@@ -396,6 +396,7 @@ public class MafiaGameEngine
 
         LogEvent("Collection", $"Weekly collection: ${totalRevenue:N0}", "capo-001");
 
+        await Task.CompletedTask; // Async-ready for future timing delays
         return events;
     }
 
@@ -656,100 +657,103 @@ public class MafiaGameEngine
     /// <summary>
     /// Player actions - player can issue commands
     /// </summary>
-    public async Task<string> ExecutePlayerAction(string command)
+    public Task<string> ExecutePlayerAction(string command)
     {
         var parts = command.ToLowerInvariant().Split(' ');
         var action = parts[0];
 
-        switch (action)
+        string result = action switch
         {
-            case "status":
-                return GetStatusReport();
+            "status" => GetStatusReport(),
+            "territories" => GetTerritoryReport(),
+            "rivals" => GetRivalReport(),
+            "events" => GetRecentEvents(),
+            "help" => GetHelpText(),
+            "bribe" => ExecuteBribe(),
+            "expand" => ExecuteExpand(),
+            "hit" => ExecuteHit(parts),
+            "peace" => ExecutePeace(parts),
+            _ => $"❌ Unknown command: {action}. Type 'help' for commands."
+        };
 
-            case "territories":
-                return GetTerritoryReport();
+        return Task.FromResult(result);
+    }
 
-            case "rivals":
-                return GetRivalReport();
-
-            case "events":
-                return GetRecentEvents();
-
-            case "bribe":
-                if (_state.FamilyWealth >= 10000)
-                {
-                    _state.FamilyWealth -= 10000;
-                    _state.HeatLevel -= 20;
-                    LogEvent("Bribe", "Player bribed officials", "player");
-                    return "💰 Paid $10,000 in bribes. Heat reduced by 20.";
-                }
-                return "❌ Not enough money (need $10,000)";
-
-            case "expand":
-                if (_state.FamilyWealth >= 50000)
-                {
-                    _state.FamilyWealth -= 50000;
-                    _state.Territories[$"new-territory-{_state.Week}"] = new Territory
-                    {
-                        Name = $"New Territory (Week {_state.Week})",
-                        ControlledBy = "capo-001",
-                        WeeklyRevenue = 10000,
-                        HeatGeneration = 5,
-                        Type = "Protection"
-                    };
-                    LogEvent("Expand", "Player expanded into new territory", "player");
-                    return "🗺️  Expanded into new territory! (+$10,000/week)";
-                }
-                return "❌ Not enough money (need $50,000)";
-
-            case "hit":
-                if (parts.Length < 2) return "Usage: hit <rival-family-name>";
-                var rivalName = string.Join(" ", parts.Skip(1));
-                var target = _state.RivalFamilies.Values.FirstOrDefault(r =>
-                    r.Name.ToLowerInvariant().Contains(rivalName));
-
-                if (target != null)
-                {
-                    if (_state.FamilyWealth >= 25000)
-                    {
-                        _state.FamilyWealth -= 25000;
-                        target.Strength -= 20;
-                        target.Hostility += 30;
-                        _state.HeatLevel += 25;
-                        _state.Reputation += 10;
-                        LogEvent("Hit", $"Ordered hit on {target.Name}", "player");
-                        return $"💀 Hit executed on {target.Name}. They're weakened but very angry!";
-                    }
-                    return "❌ Not enough money (need $25,000)";
-                }
-                return "❌ Rival family not found";
-
-            case "peace":
-                if (parts.Length < 2) return "Usage: peace <rival-family-name>";
-                var peaceRival = string.Join(" ", parts.Skip(1));
-                var peaceTarget = _state.RivalFamilies.Values.FirstOrDefault(r =>
-                    r.Name.ToLowerInvariant().Contains(peaceRival));
-
-                if (peaceTarget != null)
-                {
-                    if (_state.FamilyWealth >= 30000)
-                    {
-                        _state.FamilyWealth -= 30000;
-                        peaceTarget.Hostility -= 40;
-                        peaceTarget.AtWar = false;
-                        LogEvent("Peace", $"Made peace with {peaceTarget.Name}", "player");
-                        return $"🕊️  Peace treaty signed with {peaceTarget.Name}. Cost $30,000.";
-                    }
-                    return "❌ Not enough money (need $30,000)";
-                }
-                return "❌ Rival family not found";
-
-            case "help":
-                return GetHelpText();
-
-            default:
-                return $"❌ Unknown command: {action}. Type 'help' for commands.";
+    private string ExecuteBribe()
+    {
+        if (_state.FamilyWealth >= 10000)
+        {
+            _state.FamilyWealth -= 10000;
+            _state.HeatLevel -= 20;
+            LogEvent("Bribe", "Player bribed officials", "player");
+            return "💰 Paid $10,000 in bribes. Heat reduced by 20.";
         }
+        return "❌ Not enough money (need $10,000)";
+    }
+
+    private string ExecuteExpand()
+    {
+        if (_state.FamilyWealth >= 50000)
+        {
+            _state.FamilyWealth -= 50000;
+            _state.Territories[$"new-territory-{_state.Week}"] = new Territory
+            {
+                Name = $"New Territory (Week {_state.Week})",
+                ControlledBy = "capo-001",
+                WeeklyRevenue = 10000,
+                HeatGeneration = 5,
+                Type = "Protection"
+            };
+            LogEvent("Expand", "Player expanded into new territory", "player");
+            return "🗺️  Expanded into new territory! (+$10,000/week)";
+        }
+        return "❌ Not enough money (need $50,000)";
+    }
+
+    private string ExecuteHit(string[] parts)
+    {
+        if (parts.Length < 2) return "Usage: hit <rival-family-name>";
+        var rivalName = string.Join(" ", parts.Skip(1));
+        var target = _state.RivalFamilies.Values.FirstOrDefault(r =>
+            r.Name.ToLowerInvariant().Contains(rivalName));
+
+        if (target != null)
+        {
+            if (_state.FamilyWealth >= 25000)
+            {
+                _state.FamilyWealth -= 25000;
+                target.Strength -= 20;
+                target.Hostility += 30;
+                _state.HeatLevel += 25;
+                _state.Reputation += 10;
+                LogEvent("Hit", $"Ordered hit on {target.Name}", "player");
+                return $"💀 Hit executed on {target.Name}. They're weakened but very angry!";
+            }
+            return "❌ Not enough money (need $25,000)";
+        }
+        return "❌ Rival family not found";
+    }
+
+    private string ExecutePeace(string[] parts)
+    {
+        if (parts.Length < 2) return "Usage: peace <rival-family-name>";
+        var peaceRival = string.Join(" ", parts.Skip(1));
+        var peaceTarget = _state.RivalFamilies.Values.FirstOrDefault(r =>
+            r.Name.ToLowerInvariant().Contains(peaceRival));
+
+        if (peaceTarget != null)
+        {
+            if (_state.FamilyWealth >= 30000)
+            {
+                _state.FamilyWealth -= 30000;
+                peaceTarget.Hostility -= 40;
+                peaceTarget.AtWar = false;
+                LogEvent("Peace", $"Made peace with {peaceTarget.Name}", "player");
+                return $"🕊️  Peace treaty signed with {peaceTarget.Name}. Cost $30,000.";
+            }
+            return "❌ Not enough money (need $30,000)";
+        }
+        return "❌ Rival family not found";
     }
 
     private string GetStatusReport()

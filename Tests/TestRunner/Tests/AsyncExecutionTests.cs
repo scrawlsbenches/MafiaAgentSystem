@@ -76,7 +76,7 @@ public class AsyncExecutionTests
     }
 
     [Test]
-    public async Task AsyncRule_Registration_Works()
+    public void AsyncRule_Registration_Works()
     {
         using var engine = new RulesEngineCore<int>();
 
@@ -117,7 +117,7 @@ public class AsyncExecutionTests
     }
 
     [Test]
-    public async Task AsyncRuleBuilder_Validation_ThrowsOnMissingFields()
+    public void AsyncRuleBuilder_Validation_ThrowsOnMissingFields()
     {
         bool threw = false;
         try
@@ -254,11 +254,11 @@ public class AsyncExecutionTests
         var result = results.First();
         Assert.False(result.Success);
         Assert.NotNull(result.Exception);
-        Assert.Contains("Condition failed", result.Exception.Message);
+        Assert.Contains("Condition failed", result.Exception!.Message);
     }
 
     [Test]
-    public async Task RegisterAsyncRules_Multiple_Works()
+    public void RegisterAsyncRules_Multiple_Works()
     {
         using var engine = new RulesEngineCore<int>();
 

@@ -21,7 +21,7 @@ public class AgentRoutingTests
             Logs.Add($"Processed: {agent.Name} - {message.Subject} - {result.Success}");
         }
 
-        public void LogMessageRouted(AgentMessage message, IAgent fromAgent, IAgent toAgent)
+        public void LogMessageRouted(AgentMessage message, IAgent? fromAgent, IAgent toAgent)
         {
             Logs.Add($"Routed: {message.Subject} to {toAgent.Name}");
         }
@@ -134,7 +134,7 @@ public class AgentRoutingTests
 
         Assert.True(result.Success);
         Assert.NotNull(result.Response);
-        Assert.Contains("hours", result.Response, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("hours", result.Response!, StringComparison.OrdinalIgnoreCase);
     }
 
     [Test]
