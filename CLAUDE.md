@@ -61,23 +61,26 @@ apt-get install -y dotnet-sdk-8.0 2>&1 | tail -20
 ```
 
 ## Build & Test
-```bash
-# Build everything
-dotnet build
 
-# Build test projects (must be built before running TestRunner)
-dotnet build Tests/RulesEngine.Tests/
-dotnet build Tests/AgentRouting.Tests/
-dotnet build Tests/MafiaDemo.Tests/
+**IMPORTANT: NuGet is blocked by the proxy and will never be available.** This project has zero NuGet dependencies, so use offline restore:
+
+```bash
+# Restore (offline - no NuGet access needed for zero-dependency projects)
+dotnet restore AgentRouting/AgentRouting.sln --source /nonexistent
+
+# Build everything (after restore)
+dotnet build AgentRouting/AgentRouting.sln --no-restore
+
+# Build test projects
+dotnet build Tests/RulesEngine.Tests/ --no-restore
+dotnet build Tests/AgentRouting.Tests/ --no-restore
+dotnet build Tests/MafiaDemo.Tests/ --no-restore
 
 # Run all tests (auto-discovers built test assemblies)
-dotnet run --project Tests/TestRunner/
-
-# Run with coverage report
-dotnet run --project Tests/TestRunner/ -- --coverage
+dotnet run --project Tests/TestRunner/ --no-build
 
 # Run specific test assembly
-dotnet run --project Tests/TestRunner/ -- Tests/RulesEngine.Tests/bin/Debug/net8.0/RulesEngine.Tests.dll
+dotnet run --project Tests/TestRunner/ --no-build -- Tests/RulesEngine.Tests/bin/Debug/net8.0/RulesEngine.Tests.dll
 ```
 
 The test runner has **zero NuGet dependencies** - it uses a custom lightweight test framework.
@@ -120,18 +123,6 @@ dotnet tools/coverage/coverlet/tools/net6.0/any/coverlet.console.dll \
 |--------|------|--------|--------|
 | RulesEngine | 80.98% | 64.95% | 88.05% |
 | AgentRouting | 47.80% | 46.39% | 59.71% |
-
-### Offline Build (No NuGet Access)
-
-If NuGet is blocked by proxy, use this workaround:
-
-```bash
-# Restore with no external sources (works for zero-dependency projects)
-dotnet restore AgentRouting/AgentRouting.sln --source /nonexistent
-
-# Build without restore
-dotnet build AgentRouting/AgentRouting.sln --no-restore
-```
 
 ### Test Project Structure
 
