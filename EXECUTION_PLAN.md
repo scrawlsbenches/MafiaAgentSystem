@@ -11,7 +11,9 @@
 - [x] .NET SDK 8.0.122 installed ✅
 - [x] Build succeeds (0 errors in core + MafiaDemo) ✅
 - [x] Test baseline: 39 tests, all passing ✅
-- [ ] MVP game loop verification pending
+- [x] MVP game verified: All 8 scenarios run ✅
+
+**ALL BATCHES COMPLETE**
 
 ---
 
