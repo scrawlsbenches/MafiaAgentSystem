@@ -62,7 +62,7 @@ class AutonomousPlaythroughDemo
         router.RegisterAgent(new GodfatherAgent("godfather-001", "Don Vito Corleone", logger));
         router.RegisterAgent(new UnderbossAgent("underboss-001", "Peter Clemenza", logger));
         router.RegisterAgent(new ConsigliereAgent("consigliere-001", "Tom Hagen", logger));
-        router.RegisterAgent(new CapoAgent("capo-001", "Sonny Corleone", logger));
+        router.RegisterAgent(new CapoAgent("capo-001", "Sonny Corleone", logger, new List<string> { "soldier-001" }));
         router.RegisterAgent(new SoldierAgent("soldier-001", "Luca Brasi", logger));
         
         // Setup routing rules

@@ -22,6 +22,22 @@ public class GameState
 
     public bool GameOver { get; set; } = false;
     public string? GameOverReason { get; set; }
+
+    // Computed properties for rules engine compatibility
+    public int Day => Week; // Alias for Week
+    public int SoldierCount { get; set; } = 5;
+    public decimal TotalRevenue => Territories.Values.Sum(t => t.WeeklyRevenue);
+    public int TerritoryCount => Territories.Count;
+}
+
+/// <summary>
+/// Simple data class for game engine NPC tracking (not a full Agent)
+/// </summary>
+public class GameAgentData
+{
+    public string AgentId { get; set; } = "";
+    public AgentPersonality Personality { get; set; } = new();
+    public int ActionCooldown { get; set; } = 0;
 }
 
 public class Territory
@@ -129,10 +145,13 @@ public class AgentDecision
 public class MafiaGameEngine
 {
     private readonly GameState _state;
-    private readonly AgentRouter _router;
+    private readonly AgentRouter? _router;
+    private readonly IAgentLogger _logger;
+    private readonly Dictionary<string, GameAgentData> _gameAgents;
     private readonly Dictionary<string, AutonomousAgent> _autonomousAgents;
     private readonly Random _random = new();
     private readonly ConcurrentQueue<string> _messageLog = new();
+    private CancellationTokenSource? _cts;
     private bool _running = false;
 
     public GameState State => _state;
@@ -140,9 +159,90 @@ public class MafiaGameEngine
     public MafiaGameEngine(AgentRouter router)
     {
         _router = router;
+        _logger = new ConsoleAgentLogger();
         _state = new GameState();
+        _gameAgents = new Dictionary<string, GameAgentData>();
         _autonomousAgents = new Dictionary<string, AutonomousAgent>();
         InitializeGame();
+    }
+
+    public MafiaGameEngine(IAgentLogger logger)
+    {
+        _logger = logger;
+        _router = new AgentRouter(logger);
+        _state = new GameState();
+        _gameAgents = new Dictionary<string, GameAgentData>();
+        _autonomousAgents = new Dictionary<string, AutonomousAgent>();
+        InitializeGame();
+    }
+
+    /// <summary>
+    /// Register an autonomous agent for the simulation
+    /// </summary>
+    public void RegisterAutonomousAgent(AutonomousAgent agent)
+    {
+        _autonomousAgents[agent.Id] = agent;
+        _router?.RegisterAgent(agent);
+    }
+
+    /// <summary>
+    /// Setup routing rules for the family hierarchy
+    /// </summary>
+    public void SetupRoutingRules()
+    {
+        if (_router == null) return;
+
+        // The Don handles final decisions
+        _router.AddRoutingRule("GODFATHER", "Godfather decisions",
+            ctx => ctx.Category == "FinalDecision" || ctx.Category == "MajorDispute",
+            "godfather-001", priority: 1000);
+
+        // Underboss handles daily operations
+        _router.AddRoutingRule("UNDERBOSS", "Underboss operations",
+            ctx => ctx.Category == "DailyOperations",
+            "underboss-001", priority: 800);
+
+        // Consigliere handles legal
+        _router.AddRoutingRule("CONSIGLIERE", "Legal matters",
+            ctx => ctx.Category == "Legal",
+            "consigliere-001", priority: 900);
+    }
+
+    /// <summary>
+    /// Start the autonomous game loop
+    /// </summary>
+    public async Task StartGameAsync()
+    {
+        _running = true;
+        _cts = new CancellationTokenSource();
+
+        Console.WriteLine("\n🎮 Game started! Press Ctrl+C to stop.\n");
+
+        while (_running && !_state.GameOver && !_cts.Token.IsCancellationRequested)
+        {
+            var events = await ExecuteTurnAsync();
+            foreach (var evt in events)
+            {
+                Console.WriteLine(evt);
+            }
+
+            if (_state.GameOver)
+            {
+                Console.WriteLine($"\n🎬 GAME OVER: {_state.GameOverReason}");
+                break;
+            }
+
+            await Task.Delay(2000, _cts.Token);
+        }
+    }
+
+    /// <summary>
+    /// Stop the game
+    /// </summary>
+    public void StopGame()
+    {
+        _running = false;
+        _cts?.Cancel();
     }
 
     private void InitializeGame()
@@ -190,20 +290,20 @@ public class MafiaGameEngine
             Hostility = 30
         };
 
-        // Initialize autonomous agents
-        _autonomousAgents["underboss-001"] = new AutonomousAgent
+        // Initialize game agent data for simulation
+        _gameAgents["underboss-001"] = new GameAgentData
         {
             AgentId = "underboss-001",
             Personality = new AgentPersonality { Aggression = 60, Greed = 70, Loyalty = 90, Ambition = 40 }
         };
 
-        _autonomousAgents["capo-001"] = new AutonomousAgent
+        _gameAgents["capo-001"] = new GameAgentData
         {
             AgentId = "capo-001",
             Personality = new AgentPersonality { Aggression = 80, Greed = 60, Loyalty = 70, Ambition = 70 }
         };
 
-        _autonomousAgents["soldier-001"] = new AutonomousAgent
+        _gameAgents["soldier-001"] = new GameAgentData
         {
             AgentId = "soldier-001",
             Personality = new AgentPersonality { Aggression = 90, Greed = 40, Loyalty = 95, Ambition = 30 }
@@ -356,7 +456,7 @@ public class MafiaGameEngine
         events.Add("🤖 AUTONOMOUS AGENT ACTIONS");
         events.Add("───────────────────────────");
 
-        foreach (var agent in _autonomousAgents.Values)
+        foreach (var agent in _gameAgents.Values)
         {
             if (agent.ActionCooldown > 0)
             {
@@ -388,7 +488,7 @@ public class MafiaGameEngine
         return events;
     }
 
-    private string? DecideAction(AutonomousAgent agent)
+    private string? DecideAction(GameAgentData agent)
     {
         var roll = _random.Next(100);
 
@@ -413,8 +513,9 @@ public class MafiaGameEngine
         return null;
     }
 
-    private async Task<string?> ExecuteAgentAction(AutonomousAgent agent, string action)
+    private async Task<string?> ExecuteAgentAction(GameAgentData agent, string action)
     {
+        await Task.CompletedTask; // Make async warning go away
         switch (action)
         {
             case "intimidate":

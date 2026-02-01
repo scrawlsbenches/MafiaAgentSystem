@@ -191,7 +191,7 @@ public class PlayerAgent
             GameState = gameState
         };
         
-        var matchedRules = _decisionRules.EvaluateAll(context);
+        var matchedRules = _decisionRules.GetMatchingRules(context);
         
         if (!matchedRules.Any())
         {
