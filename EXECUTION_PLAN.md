@@ -200,7 +200,7 @@ Completed:
 - Standardize middleware constructor patterns
 - Add service registration extensions
 
-**Tasks** (8 total, 19-25h estimated):
+**P1-DI Tasks** (8 tasks, 19-25h estimated):
 
 | Task ID | Description | Status |
 |---------|-------------|--------|
@@ -213,6 +213,17 @@ Completed:
 | P1-DI-7 | Update demos to use container | ⏳ Pending |
 | P1-DI-8 | Add DI tests | ⏳ Pending |
 
+**P1-IF Tasks** (6 tasks, 12-16h estimated):
+
+| Task ID | Description | Status |
+|---------|-------------|--------|
+| P1-IF-1 | Extract IRulesEngineResult interface | ⏳ Pending |
+| P1-IF-2 | Extract IRuleExecutionResult<T> interface | ⏳ Pending |
+| P1-IF-3 | Extract ITraceSpan interface | ⏳ Pending |
+| P1-IF-4 | Extract IMiddlewareContext interface | ⏳ Pending |
+| P1-IF-5 | Extract IMetricsSnapshot + IAnalyticsReport | ⏳ Pending |
+| P1-IF-6 | Extract IWorkflowDefinition + IWorkflowStage | ⏳ Pending |
+
 **Batch Plan**:
 
 ```
@@ -221,17 +232,27 @@ Batch DI-A (Parallel - new files):
 ├── P1-DI-2: IMiddlewarePipeline
 └── P1-DI-3: IRulesEngine
 
-Batch DI-B (Sequential - depends on A):
+Batch IF-A (Parallel - all independent, can run with DI-A):
+├── P1-IF-1: IRulesEngineResult
+├── P1-IF-2: IRuleExecutionResult<T>
+├── P1-IF-3: ITraceSpan
+├── P1-IF-4: IMiddlewareContext
+├── P1-IF-5: IMetricsSnapshot + IAnalyticsReport
+└── P1-IF-6: IWorkflowDefinition + IWorkflowStage
+
+Batch DI-B (Sequential - depends on DI-A):
 ├── P1-DI-4: AgentRouter refactoring
 └── P1-DI-5: Middleware constructors
 
-Batch DI-C (Parallel - after B):
+Batch DI-C (Parallel - after DI-B):
 ├── P1-DI-6: ServiceExtensions
 ├── P1-DI-7: Demo updates
 └── P1-DI-8: DI tests
 ```
 
 **Gate G6**: Build succeeds, all tests pass (184+), new DI tests pass
+
+**Total Phase 6 Estimate**: 31-41 hours (14 tasks)
 
 ---
 

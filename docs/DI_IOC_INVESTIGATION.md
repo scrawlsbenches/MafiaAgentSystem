@@ -292,6 +292,165 @@ P1-DI-3 ─┘
 
 ---
 
+## Interface Extraction Analysis
+
+Beyond the IoC container work, several concrete classes would benefit from interface extraction.
+
+### Already Planned (in P1-DI)
+
+| Interface | Class | Task |
+|-----------|-------|------|
+| `IRulesEngine<T>` | `RulesEngineCore<T>` | P1-DI-3 |
+| `IMiddlewarePipeline` | `MiddlewarePipeline` | P1-DI-2 |
+
+### High Priority Additions
+
+#### 1. IRulesEngineResult
+
+**File**: `RulesEngine/RulesEngine/Core/RulesEngineCore.cs`
+
+**Why**: Returned from `RulesEngineCore.Execute()`, contains mutable state, different result types might be needed for different execution strategies.
+
+```csharp
+public interface IRulesEngineResult
+{
+    IReadOnlyList<RuleResult> RuleResults { get; }
+    TimeSpan TotalExecutionTime { get; }
+    int TotalRulesEvaluated { get; }
+    int MatchedRules { get; }
+    int ExecutedActions { get; }
+    int Errors { get; }
+    List<RuleResult> GetMatchedRules();
+}
+```
+
+#### 2. IRuleExecutionResult<T>
+
+**File**: `RulesEngine/RulesEngine/Core/RulesEngineCore.cs`
+
+**Why**: Returned from `ExecuteAsync`, generic container for both sync and async rule results.
+
+```csharp
+public interface IRuleExecutionResult<T>
+{
+    IRule<T>? Rule { get; }
+    IAsyncRule<T>? AsyncRule { get; }
+    string RuleId { get; }
+    RuleResult ExecutionResult { get; }
+    bool WasEvaluated { get; }
+}
+```
+
+### Medium Priority Additions
+
+#### 3. ITraceSpan
+
+**File**: `AgentRouting/AgentRouting/Middleware/AdvancedMiddleware.cs`
+
+**Why**: Used in `DistributedTracingMiddleware`, could support multiple tracing backends (Jaeger, Zipkin).
+
+```csharp
+public interface ITraceSpan
+{
+    string TraceId { get; }
+    string SpanId { get; }
+    string? ParentSpanId { get; }
+    string ServiceName { get; }
+    string OperationName { get; }
+    DateTime StartTime { get; }
+    TimeSpan Duration { get; set; }
+    bool Success { get; set; }
+    IDictionary<string, string> Tags { get; }
+}
+```
+
+#### 4. IMiddlewareContext
+
+**File**: `AgentRouting/AgentRouting/Middleware/MiddlewareInfrastructure.cs`
+
+**Why**: Middleware data storage, could have distributed implementations.
+
+```csharp
+public interface IMiddlewareContext
+{
+    T? Get<T>(string key);
+    void Set<T>(string key, T value);
+    bool TryGet<T>(string key, out T? value);
+}
+```
+
+#### 5. IMetricsSnapshot
+
+**File**: `AgentRouting/AgentRouting/Middleware/CommonMiddleware.cs`
+
+**Why**: Returned from `MetricsMiddleware.GetSnapshot()`, supports different metrics formats.
+
+```csharp
+public interface IMetricsSnapshot
+{
+    int TotalMessages { get; }
+    int SuccessCount { get; }
+    int FailureCount { get; }
+    double SuccessRate { get; }
+    double AverageProcessingTimeMs { get; }
+    long MinProcessingTimeMs { get; }
+    long MaxProcessingTimeMs { get; }
+}
+```
+
+#### 6. IAnalyticsReport
+
+**File**: `AgentRouting/AgentRouting/Middleware/CommonMiddleware.cs`
+
+**Why**: Returned from `AnalyticsMiddleware.GetReport()`, different analytics backends.
+
+```csharp
+public interface IAnalyticsReport
+{
+    int TotalMessages { get; }
+    IReadOnlyDictionary<string, int> CategoryCounts { get; }
+    IReadOnlyDictionary<string, int> AgentWorkload { get; }
+}
+```
+
+#### 7. IWorkflowDefinition / IWorkflowStage
+
+**File**: `AgentRouting/AgentRouting/Middleware/AdvancedMiddleware.cs`
+
+**Why**: Workflow orchestration abstraction, different workflow engine implementations.
+
+```csharp
+public interface IWorkflowDefinition
+{
+    string Id { get; }
+    IReadOnlyList<IWorkflowStage> Stages { get; }
+}
+
+public interface IWorkflowStage
+{
+    string Name { get; }
+    Func<AgentMessage, Task<bool>>? OnEnter { get; }
+    IReadOnlyList<(string condition, string nextStage)> Transitions { get; }
+}
+```
+
+### Lower Priority
+
+| Interface | Class | Reason |
+|-----------|-------|--------|
+| `IRulePerformanceMetrics` | `RulePerformanceMetrics` | Performance tracking data |
+| `IRoutingContext` | `RoutingContext` | Context for routing rules |
+
+### Not Recommended
+
+These don't need interfaces:
+- **Configuration classes** (`AgentRoutingDefaults`, `MiddlewareDefaults`) - static holders
+- **Options classes** (`RulesEngineOptions`) - immutable config
+- **Simple data classes** (`AgentMessage`, `MessageResult`) - well-designed data holders
+- **Exception classes** - correctly designed as concrete
+
+---
+
 ## References
 
 - Phase 5 work: ISystemClock and IStateStore additions

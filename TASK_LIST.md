@@ -14,12 +14,14 @@
 | P0 | Critical Fixes | ✅ **COMPLETE** | 0 tasks |
 | P1 | Core Library Improvements | ✅ **COMPLETE** | 0 tasks |
 | **P1-DI** | **Dependency Injection/IoC** | 🆕 **NEW** | **8 tasks** |
+| **P1-IF** | **Interface Extraction** | 🆕 **NEW** | **6 tasks** |
 | P2 | MafiaDemo Completion | ✅ **COMPLETE** | 0 tasks |
 | P3 | Testing & Quality | 🔄 **PARTIAL** | 7 tasks |
 | P4 | Documentation & Polish | ⏳ **PENDING** | 6 tasks |
 
 **Note**: P2-2 through P2-8 were already implemented. P2-10 integration tests added.
 **New**: P1-DI tasks added for Dependency Injection/IoC improvements (see investigation: `docs/DI_IOC_INVESTIGATION.md`).
+**New**: P1-IF tasks added for interface extraction to improve testability and extensibility.
 
 ---
 
@@ -522,6 +524,260 @@ P1-DI-3 ─┘
 - P1-DI-6: ServiceExtensions (new)
 - P1-DI-7: Demo updates
 - P1-DI-8: DI tests
+
+---
+
+## P1-IF: Interface Extraction 🆕 NEW
+
+Extract interfaces from concrete classes to improve testability, extensibility, and adherence to SOLID principles.
+
+> **Investigation**: See `docs/DI_IOC_INVESTIGATION.md` - Interface Extraction Analysis section.
+> **Note**: P1-DI-2 (IMiddlewarePipeline) and P1-DI-3 (IRulesEngine) already cover two key interfaces.
+> **Total Estimate**: 12-16 hours
+
+### Task P1-IF-1: Extract IRulesEngineResult Interface
+**Estimated Time**: 2 hours
+**Dependencies**: None
+**Files**:
+- `RulesEngine/RulesEngine/Core/IRulesEngineResult.cs` (new)
+- `RulesEngine/RulesEngine/Core/RulesEngineCore.cs` (modify)
+
+**Problem**: `RulesEngineResult` is a concrete class returned from `Execute()`, making it hard to mock.
+
+**Subtasks**:
+- [ ] Create `IRulesEngineResult` interface with read-only contract
+- [ ] Update `RulesEngineResult` to implement interface
+- [ ] Update `RulesEngineCore.Execute()` return type to interface
+- [ ] Update consuming code to use interface
+
+**Interface Definition**:
+```csharp
+public interface IRulesEngineResult
+{
+    IReadOnlyList<RuleResult> RuleResults { get; }
+    TimeSpan TotalExecutionTime { get; }
+    int TotalRulesEvaluated { get; }
+    int MatchedRules { get; }
+    int ExecutedActions { get; }
+    int Errors { get; }
+    List<RuleResult> GetMatchedRules();
+}
+```
+
+**Acceptance Criteria**:
+- Interface extracted and implemented
+- Build succeeds
+- Existing tests pass
+
+---
+
+### Task P1-IF-2: Extract IRuleExecutionResult<T> Interface
+**Estimated Time**: 2 hours
+**Dependencies**: None
+**Files**:
+- `RulesEngine/RulesEngine/Core/IRuleExecutionResult.cs` (new)
+- `RulesEngine/RulesEngine/Core/RulesEngineCore.cs` (modify)
+
+**Problem**: `RuleExecutionResult<T>` is returned from `ExecuteAsync()`, hard to mock async results.
+
+**Subtasks**:
+- [ ] Create `IRuleExecutionResult<T>` interface
+- [ ] Update `RuleExecutionResult<T>` to implement interface
+- [ ] Update `ExecuteAsync()` return type to use interface
+- [ ] Update consuming code
+
+**Interface Definition**:
+```csharp
+public interface IRuleExecutionResult<T>
+{
+    IRule<T>? Rule { get; }
+    IAsyncRule<T>? AsyncRule { get; }
+    string RuleId { get; }
+    RuleResult ExecutionResult { get; }
+    bool WasEvaluated { get; }
+}
+```
+
+**Acceptance Criteria**:
+- Interface extracted and implemented
+- Async execution tests pass
+
+---
+
+### Task P1-IF-3: Extract ITraceSpan Interface
+**Estimated Time**: 2 hours
+**Dependencies**: None
+**Files**:
+- `AgentRouting/AgentRouting/Middleware/ITraceSpan.cs` (new)
+- `AgentRouting/AgentRouting/Middleware/AdvancedMiddleware.cs` (modify)
+
+**Problem**: `TraceSpan` is used in `DistributedTracingMiddleware`, could support multiple backends.
+
+**Subtasks**:
+- [ ] Create `ITraceSpan` interface
+- [ ] Update `TraceSpan` to implement interface
+- [ ] Update `DistributedTracingMiddleware` to use interface
+- [ ] Allow custom span factories for different backends
+
+**Interface Definition**:
+```csharp
+public interface ITraceSpan
+{
+    string TraceId { get; }
+    string SpanId { get; }
+    string? ParentSpanId { get; }
+    string ServiceName { get; }
+    string OperationName { get; }
+    DateTime StartTime { get; }
+    TimeSpan Duration { get; set; }
+    bool Success { get; set; }
+    IDictionary<string, string> Tags { get; }
+}
+```
+
+**Acceptance Criteria**:
+- Interface extracted
+- Tracing middleware uses interface
+- Custom span implementations possible
+
+---
+
+### Task P1-IF-4: Extract IMiddlewareContext Interface
+**Estimated Time**: 2 hours
+**Dependencies**: None
+**Files**:
+- `AgentRouting/AgentRouting/Middleware/IMiddlewareContext.cs` (new)
+- `AgentRouting/AgentRouting/Middleware/MiddlewareInfrastructure.cs` (modify)
+
+**Problem**: `MiddlewareContext` stores middleware data, could have distributed implementations.
+
+**Subtasks**:
+- [ ] Create `IMiddlewareContext` interface
+- [ ] Update `MiddlewareContext` to implement interface
+- [ ] Update middleware that uses context to depend on interface
+- [ ] Enable distributed context implementations
+
+**Interface Definition**:
+```csharp
+public interface IMiddlewareContext
+{
+    T? Get<T>(string key);
+    void Set<T>(string key, T value);
+    bool TryGet<T>(string key, out T? value);
+}
+```
+
+**Acceptance Criteria**:
+- Interface extracted
+- Middleware uses interface
+- Alternative implementations possible
+
+---
+
+### Task P1-IF-5: Extract IMetricsSnapshot and IAnalyticsReport Interfaces
+**Estimated Time**: 2-3 hours
+**Dependencies**: None
+**Files**:
+- `AgentRouting/AgentRouting/Middleware/IMetricsSnapshot.cs` (new)
+- `AgentRouting/AgentRouting/Middleware/IAnalyticsReport.cs` (new)
+- `AgentRouting/AgentRouting/Middleware/CommonMiddleware.cs` (modify)
+
+**Problem**: Metrics and analytics reports are concrete, preventing alternative reporting formats.
+
+**Subtasks**:
+- [ ] Create `IMetricsSnapshot` interface
+- [ ] Create `IAnalyticsReport` interface
+- [ ] Update `MetricsSnapshot` to implement interface
+- [ ] Update `AnalyticsReport` to implement interface
+- [ ] Update middleware `GetSnapshot()`/`GetReport()` return types
+
+**Interface Definitions**:
+```csharp
+public interface IMetricsSnapshot
+{
+    int TotalMessages { get; }
+    int SuccessCount { get; }
+    int FailureCount { get; }
+    double SuccessRate { get; }
+    double AverageProcessingTimeMs { get; }
+}
+
+public interface IAnalyticsReport
+{
+    int TotalMessages { get; }
+    IReadOnlyDictionary<string, int> CategoryCounts { get; }
+    IReadOnlyDictionary<string, int> AgentWorkload { get; }
+}
+```
+
+**Acceptance Criteria**:
+- Both interfaces extracted
+- Middleware returns interfaces
+- Different report formats possible
+
+---
+
+### Task P1-IF-6: Extract IWorkflowDefinition and IWorkflowStage Interfaces
+**Estimated Time**: 2-3 hours
+**Dependencies**: None
+**Files**:
+- `AgentRouting/AgentRouting/Middleware/IWorkflowDefinition.cs` (new)
+- `AgentRouting/AgentRouting/Middleware/AdvancedMiddleware.cs` (modify)
+
+**Problem**: Workflow definitions are concrete, limiting workflow engine extensibility.
+
+**Subtasks**:
+- [ ] Create `IWorkflowDefinition` interface
+- [ ] Create `IWorkflowStage` interface
+- [ ] Update `WorkflowDefinition` and `WorkflowStage` to implement interfaces
+- [ ] Update `WorkflowOrchestrationMiddleware` to use interfaces
+- [ ] Enable custom workflow implementations
+
+**Interface Definitions**:
+```csharp
+public interface IWorkflowDefinition
+{
+    string Id { get; }
+    IReadOnlyList<IWorkflowStage> Stages { get; }
+}
+
+public interface IWorkflowStage
+{
+    string Name { get; }
+    Func<AgentMessage, Task<bool>>? OnEnter { get; }
+    IReadOnlyList<(string condition, string nextStage)> Transitions { get; }
+}
+```
+
+**Acceptance Criteria**:
+- Workflow interfaces extracted
+- Orchestration middleware uses interfaces
+- Custom workflow engines possible
+
+---
+
+### P1-IF Dependency Graph
+
+All P1-IF tasks are independent and can run in parallel:
+
+```
+P1-IF-1 (IRulesEngineResult)      ─┐
+P1-IF-2 (IRuleExecutionResult<T>) ─┤
+P1-IF-3 (ITraceSpan)              ─┼─→ All independent, can parallelize
+P1-IF-4 (IMiddlewareContext)      ─┤
+P1-IF-5 (IMetrics/IAnalytics)     ─┤
+P1-IF-6 (IWorkflow)               ─┘
+```
+
+### P1-IF Batch Plan
+
+**Single Batch** (All parallel - no dependencies):
+- P1-IF-1: IRulesEngineResult
+- P1-IF-2: IRuleExecutionResult<T>
+- P1-IF-3: ITraceSpan
+- P1-IF-4: IMiddlewareContext
+- P1-IF-5: IMetricsSnapshot + IAnalyticsReport
+- P1-IF-6: IWorkflowDefinition + IWorkflowStage
 
 ---
 
