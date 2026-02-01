@@ -1,6 +1,7 @@
 using TestRunner.Framework;
 using RulesEngine.Core;
 using AgentRouting.Core;
+using AgentRouting.Infrastructure;
 using AgentRouting.Middleware;
 using System.Diagnostics;
 
@@ -222,7 +223,7 @@ public class BenchmarkTests
     [Test]
     public async Task Benchmark_RateLimitMiddleware()
     {
-        var middleware = new RateLimitMiddleware(maxRequests: 100000, window: TimeSpan.FromMinutes(1));
+        var middleware = new RateLimitMiddleware(new InMemoryStateStore(), maxRequests: 100000, window: TimeSpan.FromMinutes(1), SystemClock.Instance);
         MessageDelegate handler = (msg, ct) => Task.FromResult(MessageResult.Ok("Done"));
 
         var message = CreateTestMessage();

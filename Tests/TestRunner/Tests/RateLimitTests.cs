@@ -1,5 +1,6 @@
 using TestRunner.Framework;
 using AgentRouting.Core;
+using AgentRouting.Infrastructure;
 using AgentRouting.Middleware;
 
 namespace TestRunner.Tests;
@@ -31,7 +32,7 @@ public class RateLimitTests
     [Test]
     public async Task UnderLimit_AllowsRequests()
     {
-        var middleware = new RateLimitMiddleware(maxRequests: 10, window: TimeSpan.FromMinutes(1));
+        var middleware = new RateLimitMiddleware(new InMemoryStateStore(), maxRequests: 10, window: TimeSpan.FromMinutes(1), SystemClock.Instance);
 
         for (int i = 0; i < 5; i++)
         {
@@ -47,7 +48,7 @@ public class RateLimitTests
     [Test]
     public async Task AtLimit_BlocksRequests()
     {
-        var middleware = new RateLimitMiddleware(maxRequests: 3, window: TimeSpan.FromMinutes(1));
+        var middleware = new RateLimitMiddleware(new InMemoryStateStore(), maxRequests: 3, window: TimeSpan.FromMinutes(1), SystemClock.Instance);
 
         // First 3 requests should succeed
         for (int i = 0; i < 3; i++)
@@ -74,7 +75,7 @@ public class RateLimitTests
     [Test]
     public async Task DifferentSenders_HaveSeparateLimits()
     {
-        var middleware = new RateLimitMiddleware(maxRequests: 2, window: TimeSpan.FromMinutes(1));
+        var middleware = new RateLimitMiddleware(new InMemoryStateStore(), maxRequests: 2, window: TimeSpan.FromMinutes(1), SystemClock.Instance);
 
         // Sender A uses both requests
         for (int i = 0; i < 2; i++)
@@ -107,7 +108,7 @@ public class RateLimitTests
     [Test]
     public async Task ConcurrentRequests_ThreadSafe()
     {
-        var middleware = new RateLimitMiddleware(maxRequests: 100, window: TimeSpan.FromMinutes(1));
+        var middleware = new RateLimitMiddleware(new InMemoryStateStore(), maxRequests: 100, window: TimeSpan.FromMinutes(1), SystemClock.Instance);
         var successCount = 0;
         var failCount = 0;
 
@@ -139,7 +140,7 @@ public class RateLimitTests
     [Test]
     public async Task ZeroLimit_BlocksAllRequests()
     {
-        var middleware = new RateLimitMiddleware(maxRequests: 0, window: TimeSpan.FromMinutes(1));
+        var middleware = new RateLimitMiddleware(new InMemoryStateStore(), maxRequests: 0, window: TimeSpan.FromMinutes(1), SystemClock.Instance);
 
         var result = await middleware.InvokeAsync(
             CreateTestMessage(),
@@ -152,7 +153,7 @@ public class RateLimitTests
     [Test]
     public async Task LargeLimit_AllowsManyRequests()
     {
-        var middleware = new RateLimitMiddleware(maxRequests: 10000, window: TimeSpan.FromMinutes(1));
+        var middleware = new RateLimitMiddleware(new InMemoryStateStore(), maxRequests: 10000, window: TimeSpan.FromMinutes(1), SystemClock.Instance);
 
         for (int i = 0; i < 1000; i++)
         {

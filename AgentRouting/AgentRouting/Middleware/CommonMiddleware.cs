@@ -92,27 +92,29 @@ public class RateLimitMiddleware : MiddlewareBase
     private readonly int _maxRequests;
     private readonly TimeSpan _window;
     private readonly ISystemClock _clock;
-    private readonly ConcurrentDictionary<string, RateLimitState> _state = new();
+    private readonly IStateStore _store;
 
     /// <summary>
     /// Creates a rate limiter with default settings from MiddlewareDefaults.
     /// </summary>
-    public RateLimitMiddleware()
-        : this(MiddlewareDefaults.RateLimitDefaultMaxRequests, MiddlewareDefaults.RateLimitDefaultWindow, null)
+    public RateLimitMiddleware(IStateStore store)
+        : this(store, MiddlewareDefaults.RateLimitDefaultMaxRequests, MiddlewareDefaults.RateLimitDefaultWindow, SystemClock.Instance)
     {
     }
 
     /// <summary>
     /// Creates a rate limiter with custom settings.
     /// </summary>
+    /// <param name="store">State store for persisting rate limit data.</param>
     /// <param name="maxRequests">Maximum requests allowed within the time window.</param>
     /// <param name="window">Time window for rate limiting.</param>
-    /// <param name="clock">Clock for time operations. Defaults to SystemClock.Instance for testability.</param>
-    public RateLimitMiddleware(int maxRequests, TimeSpan window, ISystemClock? clock = null)
+    /// <param name="clock">Clock for time operations.</param>
+    public RateLimitMiddleware(IStateStore store, int maxRequests, TimeSpan window, ISystemClock clock)
     {
+        _store = store;
         _maxRequests = maxRequests;
         _window = window;
-        _clock = clock ?? SystemClock.Instance;
+        _clock = clock;
     }
 
     public override Task<MessageResult> InvokeAsync(
@@ -120,29 +122,29 @@ public class RateLimitMiddleware : MiddlewareBase
         MessageDelegate next,
         CancellationToken ct)
     {
-        var key = message.SenderId;
+        var storeKey = $"ratelimit:{message.SenderId}";
         var now = _clock.UtcNow;
-        
-        var state = _state.GetOrAdd(key, _ => new RateLimitState());
-        
+
+        var state = _store.GetOrAdd(storeKey, _ => new RateLimitState());
+
         lock (state)
         {
             // Remove old timestamps
             state.Timestamps.RemoveAll(t => now - t > _window);
-            
+
             // Check limit
             if (state.Timestamps.Count >= _maxRequests)
             {
                 return Task.FromResult(ShortCircuit($"Rate limit exceeded. Max {_maxRequests} requests per {_window.TotalSeconds}s"));
             }
-            
+
             // Add current timestamp
             state.Timestamps.Add(now);
         }
-        
+
         return next(message, ct);
     }
-    
+
     private class RateLimitState
     {
         public List<DateTime> Timestamps { get; } = new();
@@ -154,45 +156,51 @@ public class RateLimitMiddleware : MiddlewareBase
 /// </summary>
 public class CachingMiddleware : MiddlewareBase
 {
+    private const string CacheStateKey = "caching:state";
     private readonly TimeSpan _ttl;
     private readonly int _maxEntries;
     private readonly ISystemClock _clock;
-    private readonly ConcurrentDictionary<string, CacheEntry> _cache = new();
+    private readonly IStateStore _store;
 
     /// <summary>
     /// Creates a caching middleware with default settings from MiddlewareDefaults.
     /// </summary>
-    public CachingMiddleware()
-        : this(MiddlewareDefaults.CacheDefaultTtl, MiddlewareDefaults.CacheMaxEntries, null)
+    public CachingMiddleware(IStateStore store)
+        : this(store, MiddlewareDefaults.CacheDefaultTtl, MiddlewareDefaults.CacheMaxEntries, SystemClock.Instance)
     {
     }
 
     /// <summary>
     /// Creates a caching middleware with custom TTL.
     /// </summary>
+    /// <param name="store">State store for persisting cache data.</param>
     /// <param name="ttl">Time-to-live for cached entries.</param>
-    public CachingMiddleware(TimeSpan ttl)
-        : this(ttl, MiddlewareDefaults.CacheMaxEntries, null)
+    public CachingMiddleware(IStateStore store, TimeSpan ttl)
+        : this(store, ttl, MiddlewareDefaults.CacheMaxEntries, SystemClock.Instance)
     {
     }
 
     /// <summary>
     /// Creates a caching middleware with custom TTL and max entries.
     /// </summary>
+    /// <param name="store">State store for persisting cache data.</param>
     /// <param name="ttl">Time-to-live for cached entries.</param>
     /// <param name="maxEntries">Maximum number of cache entries.</param>
-    /// <param name="clock">Clock for time operations. Defaults to SystemClock.Instance for testability.</param>
-    public CachingMiddleware(TimeSpan ttl, int maxEntries, ISystemClock? clock = null)
+    /// <param name="clock">Clock for time operations.</param>
+    public CachingMiddleware(IStateStore store, TimeSpan ttl, int maxEntries, ISystemClock clock)
     {
+        _store = store;
         _ttl = ttl;
         _maxEntries = maxEntries;
-        _clock = clock ?? SystemClock.Instance;
+        _clock = clock;
     }
+
+    private CacheState GetCacheState() => _store.GetOrAdd(CacheStateKey, _ => new CacheState());
 
     /// <summary>
     /// Gets the current number of entries in the cache.
     /// </summary>
-    public int Count => _cache.Count;
+    public int Count => GetCacheState().Cache.Count;
 
     public override async Task<MessageResult> InvokeAsync(
         AgentMessage message,
@@ -200,9 +208,10 @@ public class CachingMiddleware : MiddlewareBase
         CancellationToken ct)
     {
         var key = GenerateCacheKey(message);
+        var cacheState = GetCacheState();
 
         // Check cache
-        if (_cache.TryGetValue(key, out var entry))
+        if (cacheState.Cache.TryGetValue(key, out var entry))
         {
             // Check expiration
             if (_clock.UtcNow - entry.CachedAt < _ttl)
@@ -213,7 +222,7 @@ public class CachingMiddleware : MiddlewareBase
             }
 
             // Expired, remove it
-            _cache.TryRemove(key, out _);
+            cacheState.Cache.TryRemove(key, out _);
         }
 
         Console.WriteLine($"[Cache] MISS: {message.Subject}");
@@ -224,7 +233,7 @@ public class CachingMiddleware : MiddlewareBase
         if (result.Success)
         {
             var now = _clock.UtcNow;
-            _cache[key] = new CacheEntry
+            cacheState.Cache[key] = new CacheEntry
             {
                 Result = result,
                 CachedAt = now,
@@ -232,7 +241,7 @@ public class CachingMiddleware : MiddlewareBase
             };
 
             // Evict if cache exceeds max size
-            EvictIfNeeded();
+            EvictIfNeeded(cacheState);
         }
 
         return result;
@@ -242,20 +251,20 @@ public class CachingMiddleware : MiddlewareBase
     /// Evicts least recently used entries when cache exceeds max size.
     /// Removes 10% extra entries as buffer to avoid frequent evictions.
     /// </summary>
-    private void EvictIfNeeded()
+    private void EvictIfNeeded(CacheState cacheState)
     {
-        if (_cache.Count <= _maxEntries)
+        if (cacheState.Cache.Count <= _maxEntries)
             return;
 
         // Remove oldest by last access time (LRU)
-        var entriesToRemove = _cache
+        var entriesToRemove = cacheState.Cache
             .OrderBy(kvp => kvp.Value.LastAccessedAt)
-            .Take(_cache.Count - _maxEntries + (_maxEntries / 10)) // Remove 10% extra for buffer
+            .Take(cacheState.Cache.Count - _maxEntries + (_maxEntries / 10)) // Remove 10% extra for buffer
             .Select(kvp => kvp.Key)
             .ToList();
 
         foreach (var key in entriesToRemove)
-            _cache.TryRemove(key, out _);
+            cacheState.Cache.TryRemove(key, out _);
     }
 
     /// <summary>
@@ -263,7 +272,7 @@ public class CachingMiddleware : MiddlewareBase
     /// </summary>
     public void Clear()
     {
-        _cache.Clear();
+        GetCacheState().Cache.Clear();
     }
 
     /// <summary>
@@ -272,19 +281,25 @@ public class CachingMiddleware : MiddlewareBase
     /// </summary>
     public void CleanupExpired()
     {
-        var now = DateTime.UtcNow;
-        var expiredKeys = _cache
+        var cacheState = GetCacheState();
+        var now = _clock.UtcNow;
+        var expiredKeys = cacheState.Cache
             .Where(kvp => now - kvp.Value.CachedAt >= _ttl)
             .Select(kvp => kvp.Key)
             .ToList();
 
         foreach (var key in expiredKeys)
-            _cache.TryRemove(key, out _);
+            cacheState.Cache.TryRemove(key, out _);
     }
 
     private string GenerateCacheKey(AgentMessage message)
     {
         return $"{message.SenderId}:{message.Category}:{message.Subject}:{message.Content}";
+    }
+
+    private class CacheState
+    {
+        public ConcurrentDictionary<string, CacheEntry> Cache { get; } = new();
     }
 
     private class CacheEntry
@@ -372,45 +387,50 @@ public class RetryMiddleware : MiddlewareBase
 /// </summary>
 public class CircuitBreakerMiddleware : MiddlewareBase
 {
+    private const string CircuitBreakerStateKey = "circuitbreaker:state";
     private readonly int _failureThreshold;
     private readonly TimeSpan _resetTimeout;
     private readonly TimeSpan _failureWindow;
     private readonly ISystemClock _clock;
-    private readonly Queue<DateTime> _failureTimestamps = new();
-    private readonly object _lock = new();
-    private CircuitState _state = CircuitState.Closed;
-    private DateTime? _openedAt;
+    private readonly IStateStore _store;
 
     /// <summary>
     /// Creates a circuit breaker with default settings from MiddlewareDefaults.
     /// </summary>
-    public CircuitBreakerMiddleware()
+    /// <param name="store">State store for persisting circuit breaker state.</param>
+    public CircuitBreakerMiddleware(IStateStore store)
         : this(
+            store,
             MiddlewareDefaults.CircuitBreakerDefaultThreshold,
             MiddlewareDefaults.CircuitBreakerDefaultTimeout,
             MiddlewareDefaults.CircuitBreakerDefaultFailureWindow,
-            null)
+            SystemClock.Instance)
     {
     }
 
     /// <summary>
     /// Creates a circuit breaker with custom settings.
     /// </summary>
+    /// <param name="store">State store for persisting circuit breaker state.</param>
     /// <param name="failureThreshold">Number of failures within the window before opening.</param>
     /// <param name="resetTimeout">Time to wait before attempting to close an open circuit.</param>
     /// <param name="failureWindow">Sliding time window for counting failures. Defaults to 60 seconds.</param>
     /// <param name="clock">Clock for time operations. Defaults to SystemClock.Instance for testability.</param>
     public CircuitBreakerMiddleware(
+        IStateStore store,
         int failureThreshold,
         TimeSpan? resetTimeout = null,
         TimeSpan? failureWindow = null,
         ISystemClock? clock = null)
     {
+        _store = store;
         _failureThreshold = failureThreshold;
         _resetTimeout = resetTimeout ?? MiddlewareDefaults.CircuitBreakerDefaultTimeout;
         _failureWindow = failureWindow ?? MiddlewareDefaults.CircuitBreakerDefaultFailureWindow;
         _clock = clock ?? SystemClock.Instance;
     }
+
+    private CircuitBreakerState GetState() => _store.GetOrAdd(CircuitBreakerStateKey, _ => new CircuitBreakerState());
 
     /// <summary>
     /// Gets the current number of failures within the sliding window.
@@ -419,10 +439,11 @@ public class CircuitBreakerMiddleware : MiddlewareBase
     {
         get
         {
-            lock (_lock)
+            var state = GetState();
+            lock (state.Lock)
             {
-                PruneOldFailures();
-                return _failureTimestamps.Count;
+                PruneOldFailures(state);
+                return state.FailureTimestamps.Count;
             }
         }
     }
@@ -432,20 +453,22 @@ public class CircuitBreakerMiddleware : MiddlewareBase
         MessageDelegate next,
         CancellationToken ct)
     {
+        var state = GetState();
+
         // Check if we should transition from Open to HalfOpen
-        lock (_lock)
+        lock (state.Lock)
         {
-            if (_state == CircuitState.Open && _openedAt.HasValue)
+            if (state.State == CircuitState.Open && state.OpenedAt.HasValue)
             {
-                if (_clock.UtcNow - _openedAt.Value > _resetTimeout)
+                if (_clock.UtcNow - state.OpenedAt.Value > _resetTimeout)
                 {
                     Console.WriteLine("[Circuit] Attempting to close circuit (half-open state)");
-                    _state = CircuitState.HalfOpen;
+                    state.State = CircuitState.HalfOpen;
                 }
             }
 
             // If circuit is open, fail fast
-            if (_state == CircuitState.Open)
+            if (state.State == CircuitState.Open)
             {
                 return ShortCircuit("Circuit breaker is OPEN - service unavailable");
             }
@@ -455,30 +478,30 @@ public class CircuitBreakerMiddleware : MiddlewareBase
         {
             var result = await next(message, ct);
 
-            lock (_lock)
+            lock (state.Lock)
             {
                 if (result.Success)
                 {
-                    if (_state == CircuitState.HalfOpen)
+                    if (state.State == CircuitState.HalfOpen)
                     {
                         Console.WriteLine("[Circuit] Closing circuit - service recovered");
-                        _state = CircuitState.Closed;
-                        _failureTimestamps.Clear();
+                        state.State = CircuitState.Closed;
+                        state.FailureTimestamps.Clear();
                     }
                     return result;
                 }
                 else
                 {
-                    RecordFailure();
+                    RecordFailure(state);
                     return result;
                 }
             }
         }
         catch (Exception ex)
         {
-            lock (_lock)
+            lock (state.Lock)
             {
-                RecordFailure();
+                RecordFailure(state);
             }
             return MessageResult.Fail($"Circuit breaker caught exception: {ex.Message}");
         }
@@ -486,34 +509,34 @@ public class CircuitBreakerMiddleware : MiddlewareBase
 
     /// <summary>
     /// Records a failure and checks if circuit should open.
-    /// Must be called within a lock.
+    /// Must be called within a lock on state.Lock.
     /// </summary>
-    private void RecordFailure()
+    private void RecordFailure(CircuitBreakerState state)
     {
         var now = _clock.UtcNow;
-        _failureTimestamps.Enqueue(now);
+        state.FailureTimestamps.Enqueue(now);
 
         // Prune failures outside the window
-        PruneOldFailures();
+        PruneOldFailures(state);
 
-        if (_failureTimestamps.Count >= _failureThreshold && _state != CircuitState.Open)
+        if (state.FailureTimestamps.Count >= _failureThreshold && state.State != CircuitState.Open)
         {
-            Console.WriteLine($"[Circuit] OPENING circuit - {_failureTimestamps.Count} failures in {_failureWindow.TotalSeconds}s window");
-            _state = CircuitState.Open;
-            _openedAt = now;
+            Console.WriteLine($"[Circuit] OPENING circuit - {state.FailureTimestamps.Count} failures in {_failureWindow.TotalSeconds}s window");
+            state.State = CircuitState.Open;
+            state.OpenedAt = now;
         }
     }
 
     /// <summary>
     /// Removes failure timestamps that are outside the sliding window.
-    /// Must be called within a lock.
+    /// Must be called within a lock on state.Lock.
     /// </summary>
-    private void PruneOldFailures()
+    private void PruneOldFailures(CircuitBreakerState state)
     {
         var cutoff = _clock.UtcNow - _failureWindow;
-        while (_failureTimestamps.Count > 0 && _failureTimestamps.Peek() < cutoff)
+        while (state.FailureTimestamps.Count > 0 && state.FailureTimestamps.Peek() < cutoff)
         {
-            _failureTimestamps.Dequeue();
+            state.FailureTimestamps.Dequeue();
         }
     }
 
@@ -522,6 +545,14 @@ public class CircuitBreakerMiddleware : MiddlewareBase
         Closed,
         Open,
         HalfOpen
+    }
+
+    private class CircuitBreakerState
+    {
+        public Queue<DateTime> FailureTimestamps { get; } = new();
+        public CircuitState State { get; set; } = CircuitState.Closed;
+        public DateTime? OpenedAt { get; set; }
+        public object Lock { get; } = new();
     }
 }
 

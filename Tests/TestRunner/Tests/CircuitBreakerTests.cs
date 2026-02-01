@@ -1,5 +1,6 @@
 using TestRunner.Framework;
 using AgentRouting.Core;
+using AgentRouting.Infrastructure;
 using AgentRouting.Middleware;
 
 namespace TestRunner.Tests;
@@ -37,6 +38,7 @@ public class CircuitBreakerTests
     public async Task ClosedState_AllowsRequests()
     {
         var middleware = new CircuitBreakerMiddleware(
+            new InMemoryStateStore(),
             failureThreshold: 5,
             resetTimeout: TimeSpan.FromSeconds(30));
 
@@ -52,6 +54,7 @@ public class CircuitBreakerTests
     public async Task FailuresIncrementCounter()
     {
         var middleware = new CircuitBreakerMiddleware(
+            new InMemoryStateStore(),
             failureThreshold: 5,
             resetTimeout: TimeSpan.FromSeconds(30));
 
@@ -77,6 +80,7 @@ public class CircuitBreakerTests
     public async Task ThresholdReached_OpensCircuit()
     {
         var middleware = new CircuitBreakerMiddleware(
+            new InMemoryStateStore(),
             failureThreshold: 3,
             resetTimeout: TimeSpan.FromSeconds(30));
 
@@ -104,6 +108,7 @@ public class CircuitBreakerTests
     public async Task OpenCircuit_FailsFast()
     {
         var middleware = new CircuitBreakerMiddleware(
+            new InMemoryStateStore(),
             failureThreshold: 2,
             resetTimeout: TimeSpan.FromSeconds(30));
 
@@ -139,6 +144,7 @@ public class CircuitBreakerTests
         // Circuit breaker accumulates all failures (not just consecutive)
         // Only HalfOpen → Closed transition resets the count
         var middleware = new CircuitBreakerMiddleware(
+            new InMemoryStateStore(),
             failureThreshold: 3,
             resetTimeout: TimeSpan.FromSeconds(30));
 
@@ -165,6 +171,7 @@ public class CircuitBreakerTests
     public async Task ConcurrentFailures_ThreadSafe()
     {
         var middleware = new CircuitBreakerMiddleware(
+            new InMemoryStateStore(),
             failureThreshold: 50,
             resetTimeout: TimeSpan.FromSeconds(30));
 
@@ -197,6 +204,7 @@ public class CircuitBreakerTests
     public async Task ExceptionsTreatedAsFailures()
     {
         var middleware = new CircuitBreakerMiddleware(
+            new InMemoryStateStore(),
             failureThreshold: 2,
             resetTimeout: TimeSpan.FromSeconds(30));
 
@@ -236,6 +244,7 @@ public class CircuitBreakerTests
         // Note: Implementation may not support 0 threshold
         // This tests the boundary condition
         var middleware = new CircuitBreakerMiddleware(
+            new InMemoryStateStore(),
             failureThreshold: 1,
             resetTimeout: TimeSpan.FromSeconds(30));
 
@@ -257,6 +266,7 @@ public class CircuitBreakerTests
     public async Task CurrentFailureCount_TracksFailuresWithinWindow()
     {
         var middleware = new CircuitBreakerMiddleware(
+            new InMemoryStateStore(),
             failureThreshold: 10,
             resetTimeout: TimeSpan.FromSeconds(30),
             failureWindow: TimeSpan.FromSeconds(60));
@@ -278,6 +288,7 @@ public class CircuitBreakerTests
     {
         // Use a very short window for testing
         var middleware = new CircuitBreakerMiddleware(
+            new InMemoryStateStore(),
             failureThreshold: 5,
             resetTimeout: TimeSpan.FromSeconds(30),
             failureWindow: TimeSpan.FromMilliseconds(100));
@@ -316,6 +327,7 @@ public class CircuitBreakerTests
         // This is the key behavior fix:
         // Failures from long ago should NOT count toward opening the circuit
         var middleware = new CircuitBreakerMiddleware(
+            new InMemoryStateStore(),
             failureThreshold: 3,
             resetTimeout: TimeSpan.FromSeconds(30),
             failureWindow: TimeSpan.FromMilliseconds(100));

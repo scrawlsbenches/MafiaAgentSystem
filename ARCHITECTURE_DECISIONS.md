@@ -101,29 +101,52 @@ var circuitBreaker = new CircuitBreakerMiddleware(
 
 ### 4. Middleware State Interface
 
-**Status:** 📋 Planned
+**Status:** ✅ Completed (2026-02-01)
 
-**Problem:** `RateLimitMiddleware` and `CircuitBreakerMiddleware` store state in memory. This works for single-instance but not for distributed deployments.
+**Problem:** `RateLimitMiddleware`, `CachingMiddleware`, and `CircuitBreakerMiddleware` stored state in private fields. This works for single-instance but not for distributed deployments, and makes state management inconsistent across middleware.
 
-**Decision:** Create `IStateStore` interface for future extensibility.
+**Decision:** Create `IStateStore` interface and require it via constructor injection.
 
-**Design:**
+**Resolution:**
+- Created `IStateStore` interface in `AgentRouting/Infrastructure/StateStore.cs`
+- Created `InMemoryStateStore` implementation using `ConcurrentDictionary`
+- Updated 3 middleware to require `IStateStore` as first constructor parameter:
+  - `RateLimitMiddleware` - uses `GetOrAdd` for per-sender rate limit state
+  - `CachingMiddleware` - uses `GetOrAdd` for global cache state
+  - `CircuitBreakerMiddleware` - uses `GetOrAdd` for circuit breaker state
+- All middleware state classes moved to private nested classes
+- Updated all test files to provide `InMemoryStateStore` instances
+
+**Interface:**
 ```csharp
 public interface IStateStore
 {
-    Task<T?> GetAsync<T>(string key);
-    Task SetAsync<T>(string key, T value, TimeSpan? expiry = null);
-    Task<long> IncrementAsync(string key);
-    Task RemoveAsync(string key);
+    T? Get<T>(string key);
+    void Set<T>(string key, T value);
+    bool TryGet<T>(string key, out T? value);
+    bool Remove(string key);
+    T GetOrAdd<T>(string key, Func<string, T> factory);
+    void Clear();
 }
-
-// Default implementation
-public class InMemoryStateStore : IStateStore { ... }
-
-// Future: RedisStateStore, etc.
 ```
 
-**Scope:** Local multi-threaded testing first. Distributed support as future enhancement.
+**Usage:**
+```csharp
+// Create shared state store
+var stateStore = new InMemoryStateStore();
+
+// Pass to middleware
+var rateLimiter = new RateLimitMiddleware(stateStore, maxRequests: 100, window: TimeSpan.FromMinutes(1), SystemClock.Instance);
+var circuitBreaker = new CircuitBreakerMiddleware(stateStore, failureThreshold: 5);
+var cache = new CachingMiddleware(stateStore, TimeSpan.FromMinutes(5));
+```
+
+**Files changed:**
+- `AgentRouting/Infrastructure/StateStore.cs` - New interface and implementation
+- `AgentRouting/Middleware/CommonMiddleware.cs` - Updated 3 middleware classes
+- `Tests/TestRunner/Tests/*.cs` - Updated all test instantiations
+
+**Future:** `RedisStateStore`, `DistributedStateStore`, etc. can be created without changing middleware code.
 
 ---
 
