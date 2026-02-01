@@ -180,6 +180,61 @@ Completed:
 
 ---
 
+### Phase 6: Dependency Injection & Inversion of Control (Planned)
+
+**Investigation**: 2026-02-01
+**Status**: PLANNED
+**Branch**: `claude/investigate-dependency-injection-B6xCF`
+**Documentation**: `docs/DI_IOC_INVESTIGATION.md`
+
+**Problem Summary**:
+- AgentRouter creates `MiddlewarePipeline` and `RulesEngineCore` internally (not injectable)
+- Middleware constructors have complex overloads hiding required dependencies
+- No central dependency resolution mechanism
+- All demos manually wire dependencies with repeated boilerplate
+
+**Proposed Solution**:
+- Create lightweight custom IoC container (zero 3rd party deps)
+- Extract `IMiddlewarePipeline` and `IRulesEngine<T>` interfaces
+- Refactor AgentRouter to accept injected dependencies
+- Standardize middleware constructor patterns
+- Add service registration extensions
+
+**Tasks** (8 total, 19-25h estimated):
+
+| Task ID | Description | Status |
+|---------|-------------|--------|
+| P1-DI-1 | Create lightweight IoC container | ⏳ Pending |
+| P1-DI-2 | Add IMiddlewarePipeline interface | ⏳ Pending |
+| P1-DI-3 | Add IRulesEngine interface | ⏳ Pending |
+| P1-DI-4 | Refactor AgentRouter for DI | ⏳ Pending |
+| P1-DI-5 | Standardize middleware constructors | ⏳ Pending |
+| P1-DI-6 | Create service registration extensions | ⏳ Pending |
+| P1-DI-7 | Update demos to use container | ⏳ Pending |
+| P1-DI-8 | Add DI tests | ⏳ Pending |
+
+**Batch Plan**:
+
+```
+Batch DI-A (Parallel - new files):
+├── P1-DI-1: ServiceContainer
+├── P1-DI-2: IMiddlewarePipeline
+└── P1-DI-3: IRulesEngine
+
+Batch DI-B (Sequential - depends on A):
+├── P1-DI-4: AgentRouter refactoring
+└── P1-DI-5: Middleware constructors
+
+Batch DI-C (Parallel - after B):
+├── P1-DI-6: ServiceExtensions
+├── P1-DI-7: Demo updates
+└── P1-DI-8: DI tests
+```
+
+**Gate G6**: Build succeeds, all tests pass (184+), new DI tests pass
+
+---
+
 ## Success Criteria
 
 | Gate | Criteria | Verified |

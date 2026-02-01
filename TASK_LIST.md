@@ -13,11 +13,13 @@
 |----------|----------|--------|-----------|
 | P0 | Critical Fixes | ✅ **COMPLETE** | 0 tasks |
 | P1 | Core Library Improvements | ✅ **COMPLETE** | 0 tasks |
+| **P1-DI** | **Dependency Injection/IoC** | 🆕 **NEW** | **8 tasks** |
 | P2 | MafiaDemo Completion | ✅ **COMPLETE** | 0 tasks |
 | P3 | Testing & Quality | 🔄 **PARTIAL** | 7 tasks |
 | P4 | Documentation & Polish | ⏳ **PENDING** | 6 tasks |
 
 **Note**: P2-2 through P2-8 were already implemented. P2-10 integration tests added.
+**New**: P1-DI tasks added for Dependency Injection/IoC improvements (see investigation: `docs/DI_IOC_INVESTIGATION.md`).
 
 ---
 
@@ -300,6 +302,226 @@ Improvements to the RulesEngine and AgentRouting core libraries.
 - No `DateTime.Now` in codebase
 - Time-dependent tests are deterministic
 - Clock injection available for testing
+
+---
+
+## P1-DI: Dependency Injection & Inversion of Control 🆕 NEW
+
+Add a lightweight IoC container and refactor core components for proper dependency injection.
+
+> **Investigation**: See `docs/DI_IOC_INVESTIGATION.md` for full analysis.
+> **Constraint**: Zero third-party dependencies - custom implementation required.
+> **Total Estimate**: 19-25 hours
+
+### Task P1-DI-1: Create Lightweight IoC Container
+**Estimated Time**: 3-4 hours
+**Dependencies**: None
+**Files**:
+- `AgentRouting/AgentRouting/DependencyInjection/IServiceContainer.cs` (new)
+- `AgentRouting/AgentRouting/DependencyInjection/ServiceContainer.cs` (new)
+
+**Problem**: No central dependency resolution mechanism; all wiring is manual.
+
+**Subtasks**:
+- [ ] Create `IServiceContainer` interface with Register, RegisterSingleton, Resolve methods
+- [ ] Implement `ServiceContainer` with factory and singleton support
+- [ ] Add support for generic type resolution
+- [ ] Implement `IDisposable` for cleanup of singleton instances
+- [ ] Add thread-safety for concurrent resolution
+
+**Acceptance Criteria**:
+- Container resolves registered services
+- Singletons return same instance
+- Factories create new instances
+- Thread-safe under concurrent access
+
+---
+
+### Task P1-DI-2: Add IMiddlewarePipeline Interface
+**Estimated Time**: 2 hours
+**Dependencies**: None
+**Files**:
+- `AgentRouting/AgentRouting/Middleware/IMiddlewarePipeline.cs` (new)
+- `AgentRouting/AgentRouting/Middleware/MiddlewarePipeline.cs` (modify)
+
+**Problem**: `MiddlewarePipeline` is concrete class, cannot be substituted.
+
+**Subtasks**:
+- [ ] Extract `IMiddlewarePipeline` interface from `MiddlewarePipeline`
+- [ ] Include `Use()`, `Build()`, `HasMiddleware` in interface
+- [ ] Update `MiddlewarePipeline` to implement interface
+- [ ] Update references to use interface where appropriate
+
+**Acceptance Criteria**:
+- `MiddlewarePipeline` implements `IMiddlewarePipeline`
+- Existing code continues to work
+- Interface can be mocked in tests
+
+---
+
+### Task P1-DI-3: Add IRulesEngine Interface
+**Estimated Time**: 2 hours
+**Dependencies**: None
+**Files**:
+- `RulesEngine/RulesEngine/Core/IRulesEngine.cs` (new)
+- `RulesEngine/RulesEngine/Core/RulesEngineCore.cs` (modify)
+
+**Problem**: `RulesEngineCore<T>` is concrete, hard-coded in `AgentRouter`.
+
+**Subtasks**:
+- [ ] Extract `IRulesEngine<T>` interface from `RulesEngineCore<T>`
+- [ ] Include `RegisterRule()`, `Execute()`, `ExecuteAsync()` in interface
+- [ ] Update `RulesEngineCore<T>` to implement interface
+- [ ] Update references to use interface where appropriate
+
+**Acceptance Criteria**:
+- `RulesEngineCore<T>` implements `IRulesEngine<T>`
+- Existing code continues to work
+- Interface can be mocked in tests
+
+---
+
+### Task P1-DI-4: Refactor AgentRouter for Dependency Injection
+**Estimated Time**: 3-4 hours
+**Dependencies**: P1-DI-2, P1-DI-3
+**Files**: `AgentRouting/AgentRouting/Core/AgentRouter.cs`
+
+**Problem**: AgentRouter creates `MiddlewarePipeline` and `RulesEngineCore` internally.
+
+**Subtasks**:
+- [ ] Add constructor accepting `IMiddlewarePipeline`, `IRulesEngine<RoutingContext>`, `IAgentLogger`
+- [ ] Remove internal instantiation of `MiddlewarePipeline` and `RulesEngineCore`
+- [ ] Add static `Create()` factory method for backwards compatibility
+- [ ] Update `AgentRouterBuilder` to support dependency injection
+- [ ] Update tests to use new constructor
+
+**Acceptance Criteria**:
+- AgentRouter accepts all dependencies via constructor
+- Factory method provides easy construction for simple cases
+- Existing builder API continues to work
+- All tests pass
+
+---
+
+### Task P1-DI-5: Standardize Middleware Constructors
+**Estimated Time**: 3-4 hours
+**Dependencies**: P1-DI-1
+**Files**:
+- `AgentRouting/AgentRouting/Middleware/RateLimitMiddleware.cs`
+- `AgentRouting/AgentRouting/Middleware/CachingMiddleware.cs`
+- `AgentRouting/AgentRouting/Middleware/CircuitBreakerMiddleware.cs`
+
+**Problem**: Complex overloaded constructors hide required dependencies (IStateStore, ISystemClock).
+
+**Subtasks**:
+- [ ] Reduce to single constructor per middleware requiring all dependencies
+- [ ] Add factory method with sensible defaults for simple usage
+- [ ] Ensure `IStateStore` and `ISystemClock` are always explicit
+- [ ] Remove `SystemClock.Instance` fallbacks from constructors
+- [ ] Update all test files to use explicit dependencies
+- [ ] Update demo code
+
+**Acceptance Criteria**:
+- Each middleware has one primary constructor
+- Factory methods provide defaults where needed
+- No hidden static dependencies
+- All tests pass
+
+---
+
+### Task P1-DI-6: Create Service Registration Extensions
+**Estimated Time**: 2-3 hours
+**Dependencies**: P1-DI-1
+**Files**: `AgentRouting/AgentRouting/DependencyInjection/ServiceExtensions.cs` (new)
+
+**Problem**: No convenient way to register standard services.
+
+**Subtasks**:
+- [ ] Create `AddAgentRouting()` extension for core services
+- [ ] Create `AddMiddleware<T>()` generic registration
+- [ ] Create `AddAgent<T>()` generic registration
+- [ ] Register defaults: `ISystemClock`, `IStateStore`, `IAgentLogger`
+- [ ] Add overloads for custom configuration
+
+**Acceptance Criteria**:
+- Single line registers all core services
+- Middleware and agents easily registered
+- Defaults sensible for common scenarios
+
+---
+
+### Task P1-DI-7: Update Demos to Use Container
+**Estimated Time**: 2-3 hours
+**Dependencies**: P1-DI-6
+**Files**:
+- `AgentRouting/AgentRouting/Program.cs`
+- `AgentRouting/AgentRouting.MiddlewareDemo/Program.cs`
+- `AgentRouting/AgentRouting.MafiaDemo/Program.cs`
+
+**Problem**: All demos manually wire dependencies with repeated boilerplate.
+
+**Subtasks**:
+- [ ] Update AgentRouting demo to use `ServiceContainer`
+- [ ] Update MiddlewareDemo to use container registration
+- [ ] Update MafiaDemo to use container registration
+- [ ] Verify all demos run correctly
+- [ ] Document container usage pattern
+
+**Acceptance Criteria**:
+- All demos use container for dependency resolution
+- Code is cleaner and more maintainable
+- All demos run without errors
+
+---
+
+### Task P1-DI-8: Add Dependency Injection Tests
+**Estimated Time**: 2-3 hours
+**Dependencies**: P1-DI-1
+**Files**: `Tests/TestRunner/Tests/DependencyInjectionTests.cs` (new)
+
+**Subtasks**:
+- [ ] Test: Singleton registration returns same instance
+- [ ] Test: Factory registration creates new instances
+- [ ] Test: Generic type resolution
+- [ ] Test: Missing service throws clear exception
+- [ ] Test: Circular dependency detection (if implemented)
+- [ ] Test: Dispose cleans up singletons
+- [ ] Test: Thread-safe concurrent resolution
+- [ ] Test: AgentRouter resolves from container
+
+**Acceptance Criteria**:
+- All container behaviors tested
+- Edge cases covered
+- Tests run in custom TestRunner
+
+---
+
+### P1-DI Dependency Graph
+
+```
+P1-DI-1 ─┬─→ P1-DI-5
+         ├─→ P1-DI-6 ─→ P1-DI-7
+         └─→ P1-DI-8
+
+P1-DI-2 ─┬─→ P1-DI-4
+P1-DI-3 ─┘
+```
+
+### P1-DI Batch Plan
+
+**Batch DI-A** (Parallel - new files):
+- P1-DI-1: ServiceContainer (new)
+- P1-DI-2: IMiddlewarePipeline (new)
+- P1-DI-3: IRulesEngine (new)
+
+**Batch DI-B** (Sequential - depends on Batch A):
+- P1-DI-4: AgentRouter refactoring
+- P1-DI-5: Middleware constructor updates
+
+**Batch DI-C** (Parallel - after Batch B):
+- P1-DI-6: ServiceExtensions (new)
+- P1-DI-7: Demo updates
+- P1-DI-8: DI tests
 
 ---
 
