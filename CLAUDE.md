@@ -6,7 +6,7 @@
 |------|------------------|
 | Build | `dotnet build AgentRouting/AgentRouting.sln` |
 | Test | `dotnet run --project Tests/TestRunner/` |
-| Test count | 67 tests (all passing) |
+| Test count | 89 tests (all passing) |
 | Constraints | Zero 3rd party dependencies |
 
 ## Skill Files (For Complex Work)

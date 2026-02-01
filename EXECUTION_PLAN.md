@@ -35,16 +35,20 @@
 
 **Test count: 39 → 67 (all passing)**
 
-### Phase 4: MafiaDemo Completion (In Progress)
+### Phase 4: MafiaDemo Completion ✅
 - [x] P2-1: Architecture documentation (ARCHITECTURE.md) ✅
 - [x] P2-2 through P2-5: Agent hierarchy - **ALREADY IMPLEMENTED** ✅
 - [x] P2-8: Interactive game loop - **ALREADY IMPLEMENTED** ✅
 - [x] Wire RulesBasedGameEngine to MafiaGameEngine ✅
 - [x] Replace hardcoded agent decisions with rules ✅
-- [ ] P2-10: Add integration tests
+- [x] P2-10: Add integration tests (22 tests) ✅
+
+**Test count: 67 → 89 (all passing)**
 
 **Discovery**: Code review revealed P2-2 through P2-8 were already implemented.
 Original estimate: 30-38h → Revised estimate: 7-9h (integration only)
+
+**PHASE 4 COMPLETE**
 
 ---
 
