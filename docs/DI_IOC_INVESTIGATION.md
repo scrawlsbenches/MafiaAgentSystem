@@ -112,33 +112,259 @@ _logger = new ConsoleAgentLogger();  // Hard-coded default
 
 ---
 
-## Proposed Architecture
+## Finalized Container Design
 
-### Lightweight IoC Container
+> **Design Decisions** (2026-02-01):
+> - Lambda-based registration (explicit factories, no reflection)
+> - Three lifetimes: Singleton, Transient, Scoped
+> - Scoped instances shared within scope (ASP.NET Core pattern)
+> - No auto-wiring (user controls construction)
+> - No open generics (register each type explicitly)
 
-Since we cannot use third-party dependencies, we need a minimal custom IoC container.
+### Design Principles
+
+**Fast**:
+- No reflection at resolve time - just dictionary lookups
+- `ConcurrentDictionary` for thread-safe access without locks
+- Singleton cache checked first (most common case)
+
+**Easy to Use**:
+- Fluent registration API with lambdas
+- Compile-time safety (constructor changes caught at build)
+- Clear, predictable behavior
+
+### Core Interfaces
 
 ```csharp
-// Proposed: AgentRouting/AgentRouting/DependencyInjection/ServiceContainer.cs
+// AgentRouting/AgentRouting/DependencyInjection/IServiceContainer.cs
 
-public interface IServiceContainer
+public interface IServiceContainer : IDisposable
 {
-    void Register<TService, TImplementation>() where TImplementation : TService;
-    void RegisterSingleton<TService>(TService instance);
-    void RegisterFactory<TService>(Func<IServiceContainer, TService> factory);
-    TService Resolve<TService>();
-    object Resolve(Type serviceType);
+    // Registration (all take factory lambda)
+    IServiceContainer AddSingleton<TService>(Func<IServiceContainer, TService> factory) where TService : class;
+    IServiceContainer AddTransient<TService>(Func<IServiceContainer, TService> factory) where TService : class;
+    IServiceContainer AddScoped<TService>(Func<IServiceContainer, TService> factory) where TService : class;
+
+    // Convenience: register existing instance as singleton
+    IServiceContainer AddSingleton<TService>(TService instance) where TService : class;
+
+    // Resolution
+    TService Resolve<TService>() where TService : class;
+    bool TryResolve<TService>(out TService? service) where TService : class;
+    bool IsRegistered<TService>();
+
+    // Scoping
+    IServiceScope CreateScope();
 }
 
-public class ServiceContainer : IServiceContainer, IDisposable
+public interface IServiceScope : IDisposable
 {
-    private readonly Dictionary<Type, Func<IServiceContainer, object>> _factories = new();
-    private readonly Dictionary<Type, object> _singletons = new();
-    // ...
+    TService Resolve<TService>() where TService : class;
+    bool TryResolve<TService>(out TService? service) where TService : class;
 }
 ```
 
-### Service Registration Extensions
+### Lifetime Behaviors
+
+| Lifetime | Behavior | Use Case |
+|----------|----------|----------|
+| **Singleton** | One instance for container lifetime | `IAgentLogger`, `ISystemClock` |
+| **Transient** | New instance every resolve | Stateless services, factories |
+| **Scoped** | One instance per scope, shared within | Per-request `IStateStore`, context |
+
+### Usage Example
+
+```csharp
+// Registration - explicit lambdas, no magic
+var container = new ServiceContainer()
+    // Singletons - created once, cached forever
+    .AddSingleton<IAgentLogger>(c => new ConsoleAgentLogger())
+    .AddSingleton<ISystemClock>(c => SystemClock.Instance)
+    .AddSingleton(SystemClock.Instance)  // Convenience overload
+
+    // Transients - new instance every time
+    .AddTransient<IStateStore>(c => new InMemoryStateStore())
+
+    // Scoped - shared within scope
+    .AddScoped<RateLimitMiddleware>(c => new RateLimitMiddleware(
+        c.Resolve<IStateStore>(),
+        100,
+        TimeSpan.FromMinutes(1),
+        c.Resolve<ISystemClock>()
+    ))
+
+    // Complex dependency chains work naturally
+    .AddSingleton<AgentRouter>(c => new AgentRouter(
+        c.Resolve<IMiddlewarePipeline>(),
+        c.Resolve<IRulesEngine<RoutingContext>>(),
+        c.Resolve<IAgentLogger>()
+    ));
+
+// Root resolution (singletons and transients)
+var logger = container.Resolve<IAgentLogger>();
+
+// Scoped resolution (per-request pattern)
+using var scope = container.CreateScope();
+var middleware1 = scope.Resolve<RateLimitMiddleware>();
+var middleware2 = scope.Resolve<RateLimitMiddleware>();
+// middleware1 == middleware2 (same instance within scope)
+
+// Different scope = different instance
+using var scope2 = container.CreateScope();
+var middleware3 = scope2.Resolve<RateLimitMiddleware>();
+// middleware3 != middleware1 (different scope)
+```
+
+### Implementation Sketch
+
+```csharp
+// AgentRouting/AgentRouting/DependencyInjection/ServiceContainer.cs
+
+public enum Lifetime { Singleton, Transient, Scoped }
+
+internal record ServiceDescriptor(Lifetime Lifetime, Func<IServiceContainer, object> Factory);
+
+public class ServiceContainer : IServiceContainer
+{
+    private readonly ConcurrentDictionary<Type, ServiceDescriptor> _descriptors = new();
+    private readonly ConcurrentDictionary<Type, object> _singletons = new();
+    private bool _disposed;
+
+    public IServiceContainer AddSingleton<TService>(Func<IServiceContainer, TService> factory)
+        where TService : class
+    {
+        _descriptors[typeof(TService)] = new(Lifetime.Singleton, c => factory(c));
+        return this;
+    }
+
+    public IServiceContainer AddSingleton<TService>(TService instance) where TService : class
+    {
+        _singletons[typeof(TService)] = instance;
+        _descriptors[typeof(TService)] = new(Lifetime.Singleton, _ => instance);
+        return this;
+    }
+
+    public IServiceContainer AddTransient<TService>(Func<IServiceContainer, TService> factory)
+        where TService : class
+    {
+        _descriptors[typeof(TService)] = new(Lifetime.Transient, c => factory(c));
+        return this;
+    }
+
+    public IServiceContainer AddScoped<TService>(Func<IServiceContainer, TService> factory)
+        where TService : class
+    {
+        _descriptors[typeof(TService)] = new(Lifetime.Scoped, c => factory(c));
+        return this;
+    }
+
+    public TService Resolve<TService>() where TService : class
+    {
+        var type = typeof(TService);
+
+        // Fast path: singleton cache
+        if (_singletons.TryGetValue(type, out var cached))
+            return (TService)cached;
+
+        if (!_descriptors.TryGetValue(type, out var descriptor))
+            throw new InvalidOperationException($"Service '{type.Name}' is not registered.");
+
+        if (descriptor.Lifetime == Lifetime.Scoped)
+            throw new InvalidOperationException(
+                $"Scoped service '{type.Name}' cannot be resolved from root container. Use CreateScope().");
+
+        var instance = (TService)descriptor.Factory(this);
+
+        if (descriptor.Lifetime == Lifetime.Singleton)
+            _singletons.TryAdd(type, instance);
+
+        return instance;
+    }
+
+    public IServiceScope CreateScope() => new ServiceScope(this, _descriptors);
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        foreach (var singleton in _singletons.Values.OfType<IDisposable>())
+            singleton.Dispose();
+
+        _singletons.Clear();
+    }
+
+    // ... TryResolve, IsRegistered implementations
+}
+
+internal class ServiceScope : IServiceScope
+{
+    private readonly IServiceContainer _root;
+    private readonly ConcurrentDictionary<Type, ServiceDescriptor> _descriptors;
+    private readonly ConcurrentDictionary<Type, object> _scopedInstances = new();
+    private bool _disposed;
+
+    public ServiceScope(IServiceContainer root, ConcurrentDictionary<Type, ServiceDescriptor> descriptors)
+    {
+        _root = root;
+        _descriptors = descriptors;
+    }
+
+    public TService Resolve<TService>() where TService : class
+    {
+        var type = typeof(TService);
+
+        if (!_descriptors.TryGetValue(type, out var descriptor))
+            throw new InvalidOperationException($"Service '{type.Name}' is not registered.");
+
+        // Singletons resolve from root
+        if (descriptor.Lifetime == Lifetime.Singleton)
+            return _root.Resolve<TService>();
+
+        // Transients always new
+        if (descriptor.Lifetime == Lifetime.Transient)
+            return (TService)descriptor.Factory(_root);
+
+        // Scoped: check cache, create if missing
+        return (TService)_scopedInstances.GetOrAdd(type, _ => descriptor.Factory(_root));
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        foreach (var scoped in _scopedInstances.Values.OfType<IDisposable>())
+            scoped.Dispose();
+
+        _scopedInstances.Clear();
+    }
+}
+```
+
+### Error Messages
+
+Clear errors for common mistakes:
+
+| Scenario | Error Message |
+|----------|---------------|
+| Service not registered | `"Service 'IFoo' is not registered."` |
+| Scoped from root | `"Scoped service 'Foo' cannot be resolved from root container. Use CreateScope()."` |
+| Disposed container | `"Cannot resolve from disposed container."` |
+
+### Estimated Implementation Size
+
+| Component | Lines |
+|-----------|-------|
+| `IServiceContainer` | ~25 |
+| `IServiceScope` | ~10 |
+| `ServiceContainer` | ~80 |
+| `ServiceScope` | ~50 |
+| **Total** | **~165 lines** |
+
+---
+
+## Service Registration Extensions
 
 ```csharp
 // Proposed: AgentRouting/AgentRouting/DependencyInjection/ServiceExtensions.cs
