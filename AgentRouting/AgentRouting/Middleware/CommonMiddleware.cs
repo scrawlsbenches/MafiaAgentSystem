@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using AgentRouting.Configuration;
 using AgentRouting.Core;
+using AgentRouting.Infrastructure;
 
 namespace AgentRouting.Middleware;
 
@@ -90,13 +91,14 @@ public class RateLimitMiddleware : MiddlewareBase
 {
     private readonly int _maxRequests;
     private readonly TimeSpan _window;
+    private readonly ISystemClock _clock;
     private readonly ConcurrentDictionary<string, RateLimitState> _state = new();
 
     /// <summary>
     /// Creates a rate limiter with default settings from MiddlewareDefaults.
     /// </summary>
     public RateLimitMiddleware()
-        : this(MiddlewareDefaults.RateLimitDefaultMaxRequests, MiddlewareDefaults.RateLimitDefaultWindow)
+        : this(MiddlewareDefaults.RateLimitDefaultMaxRequests, MiddlewareDefaults.RateLimitDefaultWindow, null)
     {
     }
 
@@ -105,19 +107,21 @@ public class RateLimitMiddleware : MiddlewareBase
     /// </summary>
     /// <param name="maxRequests">Maximum requests allowed within the time window.</param>
     /// <param name="window">Time window for rate limiting.</param>
-    public RateLimitMiddleware(int maxRequests, TimeSpan window)
+    /// <param name="clock">Clock for time operations. Defaults to SystemClock.Instance for testability.</param>
+    public RateLimitMiddleware(int maxRequests, TimeSpan window, ISystemClock? clock = null)
     {
         _maxRequests = maxRequests;
         _window = window;
+        _clock = clock ?? SystemClock.Instance;
     }
-    
+
     public override Task<MessageResult> InvokeAsync(
         AgentMessage message,
         MessageDelegate next,
         CancellationToken ct)
     {
         var key = message.SenderId;
-        var now = DateTime.UtcNow;
+        var now = _clock.UtcNow;
         
         var state = _state.GetOrAdd(key, _ => new RateLimitState());
         
@@ -152,13 +156,14 @@ public class CachingMiddleware : MiddlewareBase
 {
     private readonly TimeSpan _ttl;
     private readonly int _maxEntries;
+    private readonly ISystemClock _clock;
     private readonly ConcurrentDictionary<string, CacheEntry> _cache = new();
 
     /// <summary>
     /// Creates a caching middleware with default settings from MiddlewareDefaults.
     /// </summary>
     public CachingMiddleware()
-        : this(MiddlewareDefaults.CacheDefaultTtl, MiddlewareDefaults.CacheMaxEntries)
+        : this(MiddlewareDefaults.CacheDefaultTtl, MiddlewareDefaults.CacheMaxEntries, null)
     {
     }
 
@@ -167,7 +172,7 @@ public class CachingMiddleware : MiddlewareBase
     /// </summary>
     /// <param name="ttl">Time-to-live for cached entries.</param>
     public CachingMiddleware(TimeSpan ttl)
-        : this(ttl, MiddlewareDefaults.CacheMaxEntries)
+        : this(ttl, MiddlewareDefaults.CacheMaxEntries, null)
     {
     }
 
@@ -176,10 +181,12 @@ public class CachingMiddleware : MiddlewareBase
     /// </summary>
     /// <param name="ttl">Time-to-live for cached entries.</param>
     /// <param name="maxEntries">Maximum number of cache entries.</param>
-    public CachingMiddleware(TimeSpan ttl, int maxEntries)
+    /// <param name="clock">Clock for time operations. Defaults to SystemClock.Instance for testability.</param>
+    public CachingMiddleware(TimeSpan ttl, int maxEntries, ISystemClock? clock = null)
     {
         _ttl = ttl;
         _maxEntries = maxEntries;
+        _clock = clock ?? SystemClock.Instance;
     }
 
     /// <summary>
@@ -198,9 +205,9 @@ public class CachingMiddleware : MiddlewareBase
         if (_cache.TryGetValue(key, out var entry))
         {
             // Check expiration
-            if (DateTime.UtcNow - entry.CachedAt < _ttl)
+            if (_clock.UtcNow - entry.CachedAt < _ttl)
             {
-                entry.LastAccessedAt = DateTime.UtcNow;
+                entry.LastAccessedAt = _clock.UtcNow;
                 Console.WriteLine($"[Cache] HIT: {message.Subject}");
                 return entry.Result;
             }
@@ -216,7 +223,7 @@ public class CachingMiddleware : MiddlewareBase
 
         if (result.Success)
         {
-            var now = DateTime.UtcNow;
+            var now = _clock.UtcNow;
             _cache[key] = new CacheEntry
             {
                 Result = result,
@@ -368,6 +375,7 @@ public class CircuitBreakerMiddleware : MiddlewareBase
     private readonly int _failureThreshold;
     private readonly TimeSpan _resetTimeout;
     private readonly TimeSpan _failureWindow;
+    private readonly ISystemClock _clock;
     private readonly Queue<DateTime> _failureTimestamps = new();
     private readonly object _lock = new();
     private CircuitState _state = CircuitState.Closed;
@@ -380,7 +388,8 @@ public class CircuitBreakerMiddleware : MiddlewareBase
         : this(
             MiddlewareDefaults.CircuitBreakerDefaultThreshold,
             MiddlewareDefaults.CircuitBreakerDefaultTimeout,
-            MiddlewareDefaults.CircuitBreakerDefaultFailureWindow)
+            MiddlewareDefaults.CircuitBreakerDefaultFailureWindow,
+            null)
     {
     }
 
@@ -390,11 +399,17 @@ public class CircuitBreakerMiddleware : MiddlewareBase
     /// <param name="failureThreshold">Number of failures within the window before opening.</param>
     /// <param name="resetTimeout">Time to wait before attempting to close an open circuit.</param>
     /// <param name="failureWindow">Sliding time window for counting failures. Defaults to 60 seconds.</param>
-    public CircuitBreakerMiddleware(int failureThreshold, TimeSpan? resetTimeout = null, TimeSpan? failureWindow = null)
+    /// <param name="clock">Clock for time operations. Defaults to SystemClock.Instance for testability.</param>
+    public CircuitBreakerMiddleware(
+        int failureThreshold,
+        TimeSpan? resetTimeout = null,
+        TimeSpan? failureWindow = null,
+        ISystemClock? clock = null)
     {
         _failureThreshold = failureThreshold;
         _resetTimeout = resetTimeout ?? MiddlewareDefaults.CircuitBreakerDefaultTimeout;
         _failureWindow = failureWindow ?? MiddlewareDefaults.CircuitBreakerDefaultFailureWindow;
+        _clock = clock ?? SystemClock.Instance;
     }
 
     /// <summary>
@@ -422,7 +437,7 @@ public class CircuitBreakerMiddleware : MiddlewareBase
         {
             if (_state == CircuitState.Open && _openedAt.HasValue)
             {
-                if (DateTime.UtcNow - _openedAt.Value > _resetTimeout)
+                if (_clock.UtcNow - _openedAt.Value > _resetTimeout)
                 {
                     Console.WriteLine("[Circuit] Attempting to close circuit (half-open state)");
                     _state = CircuitState.HalfOpen;
@@ -475,7 +490,7 @@ public class CircuitBreakerMiddleware : MiddlewareBase
     /// </summary>
     private void RecordFailure()
     {
-        var now = DateTime.UtcNow;
+        var now = _clock.UtcNow;
         _failureTimestamps.Enqueue(now);
 
         // Prune failures outside the window
@@ -495,7 +510,7 @@ public class CircuitBreakerMiddleware : MiddlewareBase
     /// </summary>
     private void PruneOldFailures()
     {
-        var cutoff = DateTime.UtcNow - _failureWindow;
+        var cutoff = _clock.UtcNow - _failureWindow;
         while (_failureTimestamps.Count > 0 && _failureTimestamps.Peek() < cutoff)
         {
             _failureTimestamps.Dequeue();

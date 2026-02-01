@@ -162,9 +162,12 @@ Completed:
   - Added `CurrentFailureCount` property for monitoring
   - Added thread-safe locking
   - Added 3 new tests
+- [x] SystemClock constructor injection
+  - Added `ISystemClock? clock` parameter to CircuitBreaker, RateLimit, Caching
+  - Replaced `DateTime.UtcNow` with `_clock.UtcNow`
+  - Defaults to `SystemClock.Instance` for backwards compatibility
 
 Pending (from ARCHITECTURE_DECISIONS.md):
-- [ ] SystemClock constructor injection refactor
 - [ ] IStateStore interface for distributed state
 - [ ] RuleResult.Error edge case tests
 

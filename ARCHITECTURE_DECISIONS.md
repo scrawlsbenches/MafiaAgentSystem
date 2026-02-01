@@ -43,33 +43,38 @@ var circuitBreaker = new CircuitBreakerMiddleware(
 
 ### 2. SystemClock Injection
 
-**Status:** 🔄 In Progress
+**Status:** ✅ Completed (2026-02-01)
 
 **Problem:** `SystemClock.Instance` is a static mutable singleton. This causes:
 - Race conditions in parallel tests
 - Global state pollution
 - Difficulty testing time-dependent code
 
-**Decision:** Refactor to constructor injection.
+**Decision:** Refactor to constructor injection in key middleware.
 
-**Implementation Plan:**
-- Keep `ISystemClock` interface
-- Inject via constructor where needed (CircuitBreaker, Cache, RateLimit)
-- Provide default `SystemClock.Default` for convenience
-- Remove static `Instance` property
+**Resolution:**
+- Added optional `ISystemClock? clock` parameter to 3 middleware:
+  - `CircuitBreakerMiddleware`
+  - `RateLimitMiddleware`
+  - `CachingMiddleware`
+- Default to `SystemClock.Instance` for backwards compatibility
+- Replaced `DateTime.UtcNow` with `_clock.UtcNow` in those classes
+- Kept `SystemClock.Instance` singleton for convenience (not removed)
 
-**Before:**
+**Usage (testable):**
 ```csharp
-var now = SystemClock.Instance.UtcNow;
+// Production - uses default clock
+var circuitBreaker = new CircuitBreakerMiddleware(threshold: 5);
+
+// Testing - inject fake clock
+var fakeClock = new FakeClock(fixedTime);
+var circuitBreaker = new CircuitBreakerMiddleware(
+    failureThreshold: 5,
+    clock: fakeClock);
 ```
 
-**After:**
-```csharp
-public CircuitBreakerMiddleware(ISystemClock? clock = null)
-{
-    _clock = clock ?? SystemClock.Default;
-}
-```
+**Files changed:**
+- `AgentRouting/Middleware/CommonMiddleware.cs` - 3 middleware classes
 
 ---
 
