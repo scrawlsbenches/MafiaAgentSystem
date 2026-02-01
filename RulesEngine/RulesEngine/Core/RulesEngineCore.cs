@@ -11,53 +11,107 @@ public class RulesEngineOptions
     /// Stop evaluating rules after the first match
     /// </summary>
     public bool StopOnFirstMatch { get; set; } = false;
-    
+
     /// <summary>
     /// Execute rules in parallel when possible
     /// </summary>
     public bool EnableParallelExecution { get; set; } = false;
-    
+
     /// <summary>
     /// Track performance metrics
     /// </summary>
     public bool TrackPerformance { get; set; } = true;
-    
+
     /// <summary>
     /// Maximum number of rules to execute
     /// </summary>
     public int? MaxRulesToExecute { get; set; } = null;
+
+    /// <summary>
+    /// Whether to allow duplicate rule IDs (default: false)
+    /// </summary>
+    public bool AllowDuplicateRuleIds { get; set; } = false;
 }
 
 /// <summary>
 /// Main rules engine that evaluates rules against facts
 /// </summary>
-public class RulesEngineCore<T>
+public class RulesEngineCore<T> : IDisposable
 {
     private readonly List<IRule<T>> _rules;
     private readonly RulesEngineOptions _options;
     private readonly ConcurrentDictionary<string, RulePerformanceMetrics> _metrics;
-    
+    private readonly ReaderWriterLockSlim _lock = new(LockRecursionPolicy.SupportsRecursion);
+    private bool _disposed;
+
     public RulesEngineCore(RulesEngineOptions? options = null)
     {
         _rules = new List<IRule<T>>();
         _options = options ?? new RulesEngineOptions();
         _metrics = new ConcurrentDictionary<string, RulePerformanceMetrics>();
     }
-    
+
     /// <summary>
     /// Registers a rule with the engine
     /// </summary>
+    /// <exception cref="ArgumentNullException">Thrown when rule is null</exception>
+    /// <exception cref="RuleValidationException">Thrown when rule fails validation</exception>
     public void RegisterRule(IRule<T> rule)
     {
-        _rules.Add(rule);
+        // Validation first (no lock needed)
+        if (rule == null) throw new ArgumentNullException(nameof(rule));
+        if (string.IsNullOrEmpty(rule.Id))
+            throw new RuleValidationException("Rule ID cannot be null or empty");
+        if (string.IsNullOrEmpty(rule.Name))
+            throw new RuleValidationException("Rule name cannot be null or empty", rule.Id);
+
+        _lock.EnterWriteLock();
+        try
+        {
+            // Check for duplicates inside the lock
+            if (!_options.AllowDuplicateRuleIds && _rules.Any(r => r.Id == rule.Id))
+                throw new RuleValidationException($"Rule with ID '{rule.Id}' already exists", rule.Id);
+            _rules.Add(rule);
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
     }
-    
+
     /// <summary>
     /// Registers multiple rules
     /// </summary>
+    /// <exception cref="ArgumentNullException">Thrown when rules array is null</exception>
+    /// <exception cref="RuleValidationException">Thrown when any rule fails validation</exception>
     public void RegisterRules(params IRule<T>[] rules)
     {
-        _rules.AddRange(rules);
+        if (rules == null) throw new ArgumentNullException(nameof(rules));
+
+        // Validate all rules first (outside lock)
+        foreach (var rule in rules)
+        {
+            if (rule == null) throw new ArgumentNullException(nameof(rules), "Rules array contains null element");
+            if (string.IsNullOrEmpty(rule.Id))
+                throw new RuleValidationException("Rule ID cannot be null or empty");
+            if (string.IsNullOrEmpty(rule.Name))
+                throw new RuleValidationException("Rule name cannot be null or empty", rule.Id);
+        }
+
+        _lock.EnterWriteLock();
+        try
+        {
+            foreach (var rule in rules)
+            {
+                if (!_options.AllowDuplicateRuleIds && _rules.Any(r => r.Id == rule.Id))
+                    throw new RuleValidationException($"Rule with ID '{rule.Id}' already exists", rule.Id);
+                _rules.Add(rule);
+            }
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
     }
 
     /// <summary>
@@ -68,9 +122,30 @@ public class RulesEngineCore<T>
     /// <param name="condition">Predicate that determines if rule applies</param>
     /// <param name="action">Action to execute when rule matches (modifies fact in-place)</param>
     /// <param name="priority">Rule priority (higher = evaluated first)</param>
+    /// <exception cref="RuleValidationException">Thrown when rule fails validation</exception>
     public void AddRule(string id, string name, Func<T, bool> condition, Action<T> action, int priority = 0)
     {
-        _rules.Add(new ActionRule<T>(id, name, condition, action, priority));
+        // Validation first (no lock needed)
+        if (string.IsNullOrEmpty(id))
+            throw new RuleValidationException("Rule ID cannot be null or empty");
+        if (string.IsNullOrEmpty(name))
+            throw new RuleValidationException("Rule name cannot be null or empty", id);
+        if (condition == null)
+            throw new ArgumentNullException(nameof(condition));
+        if (action == null)
+            throw new ArgumentNullException(nameof(action));
+
+        _lock.EnterWriteLock();
+        try
+        {
+            if (!_options.AllowDuplicateRuleIds && _rules.Any(r => r.Id == id))
+                throw new RuleValidationException($"Rule with ID '{id}' already exists", id);
+            _rules.Add(new ActionRule<T>(id, name, condition, action, priority));
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
     }
 
     /// <summary>
@@ -80,8 +155,19 @@ public class RulesEngineCore<T>
     /// </summary>
     public void EvaluateAll(T fact)
     {
-        var sortedRules = _rules.OrderByDescending(r => r.Priority).ToList();
+        List<IRule<T>> sortedRules;
 
+        _lock.EnterReadLock();
+        try
+        {
+            sortedRules = _rules.OrderByDescending(r => r.Priority).ToList();
+        }
+        finally
+        {
+            _lock.ExitReadLock();
+        }
+
+        // Execute outside the lock to avoid holding lock during potentially long-running rule execution
         foreach (var rule in sortedRules)
         {
             if (rule.Evaluate(fact))
@@ -96,27 +182,54 @@ public class RulesEngineCore<T>
     /// </summary>
     public bool RemoveRule(string ruleId)
     {
-        var rule = _rules.FirstOrDefault(r => r.Id == ruleId);
-        if (rule != null)
+        _lock.EnterWriteLock();
+        try
         {
-            _rules.Remove(rule);
-            return true;
+            var rule = _rules.FirstOrDefault(r => r.Id == ruleId);
+            if (rule != null)
+            {
+                _rules.Remove(rule);
+                return true;
+            }
+            return false;
         }
-        return false;
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
     }
-    
+
     /// <summary>
     /// Clears all rules
     /// </summary>
     public void ClearRules()
     {
-        _rules.Clear();
+        _lock.EnterWriteLock();
+        try
+        {
+            _rules.Clear();
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
     }
-    
+
     /// <summary>
     /// Gets all registered rules
     /// </summary>
-    public IReadOnlyList<IRule<T>> GetRules() => _rules.AsReadOnly();
+    public IReadOnlyList<IRule<T>> GetRules()
+    {
+        _lock.EnterReadLock();
+        try
+        {
+            return _rules.ToList().AsReadOnly();
+        }
+        finally
+        {
+            _lock.ExitReadLock();
+        }
+    }
     
     /// <summary>
     /// Evaluates all applicable rules against the fact
@@ -125,16 +238,27 @@ public class RulesEngineCore<T>
     {
         var result = new RulesEngineResult();
         var startTime = DateTime.UtcNow;
-        
-        // Sort rules by priority (descending)
-        var sortedRules = _rules.OrderByDescending(r => r.Priority).ToList();
-        
+
+        List<IRule<T>> sortedRules;
+
+        _lock.EnterReadLock();
+        try
+        {
+            // Sort rules by priority (descending)
+            sortedRules = _rules.OrderByDescending(r => r.Priority).ToList();
+        }
+        finally
+        {
+            _lock.ExitReadLock();
+        }
+
         // Limit rules if configured
         if (_options.MaxRulesToExecute.HasValue)
         {
             sortedRules = sortedRules.Take(_options.MaxRulesToExecute.Value).ToList();
         }
-        
+
+        // Execute outside the lock to avoid holding lock during potentially long-running rule execution
         if (_options.EnableParallelExecution)
         {
             ExecuteParallel(fact, sortedRules, result);
@@ -143,7 +267,7 @@ public class RulesEngineCore<T>
         {
             ExecuteSequential(fact, sortedRules, result);
         }
-        
+
         result.TotalExecutionTime = DateTime.UtcNow - startTime;
         return result;
     }
@@ -199,9 +323,22 @@ public class RulesEngineCore<T>
     /// </summary>
     public List<IRule<T>> GetMatchingRules(T fact)
     {
-        return _rules.Where(r => r.Evaluate(fact)).ToList();
+        List<IRule<T>> rulesCopy;
+
+        _lock.EnterReadLock();
+        try
+        {
+            rulesCopy = _rules.ToList();
+        }
+        finally
+        {
+            _lock.ExitReadLock();
+        }
+
+        // Evaluate outside the lock to avoid holding lock during potentially long-running evaluation
+        return rulesCopy.Where(r => r.Evaluate(fact)).ToList();
     }
-    
+
     /// <summary>
     /// Gets performance metrics for a specific rule
     /// </summary>
@@ -209,7 +346,7 @@ public class RulesEngineCore<T>
     {
         return _metrics.TryGetValue(ruleId, out var metrics) ? metrics : null;
     }
-    
+
     /// <summary>
     /// Gets all performance metrics
     /// </summary>
@@ -217,7 +354,31 @@ public class RulesEngineCore<T>
     {
         return new Dictionary<string, RulePerformanceMetrics>(_metrics);
     }
-    
+
+    /// <summary>
+    /// Disposes the rules engine and releases all resources
+    /// </summary>
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// Disposes the rules engine
+    /// </summary>
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!_disposed)
+        {
+            if (disposing)
+            {
+                _lock?.Dispose();
+            }
+            _disposed = true;
+        }
+    }
+
     private void TrackPerformance(string ruleId, TimeSpan duration)
     {
         _metrics.AddOrUpdate(
