@@ -56,7 +56,7 @@ class AutonomousPlaythroughDemo
         
         // === NEW: Setup AgentRouter with Middleware! ===
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
         
         // Register actual mafia agents
         router.RegisterAgent(new GodfatherAgent("godfather-001", "Don Vito Corleone", logger));

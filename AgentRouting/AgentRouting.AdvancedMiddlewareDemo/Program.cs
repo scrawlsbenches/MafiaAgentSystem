@@ -57,7 +57,7 @@ class Program
         Console.WriteLine();
 
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
         
         var tracingMiddleware = new DistributedTracingMiddleware("CustomerServiceRouter");
         router.UseMiddleware(tracingMiddleware);
@@ -109,7 +109,7 @@ class Program
         Console.WriteLine();
 
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
         
         router.UseMiddleware(new SemanticRoutingMiddleware());
 
@@ -173,7 +173,7 @@ class Program
         Console.WriteLine();
 
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
         
         router.UseMiddleware(new MessageTransformationMiddleware());
 
@@ -217,7 +217,7 @@ class Program
         Console.WriteLine();
 
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
         
         var abTestMiddleware = new ABTestingMiddleware();
         abTestMiddleware.RegisterExperiment("RoutingStrategy", 0.5, "VariantA_Fast", "VariantB_Thorough");
@@ -257,7 +257,7 @@ class Program
         Console.WriteLine();
 
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
         
         var featureFlagsMiddleware = new FeatureFlagsMiddleware();
         
@@ -309,7 +309,7 @@ class Program
         Console.WriteLine();
 
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
         
         var healthCheckMiddleware = new AgentHealthCheckMiddleware(TimeSpan.FromSeconds(2));
         
@@ -382,7 +382,7 @@ class Program
         Console.WriteLine();
 
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
         
         var workflowMiddleware = new WorkflowOrchestrationMiddleware();
         
@@ -436,7 +436,7 @@ class Program
         Console.WriteLine();
 
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
         
         // Build complete stack
         router.UseMiddleware(new DistributedTracingMiddleware("ProductionRouter"));

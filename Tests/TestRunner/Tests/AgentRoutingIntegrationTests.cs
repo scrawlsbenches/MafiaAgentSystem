@@ -66,7 +66,7 @@ public class AgentRoutingIntegrationTests
     public async Task Router_RegistersAndRoutes_ToCorrectAgent()
     {
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         var techAgent = new TestAgent("tech-001", "Tech Support");
         var billingAgent = new TestAgent("billing-001", "Billing");
@@ -98,7 +98,7 @@ public class AgentRoutingIntegrationTests
     public async Task Router_PriorityRouting_HigherPriorityRuleWins()
     {
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         var vipAgent = new TestAgent("vip-001", "VIP Handler");
         var normalAgent = new TestAgent("normal-001", "Normal Handler");
@@ -134,7 +134,7 @@ public class AgentRoutingIntegrationTests
     public async Task Router_NoMatchingRule_UsesDefaultAgent()
     {
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         var defaultAgent = new TestAgent("default-001", "Default Agent");
         var specificAgent = new TestAgent("specific-001", "Specific Agent");
@@ -163,7 +163,7 @@ public class AgentRoutingIntegrationTests
     public async Task Router_Broadcast_SendsToMultipleAgents()
     {
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         var agent1 = new TestAgent("agent-001", "Agent 1");
         var agent2 = new TestAgent("agent-002", "Agent 2");
@@ -186,7 +186,7 @@ public class AgentRoutingIntegrationTests
     public async Task Router_Broadcast_WithFilter_SendsToMatchingAgents()
     {
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         var techAgent = new CategoryAgent("tech-001", "Tech", "Technical");
         var billingAgent = new CategoryAgent("billing-001", "Billing", "Billing");
@@ -212,7 +212,7 @@ public class AgentRoutingIntegrationTests
     public void Router_GetAgentById_ReturnsCorrectAgent()
     {
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         var agent1 = new TestAgent("agent-001", "Agent 1");
         var agent2 = new TestAgent("agent-002", "Agent 2");
@@ -231,7 +231,7 @@ public class AgentRoutingIntegrationTests
     public void Router_GetAgentById_NotFound_ReturnsNull()
     {
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         var agent = new TestAgent("agent-001", "Agent 1");
         router.RegisterAgent(agent);
@@ -245,7 +245,7 @@ public class AgentRoutingIntegrationTests
     public void Router_GetAllAgents_ReturnsAllRegistered()
     {
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         router.RegisterAgent(new TestAgent("agent-001", "Agent 1"));
         router.RegisterAgent(new TestAgent("agent-002", "Agent 2"));
@@ -262,7 +262,7 @@ public class AgentRoutingIntegrationTests
     public async Task RouterWithMiddleware_ExecutesMiddlewarePipeline()
     {
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         var agent = new TestAgent("agent-001", "Agent 1");
         router.RegisterAgent(agent);
@@ -284,7 +284,7 @@ public class AgentRoutingIntegrationTests
     public async Task RouterWithMiddleware_ValidationMiddleware_RejectsInvalidMessage()
     {
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         var agent = new TestAgent("agent-001", "Agent 1");
         router.RegisterAgent(agent);
@@ -313,7 +313,7 @@ public class AgentRoutingIntegrationTests
     public async Task RouterWithMiddleware_TimingMiddleware_AddsProcessingTime()
     {
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         var agent = new TestAgent("agent-001", "Agent 1");
         router.RegisterAgent(agent);
@@ -334,7 +334,7 @@ public class AgentRoutingIntegrationTests
     public async Task RouterWithMiddleware_MultipleMiddleware_ExecuteInOrder()
     {
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         var agent = new TestAgent("agent-001", "Agent 1");
         router.RegisterAgent(agent);

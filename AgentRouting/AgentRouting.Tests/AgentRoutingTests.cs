@@ -36,7 +36,7 @@ public class AgentRoutingTests
     {
         // Arrange
         var logger = new TestLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
         
         var techAgent = new TechnicalSupportAgent("tech-001", "Tech Support", logger);
         var csAgent = new CustomerServiceAgent("cs-001", "Customer Service", logger);
@@ -81,7 +81,7 @@ public class AgentRoutingTests
     {
         // Arrange
         var logger = new TestLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
         
         var agent1 = new CustomerServiceAgent("cs-001", "CS 1", logger);
         var agent2 = new CustomerServiceAgent("cs-002", "CS 2", logger);
@@ -198,7 +198,7 @@ public class AgentRoutingTests
     {
         // Arrange
         var logger = new TestLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
         
         var agent1 = new CustomerServiceAgent("cs-001", "CS 1", logger);
         var agent2 = new CustomerServiceAgent("cs-002", "CS 2", logger);
@@ -272,7 +272,7 @@ public class AgentRoutingTests
     {
         // Arrange
         var logger = new TestLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
         
         var techAgent = new TechnicalSupportAgent("tech-001", "Tech", logger);
         var triageAgent = new TriageAgent("triage-001", "Triage", logger, router);

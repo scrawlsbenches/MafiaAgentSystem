@@ -207,7 +207,7 @@ Completed:
 | P1-DI-1 | Create lightweight IoC container | ✅ Complete (37 tests) |
 | P1-DI-2 | Add IMiddlewarePipeline interface | ✅ Complete |
 | P1-DI-3 | Add IRulesEngine interface | ✅ Complete |
-| P1-DI-4 | Refactor AgentRouter for DI | ⏳ Pending |
+| P1-DI-4 | Refactor AgentRouter for DI | ✅ Complete |
 | P1-DI-5 | Standardize middleware constructors | ⏳ Pending |
 | P1-DI-6 | Create service registration extensions | ⏳ Pending |
 | P1-DI-7 | Update demos to use container | ⏳ Pending |
@@ -240,9 +240,9 @@ Batch IF-A (Parallel - all independent, can run with DI-A):
 ├── P1-IF-5: IMetricsSnapshot + IAnalyticsReport
 └── P1-IF-6: IWorkflowDefinition + IWorkflowStage
 
-Batch DI-B (Sequential - depends on DI-A):
-├── P1-DI-4: AgentRouter refactoring
-└── P1-DI-5: Middleware constructors
+Batch DI-B (Sequential - depends on DI-A): 🔄 IN PROGRESS
+├── P1-DI-4: AgentRouter refactoring ✅
+└── P1-DI-5: Middleware constructors ⏳
 
 Batch DI-C (Parallel - after DI-B):
 ├── P1-DI-6: ServiceExtensions

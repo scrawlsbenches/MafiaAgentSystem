@@ -510,7 +510,7 @@ class Program
 
     static AgentRouter BuildMafiaOrganization(IAgentLogger logger)
     {
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         // Create the family hierarchy
         var godfather = new GodfatherAgent("godfather-001", "Don Vito Corleone", logger);

@@ -33,7 +33,7 @@ class Program
         Console.WriteLine();
 
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         // Create agents
         var customerService = new CustomerServiceAgent("cs-001", "Customer Service", logger);
@@ -110,7 +110,7 @@ class Program
         Console.WriteLine();
 
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         var customerService = new CustomerServiceAgent("cs-001", "Customer Service", logger);
         var supervisor = new SupervisorAgent("supervisor-001", "Supervisor", logger);
@@ -183,7 +183,7 @@ class Program
         Console.WriteLine();
 
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         // Create all agents
         var triage = new TriageAgent("triage-001", "Triage", logger, router);
@@ -243,7 +243,7 @@ class Program
         Console.WriteLine();
 
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         var agent1 = new CustomerServiceAgent("cs-001", "CS Team 1", logger);
         var agent2 = new CustomerServiceAgent("cs-002", "CS Team 2", logger);
@@ -278,7 +278,7 @@ class Program
         Console.WriteLine();
 
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         var customerService = new CustomerServiceAgent("cs-001", "Customer Service", logger);
         var techSupport = new TechnicalSupportAgent("tech-001", "Tech Support", logger);
@@ -328,7 +328,7 @@ class Program
         Console.WriteLine();
 
         var logger = new ConsoleAgentLogger();
-        var router = new AgentRouter(logger);
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
         // Add analytics middleware - automatically tracks all messages
         var analytics = new AnalyticsMiddleware();
