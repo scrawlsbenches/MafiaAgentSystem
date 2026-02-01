@@ -637,6 +637,212 @@ public class MiddlewareTests
 
     #endregion
 
+    #region RetryMiddleware Tests
+
+    [Test]
+    public async Task RetryMiddleware_RetriesOnFailure()
+    {
+        var middleware = new RetryMiddleware(maxAttempts: 3, delay: TimeSpan.FromMilliseconds(10));
+        var message = CreateTestMessage();
+
+        var attempts = 0;
+        MessageDelegate next = (msg, ct) =>
+        {
+            attempts++;
+            if (attempts < 3)
+                return Task.FromResult(MessageResult.Fail("Failed"));
+            return Task.FromResult(MessageResult.Ok("Success"));
+        };
+
+        var result = await middleware.InvokeAsync(message, next, CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Equal(3, attempts);
+    }
+
+    [Test]
+    public async Task RetryMiddleware_GivesUpAfterMaxAttempts()
+    {
+        var middleware = new RetryMiddleware(maxAttempts: 3, delay: TimeSpan.FromMilliseconds(10));
+        var message = CreateTestMessage();
+
+        var attempts = 0;
+        MessageDelegate next = (msg, ct) =>
+        {
+            attempts++;
+            return Task.FromResult(MessageResult.Fail("Always fails"));
+        };
+
+        var result = await middleware.InvokeAsync(message, next, CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Equal(3, attempts);
+    }
+
+    [Test]
+    public async Task RetryMiddleware_SuccessOnFirstTry_NoRetries()
+    {
+        var middleware = new RetryMiddleware(maxAttempts: 3, delay: TimeSpan.FromMilliseconds(10));
+        var message = CreateTestMessage();
+
+        var attempts = 0;
+        MessageDelegate next = (msg, ct) =>
+        {
+            attempts++;
+            return Task.FromResult(MessageResult.Ok("Success"));
+        };
+
+        var result = await middleware.InvokeAsync(message, next, CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Equal(1, attempts);
+    }
+
+    #endregion
+
+    #region PriorityBoostMiddleware Tests
+
+    [Test]
+    public async Task PriorityBoostMiddleware_BoostsVIPPriority()
+    {
+        var middleware = new PriorityBoostMiddleware("vip-user");
+
+        var vipMessage = new AgentMessage
+        {
+            SenderId = "vip-user",
+            Subject = "Test",
+            Content = "Test",
+            Priority = MessagePriority.Normal
+        };
+
+        MessageDelegate next = (msg, ct) => Task.FromResult(MessageResult.Ok("OK"));
+
+        await middleware.InvokeAsync(vipMessage, next, CancellationToken.None);
+
+        Assert.Equal(MessagePriority.High, vipMessage.Priority);
+    }
+
+    [Test]
+    public async Task PriorityBoostMiddleware_DoesNotBoostRegularUser()
+    {
+        var middleware = new PriorityBoostMiddleware("vip-user");
+
+        var regularMessage = new AgentMessage
+        {
+            SenderId = "regular-user",
+            Subject = "Test",
+            Content = "Test",
+            Priority = MessagePriority.Normal
+        };
+
+        MessageDelegate next = (msg, ct) => Task.FromResult(MessageResult.Ok("OK"));
+
+        await middleware.InvokeAsync(regularMessage, next, CancellationToken.None);
+
+        Assert.Equal(MessagePriority.Normal, regularMessage.Priority);
+    }
+
+    [Test]
+    public async Task PriorityBoostMiddleware_MultipleVIPUsers()
+    {
+        var middleware = new PriorityBoostMiddleware("vip1", "vip2", "vip3");
+
+        var message1 = new AgentMessage { SenderId = "vip1", Subject = "T", Content = "C", Priority = MessagePriority.Normal };
+        var message2 = new AgentMessage { SenderId = "vip2", Subject = "T", Content = "C", Priority = MessagePriority.Normal };
+        var message3 = new AgentMessage { SenderId = "regular", Subject = "T", Content = "C", Priority = MessagePriority.Normal };
+
+        MessageDelegate next = (msg, ct) => Task.FromResult(MessageResult.Ok("OK"));
+
+        await middleware.InvokeAsync(message1, next, CancellationToken.None);
+        await middleware.InvokeAsync(message2, next, CancellationToken.None);
+        await middleware.InvokeAsync(message3, next, CancellationToken.None);
+
+        Assert.Equal(MessagePriority.High, message1.Priority);
+        Assert.Equal(MessagePriority.High, message2.Priority);
+        Assert.Equal(MessagePriority.Normal, message3.Priority);
+    }
+
+    #endregion
+
+    #region ConditionalMiddleware Tests
+
+    [Test]
+    public async Task ConditionalMiddleware_ExecutesWhenConditionMet()
+    {
+        var executeCount = 0;
+        var innerMiddleware = new CallbackMiddleware(before: _ => executeCount++);
+
+        var conditionalMiddleware = new ConditionalMiddleware(
+            msg => msg.Priority == MessagePriority.Urgent,
+            innerMiddleware
+        );
+
+        MessageDelegate next = (msg, ct) => Task.FromResult(MessageResult.Ok("OK"));
+
+        var urgentMessage = new AgentMessage
+        {
+            SenderId = "test",
+            Subject = "Test",
+            Content = "Test",
+            Priority = MessagePriority.Urgent
+        };
+
+        await conditionalMiddleware.InvokeAsync(urgentMessage, next, CancellationToken.None);
+
+        Assert.Equal(1, executeCount);
+    }
+
+    [Test]
+    public async Task ConditionalMiddleware_SkipsWhenConditionNotMet()
+    {
+        var executeCount = 0;
+        var innerMiddleware = new CallbackMiddleware(before: _ => executeCount++);
+
+        var conditionalMiddleware = new ConditionalMiddleware(
+            msg => msg.Priority == MessagePriority.Urgent,
+            innerMiddleware
+        );
+
+        MessageDelegate next = (msg, ct) => Task.FromResult(MessageResult.Ok("OK"));
+
+        var normalMessage = new AgentMessage
+        {
+            SenderId = "test",
+            Subject = "Test",
+            Content = "Test",
+            Priority = MessagePriority.Normal
+        };
+
+        await conditionalMiddleware.InvokeAsync(normalMessage, next, CancellationToken.None);
+
+        Assert.Equal(0, executeCount);
+    }
+
+    [Test]
+    public async Task ConditionalMiddleware_OnlyExecutesForMatchingMessages()
+    {
+        var executeCount = 0;
+        var innerMiddleware = new CallbackMiddleware(before: _ => executeCount++);
+
+        var conditionalMiddleware = new ConditionalMiddleware(
+            msg => msg.Priority == MessagePriority.Urgent,
+            innerMiddleware
+        );
+
+        MessageDelegate next = (msg, ct) => Task.FromResult(MessageResult.Ok("OK"));
+
+        var urgentMessage = new AgentMessage { SenderId = "t", Subject = "T", Content = "C", Priority = MessagePriority.Urgent };
+        var normalMessage = new AgentMessage { SenderId = "t", Subject = "T", Content = "C", Priority = MessagePriority.Normal };
+
+        await conditionalMiddleware.InvokeAsync(urgentMessage, next, CancellationToken.None);
+        await conditionalMiddleware.InvokeAsync(normalMessage, next, CancellationToken.None);
+        await conditionalMiddleware.InvokeAsync(urgentMessage, next, CancellationToken.None);
+
+        Assert.Equal(2, executeCount); // Only executed for urgent messages
+    }
+
+    #endregion
+
     #region Helper Methods and Classes
 
     private static AgentMessage CreateTestMessage(string senderId = "test-sender")
