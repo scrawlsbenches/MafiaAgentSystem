@@ -15,18 +15,18 @@
 - [x] MVP game verified: All 8 scenarios run ✅
 - [x] Centralized timing (GameTimingOptions.cs) ✅
 
-### Phase 2: Core Library Hardening (In Progress)
-- [ ] P0-4: Fix null reference in AgentRouter
-- [ ] P1-1: Thread safety for RulesEngineCore
-- [ ] P1-2: ExecuteAsync with Cancellation
-- [ ] P1-3: Cache Sorted Rules
-- [ ] P1-4: Cache Eviction for CachingMiddleware
-- [ ] P1-5: Extract Configuration Constants
-- [ ] P1-6: Rule Validation on Registration
-- [ ] P1-7: Async Rule Support
-- [ ] P1-8: Standardize DateTime Usage
+### Phase 2: Core Library Hardening ✅
+- [x] P0-4: Fix null reference in AgentRouter ✅
+- [x] P1-1: Thread safety for RulesEngineCore ✅
+- [x] P1-2: ExecuteAsync with Cancellation ✅
+- [x] P1-3: Cache Sorted Rules ✅
+- [x] P1-4: Cache Eviction for CachingMiddleware ✅
+- [x] P1-5: Extract Configuration Constants ✅
+- [x] P1-6: Rule Validation on Registration ✅
+- [x] P1-7: Async Rule Support ✅
+- [x] P1-8: Standardize DateTime Usage ✅
 
-**PHASE 2 IN PROGRESS**
+**PHASE 2 COMPLETE**
 
 ---
 
@@ -185,7 +185,7 @@ Each gate produces a git commit. If a batch fails:
 ## Phase 2: Core Library Hardening
 
 ### BATCH 5: Parallel Foundation Improvements
-**Status**: IN PROGRESS
+**Status**: ✅ COMPLETE
 **Agents**: 3 parallel sub-agents (no file conflicts)
 **Duration**: ~2-3 hours
 
@@ -201,7 +201,7 @@ Each gate produces a git commit. If a batch fails:
 ---
 
 ### BATCH 6: RulesEngine Thread Safety + Validation
-**Status**: PENDING
+**Status**: ✅ COMPLETE
 **Agents**: 1 agent (sequential - same file)
 **Duration**: ~3-4 hours
 **Depends**: BATCH 5
@@ -215,7 +215,7 @@ Each gate produces a git commit. If a batch fails:
 ---
 
 ### BATCH 7: Async & Caching Improvements
-**Status**: PENDING
+**Status**: ✅ COMPLETE
 **Agents**: 3 parallel sub-agents
 **Duration**: ~3-4 hours
 **Depends**: BATCH 6
@@ -234,7 +234,7 @@ Each gate produces a git commit. If a batch fails:
 ---
 
 ### BATCH 8: Async Rules
-**Status**: PENDING
+**Status**: ✅ COMPLETE
 **Agents**: 1 agent
 **Duration**: ~3-4 hours
 **Depends**: BATCH 7 (P1-2)
@@ -248,20 +248,30 @@ Each gate produces a git commit. If a batch fails:
 
 ### BATCH 5 Log
 ```
-[Executing...]
+✅ P0-4: Fixed null reference in AgentRouter (null! removed)
+✅ P1-5: Created AgentRoutingDefaults.cs and MiddlewareDefaults.cs
+✅ P1-8: Created SystemClock.cs, replaced DateTime.Now with DateTime.UtcNow
+Commit: 88ba9f8
 ```
 
 ### BATCH 6 Log
 ```
-[Pending]
+✅ P1-1: Added ReaderWriterLockSlim to RulesEngineCore
+✅ P1-6: Added RuleValidationException, validation on registration
+Commit: 4902cad
 ```
 
 ### BATCH 7 Log
 ```
-[Pending]
+✅ P1-2: Added ExecuteAsync with cancellation support
+✅ P1-3: Added sorted rules caching (GetSortedRules)
+✅ P1-4: Added LRU eviction to CachingMiddleware
+Commit: ea0d9bd
 ```
 
 ### BATCH 8 Log
 ```
-[Pending]
+✅ P1-7: Added IAsyncRule<T>, AsyncRule<T>, AsyncRuleBuilder<T>
+Updated RulesEngineCore to handle async rules
+Commit: 4eec858
 ```
