@@ -6,12 +6,12 @@
 
 ---
 
-## Pre-Execution State
+## Execution State (Updated 2026-01-31)
 
-- [ ] .NET SDK not installed
-- [ ] Build status unknown (likely failing)
-- [ ] Test baseline not established
-- [ ] MVP not defined
+- [x] .NET SDK 8.0.122 installed ✅
+- [x] Build succeeds (0 errors in core + MafiaDemo) ✅
+- [x] Test baseline: 39 tests, all passing ✅
+- [ ] MVP game loop verification pending
 
 ---
 
