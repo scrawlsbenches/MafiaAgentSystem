@@ -17,10 +17,10 @@ public class MiddlewareTests
         var pipeline = new MiddlewarePipeline();
         var handlerCalled = false;
 
-        var builtPipeline = pipeline.Build(async (msg, ct) =>
+        var builtPipeline = pipeline.Build((msg, ct) =>
         {
             handlerCalled = true;
-            return MessageResult.Ok("Final handler");
+            return Task.FromResult(MessageResult.Ok("Final handler"));
         });
 
         var message = CreateTestMessage();
@@ -38,10 +38,10 @@ public class MiddlewareTests
 
         pipeline.Use(new TrackingMiddleware("First", executionOrder));
 
-        var builtPipeline = pipeline.Build(async (msg, ct) =>
+        var builtPipeline = pipeline.Build((msg, ct) =>
         {
             executionOrder.Add("Handler");
-            return MessageResult.Ok("Done");
+            return Task.FromResult(MessageResult.Ok("Done"));
         });
 
         await builtPipeline(CreateTestMessage(), CancellationToken.None);
@@ -62,10 +62,10 @@ public class MiddlewareTests
         pipeline.Use(new TrackingMiddleware("Second", executionOrder));
         pipeline.Use(new TrackingMiddleware("Third", executionOrder));
 
-        var builtPipeline = pipeline.Build(async (msg, ct) =>
+        var builtPipeline = pipeline.Build((msg, ct) =>
         {
             executionOrder.Add("Handler");
-            return MessageResult.Ok("Done");
+            return Task.FromResult(MessageResult.Ok("Done"));
         });
 
         await builtPipeline(CreateTestMessage(), CancellationToken.None);
@@ -88,10 +88,10 @@ public class MiddlewareTests
 
         pipeline.Use(new ShortCircuitMiddleware("Blocked"));
 
-        var builtPipeline = pipeline.Build(async (msg, ct) =>
+        var builtPipeline = pipeline.Build((msg, ct) =>
         {
             handlerCalled = true;
-            return MessageResult.Ok("Should not reach");
+            return Task.FromResult(MessageResult.Ok("Should not reach"));
         });
 
         var result = await builtPipeline(CreateTestMessage(), CancellationToken.None);
@@ -113,7 +113,7 @@ public class MiddlewareTests
             return await next(msg, ct);
         });
 
-        var builtPipeline = pipeline.Build(async (msg, ct) => MessageResult.Ok("Done"));
+        var builtPipeline = pipeline.Build((msg, ct) => Task.FromResult(MessageResult.Ok("Done")));
         await builtPipeline(CreateTestMessage(), CancellationToken.None);
 
         Assert.True(middlewareCalled);
@@ -131,10 +131,10 @@ public class MiddlewareTests
 
         var result = await middleware.InvokeAsync(
             CreateTestMessage(),
-            async (msg, ct) =>
+            (msg, ct) =>
             {
                 nextCalled = true;
-                return MessageResult.Ok("Passed");
+                return Task.FromResult(MessageResult.Ok("Passed"));
             },
             CancellationToken.None);
 
@@ -155,7 +155,7 @@ public class MiddlewareTests
 
         var result = await middleware.InvokeAsync(
             message,
-            async (msg, ct) => MessageResult.Ok("Should not reach"),
+            (msg, ct) => Task.FromResult(MessageResult.Ok("Should not reach")),
             CancellationToken.None);
 
         Assert.False(result.Success);
@@ -175,7 +175,7 @@ public class MiddlewareTests
 
         var result = await middleware.InvokeAsync(
             message,
-            async (msg, ct) => MessageResult.Ok("Should not reach"),
+            (msg, ct) => Task.FromResult(MessageResult.Ok("Should not reach")),
             CancellationToken.None);
 
         Assert.False(result.Success);
@@ -195,7 +195,7 @@ public class MiddlewareTests
 
         var result = await middleware.InvokeAsync(
             message,
-            async (msg, ct) => MessageResult.Ok("Should not reach"),
+            (msg, ct) => Task.FromResult(MessageResult.Ok("Should not reach")),
             CancellationToken.None);
 
         Assert.False(result.Success);
@@ -216,7 +216,7 @@ public class MiddlewareTests
         {
             var result = await middleware.InvokeAsync(
                 message,
-                async (msg, ct) => MessageResult.Ok("Allowed"),
+                (msg, ct) => Task.FromResult(MessageResult.Ok("Allowed")),
                 CancellationToken.None);
 
             Assert.True(result.Success, $"Request {i + 1} should be allowed");
@@ -234,14 +234,14 @@ public class MiddlewareTests
         {
             await middleware.InvokeAsync(
                 message,
-                async (msg, ct) => MessageResult.Ok("Allowed"),
+                (msg, ct) => Task.FromResult(MessageResult.Ok("Allowed")),
                 CancellationToken.None);
         }
 
         // This should be blocked
         var result = await middleware.InvokeAsync(
             message,
-            async (msg, ct) => MessageResult.Ok("Should not reach"),
+            (msg, ct) => Task.FromResult(MessageResult.Ok("Should not reach")),
             CancellationToken.None);
 
         Assert.False(result.Success);
@@ -257,13 +257,13 @@ public class MiddlewareTests
         var message2 = CreateTestMessage("sender-2");
 
         // Exhaust limit for sender-1
-        await middleware.InvokeAsync(message1, async (msg, ct) => MessageResult.Ok("OK"), CancellationToken.None);
-        await middleware.InvokeAsync(message1, async (msg, ct) => MessageResult.Ok("OK"), CancellationToken.None);
+        await middleware.InvokeAsync(message1, (msg, ct) => Task.FromResult(MessageResult.Ok("OK")), CancellationToken.None);
+        await middleware.InvokeAsync(message1, (msg, ct) => Task.FromResult(MessageResult.Ok("OK")), CancellationToken.None);
 
         // sender-2 should still be allowed
         var result = await middleware.InvokeAsync(
             message2,
-            async (msg, ct) => MessageResult.Ok("Allowed"),
+            (msg, ct) => Task.FromResult(MessageResult.Ok("Allowed")),
             CancellationToken.None);
 
         Assert.True(result.Success);
@@ -281,10 +281,10 @@ public class MiddlewareTests
 
         var result = await middleware.InvokeAsync(
             CreateTestMessage(),
-            async (msg, ct) =>
+            (msg, ct) =>
             {
                 handlerCallCount++;
-                return MessageResult.Ok("Fresh");
+                return Task.FromResult(MessageResult.Ok("Fresh"));
             },
             CancellationToken.None);
 
@@ -302,20 +302,20 @@ public class MiddlewareTests
         // First call
         await middleware.InvokeAsync(
             message,
-            async (msg, ct) =>
+            (msg, ct) =>
             {
                 handlerCallCount++;
-                return MessageResult.Ok("Fresh");
+                return Task.FromResult(MessageResult.Ok("Fresh"));
             },
             CancellationToken.None);
 
         // Second call with same message
         var result = await middleware.InvokeAsync(
             CreateTestMessage(), // Same content
-            async (msg, ct) =>
+            (msg, ct) =>
             {
                 handlerCallCount++;
-                return MessageResult.Ok("Should not reach");
+                return Task.FromResult(MessageResult.Ok("Should not reach"));
             },
             CancellationToken.None);
 
@@ -333,20 +333,20 @@ public class MiddlewareTests
         // First call fails
         await middleware.InvokeAsync(
             message,
-            async (msg, ct) =>
+            (msg, ct) =>
             {
                 handlerCallCount++;
-                return MessageResult.Fail("Error");
+                return Task.FromResult(MessageResult.Fail("Error"));
             },
             CancellationToken.None);
 
         // Second call should hit handler again
         await middleware.InvokeAsync(
             CreateTestMessage(),
-            async (msg, ct) =>
+            (msg, ct) =>
             {
                 handlerCallCount++;
-                return MessageResult.Ok("Success");
+                return Task.FromResult(MessageResult.Ok("Success"));
             },
             CancellationToken.None);
 
@@ -361,12 +361,12 @@ public class MiddlewareTests
         // Add some entries
         middleware.InvokeAsync(
             CreateTestMessage("sender-1"),
-            async (msg, ct) => MessageResult.Ok("OK"),
+            (msg, ct) => Task.FromResult(MessageResult.Ok("OK")),
             CancellationToken.None).Wait();
 
         middleware.InvokeAsync(
             CreateTestMessage("sender-2"),
-            async (msg, ct) => MessageResult.Ok("OK"),
+            (msg, ct) => Task.FromResult(MessageResult.Ok("OK")),
             CancellationToken.None).Wait();
 
         Assert.True(middleware.Count > 0);
@@ -387,7 +387,7 @@ public class MiddlewareTests
 
         var result = await middleware.InvokeAsync(
             CreateTestMessage(),
-            async (msg, ct) => MessageResult.Ok("Success"),
+            (msg, ct) => Task.FromResult(MessageResult.Ok("Success")),
             CancellationToken.None);
 
         Assert.True(result.Success);
@@ -401,22 +401,22 @@ public class MiddlewareTests
         // 2 failures (below threshold of 3)
         await middleware.InvokeAsync(
             CreateTestMessage(),
-            async (msg, ct) => MessageResult.Fail("Error"),
+            (msg, ct) => Task.FromResult(MessageResult.Fail("Error")),
             CancellationToken.None);
 
         await middleware.InvokeAsync(
             CreateTestMessage(),
-            async (msg, ct) => MessageResult.Fail("Error"),
+            (msg, ct) => Task.FromResult(MessageResult.Fail("Error")),
             CancellationToken.None);
 
         // Should still allow requests
         var nextCalled = false;
         await middleware.InvokeAsync(
             CreateTestMessage(),
-            async (msg, ct) =>
+            (msg, ct) =>
             {
                 nextCalled = true;
-                return MessageResult.Ok("Success");
+                return Task.FromResult(MessageResult.Ok("Success"));
             },
             CancellationToken.None);
 
@@ -433,14 +433,14 @@ public class MiddlewareTests
         {
             await middleware.InvokeAsync(
                 CreateTestMessage(),
-                async (msg, ct) => MessageResult.Fail("Error"),
+                (msg, ct) => Task.FromResult(MessageResult.Fail("Error")),
                 CancellationToken.None);
         }
 
         // Next request should be blocked
         var result = await middleware.InvokeAsync(
             CreateTestMessage(),
-            async (msg, ct) => MessageResult.Ok("Should not reach"),
+            (msg, ct) => Task.FromResult(MessageResult.Ok("Should not reach")),
             CancellationToken.None);
 
         Assert.False(result.Success);
@@ -464,7 +464,7 @@ public class MiddlewareTests
         // Circuit should be open
         var result = await middleware.InvokeAsync(
             CreateTestMessage(),
-            async (msg, ct) => MessageResult.Ok("Should not reach"),
+            (msg, ct) => Task.FromResult(MessageResult.Ok("Should not reach")),
             CancellationToken.None);
 
         Assert.False(result.Success);
@@ -484,7 +484,7 @@ public class MiddlewareTests
             CreateTestMessage(),
             async (msg, ct) =>
             {
-                await Task.Delay(10); // Small delay
+                await Task.Delay(10); // Small delay - actually awaits
                 return MessageResult.Ok("Done");
             },
             CancellationToken.None);
@@ -506,18 +506,18 @@ public class MiddlewareTests
         // 2 successes
         await middleware.InvokeAsync(
             CreateTestMessage(),
-            async (msg, ct) => MessageResult.Ok("OK"),
+            (msg, ct) => Task.FromResult(MessageResult.Ok("OK")),
             CancellationToken.None);
 
         await middleware.InvokeAsync(
             CreateTestMessage(),
-            async (msg, ct) => MessageResult.Ok("OK"),
+            (msg, ct) => Task.FromResult(MessageResult.Ok("OK")),
             CancellationToken.None);
 
         // 1 failure
         await middleware.InvokeAsync(
             CreateTestMessage(),
-            async (msg, ct) => MessageResult.Fail("Error"),
+            (msg, ct) => Task.FromResult(MessageResult.Fail("Error")),
             CancellationToken.None);
 
         var snapshot = middleware.GetSnapshot();
@@ -537,13 +537,13 @@ public class MiddlewareTests
         {
             await middleware.InvokeAsync(
                 CreateTestMessage(),
-                async (msg, ct) => MessageResult.Ok("OK"),
+                (msg, ct) => Task.FromResult(MessageResult.Ok("OK")),
                 CancellationToken.None);
         }
 
         await middleware.InvokeAsync(
             CreateTestMessage(),
-            async (msg, ct) => MessageResult.Fail("Error"),
+            (msg, ct) => Task.FromResult(MessageResult.Fail("Error")),
             CancellationToken.None);
 
         var snapshot = middleware.GetSnapshot();
@@ -562,7 +562,7 @@ public class MiddlewareTests
 
         var result = await middleware.InvokeAsync(
             CreateTestMessage("admin"),
-            async (msg, ct) => MessageResult.Ok("Authenticated"),
+            (msg, ct) => Task.FromResult(MessageResult.Ok("Authenticated")),
             CancellationToken.None);
 
         Assert.True(result.Success);
@@ -575,7 +575,7 @@ public class MiddlewareTests
 
         var result = await middleware.InvokeAsync(
             CreateTestMessage("hacker"),
-            async (msg, ct) => MessageResult.Ok("Should not reach"),
+            (msg, ct) => Task.FromResult(MessageResult.Ok("Should not reach")),
             CancellationToken.None);
 
         Assert.False(result.Success);
@@ -589,7 +589,7 @@ public class MiddlewareTests
 
         var result = await middleware.InvokeAsync(
             CreateTestMessage("ADMIN"),
-            async (msg, ct) => MessageResult.Ok("Authenticated"),
+            (msg, ct) => Task.FromResult(MessageResult.Ok("Authenticated")),
             CancellationToken.None);
 
         Assert.True(result.Success);
