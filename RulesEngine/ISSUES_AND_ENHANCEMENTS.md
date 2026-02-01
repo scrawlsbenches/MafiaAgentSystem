@@ -1,10 +1,16 @@
 # Rules Engine - Issues & Enhancements
 
-This document identifies potential issues in the current implementation and provides production-ready solutions.
+This document identifies issues found during code review and the solutions implemented.
+
+> **Status Legend:** ✅ Resolved | 🔄 Partial | ⏳ Pending
+
+---
 
 ## 🔴 Critical Issues
 
-### Issue 1: Thread Safety
+### Issue 1: Thread Safety ✅ RESOLVED (2026-01-31)
+
+**Resolution:** Implemented `ReaderWriterLockSlim` in `RulesEngineCore<T>`. Multiple threads can evaluate rules concurrently (read lock), while rule registration acquires exclusive write lock. See `RulesEngine/Core/RulesEngineCore.cs`.
 
 **Problem:**
 ```csharp
@@ -121,7 +127,9 @@ public class RulesEngineCore<T>
 }
 ```
 
-### Issue 4: Memory Leaks in Expression Caching
+### Issue 4: Memory Leaks in Expression Caching ✅ RESOLVED (2026-01-31)
+
+**Resolution:** Implemented LRU eviction in `CachingMiddleware` with configurable max entries (default: 1000). See `AgentRouting/Middleware/CommonMiddleware.cs`.
 
 **Problem:**
 ```csharp
@@ -190,7 +198,9 @@ public class LRUCache<TKey, TValue> where TKey : notnull
 
 ## 🟡 Significant Issues
 
-### Issue 5: No Rule Validation
+### Issue 5: No Rule Validation ✅ RESOLVED (2026-01-31)
+
+**Resolution:** Added `RuleValidationException` thrown on registration for null/empty ID, null/empty Name, or duplicate IDs (configurable). See `RulesEngine/Core/RulesEngineCore.cs`.
 
 **Problem:**
 ```csharp
@@ -415,9 +425,11 @@ foreach (var trace in debugRule.EvaluationTrace)
 
 ## 🟢 Enhancements
 
-### Enhancement 1: Async Rule Support
+### Enhancement 1: Async Rule Support ✅ IMPLEMENTED (2026-01-31)
 
-**Current Limitation:** Rules can't perform async operations.
+**Implementation:** Added `IAsyncRule<T>`, `AsyncRule<T>`, and `AsyncRuleBuilder<T>`. `RulesEngineCore<T>.ExecuteAsync()` handles both sync and async rules with cancellation support. See `RulesEngine/Core/AsyncRule.cs`.
+
+**Original Limitation:** Rules couldn't perform async operations.
 
 **Enhancement:**
 ```csharp

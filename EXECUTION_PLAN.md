@@ -179,27 +179,38 @@ Each gate produces a git commit. If a batch fails:
 
 ### BATCH 0 Log
 ```
-[Pending execution]
+✅ .NET SDK 8.0.122 installed
+✅ dotnet --version returns 8.0.122
+Gate G0 PASSED
 ```
 
 ### BATCH 1 Log
 ```
-[Pending execution]
+✅ Build assessment complete
+✅ Errors catalogued and prioritized
+Gate G1 PASSED
 ```
 
 ### BATCH 2 Log
 ```
-[Pending execution]
+✅ Critical fixes applied (abstract class, type mismatches, null refs)
+✅ Build succeeds with 0 errors
+Gate G2 PASSED
 ```
 
 ### BATCH 3 Log
 ```
-[Pending execution]
+✅ TestRunner: 39 tests passing
+✅ Baseline documented
+Gate G3 PASSED
 ```
 
 ### BATCH 4 Log
 ```
-[Completed - MVP verified]
+✅ MVP game runs all 8 scenarios
+✅ Interactive game loop functional
+✅ GameTimingOptions.cs centralizes delays
+Gate G4 PASSED
 ```
 
 ---

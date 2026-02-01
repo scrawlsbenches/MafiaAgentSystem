@@ -329,11 +329,14 @@ The rules engine uses C# expression trees for:
 
 ## Testing
 
-The project includes comprehensive tests:
+The project includes comprehensive tests using a **custom zero-dependency test framework**:
 
 ```bash
-dotnet test
+# Run from repository root
+dotnet run --project Tests/TestRunner/
 ```
+
+**Current status: 118 tests passing**
 
 Test coverage includes:
 - ✅ Basic rule creation and evaluation
