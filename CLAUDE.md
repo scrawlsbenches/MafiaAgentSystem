@@ -6,7 +6,6 @@
 |------|------------------|
 | Build | `dotnet build AgentRouting/AgentRouting.sln` |
 | Test | `dotnet run --project Tests/TestRunner/` |
-| Test count | 89 tests (all passing) |
 | Constraints | Zero 3rd party dependencies |
 
 ## Skill Files (For Complex Work)
@@ -143,7 +142,7 @@ AgentRouting/
 - **Middleware**: `AgentRouting/AgentRouting/Middleware/`
 - **Configuration**: `AgentRouting/AgentRouting/Configuration/` (defaults)
 - **Infrastructure**: `AgentRouting/AgentRouting/Infrastructure/` (SystemClock)
-- **Tests**: `Tests/TestRunner/Tests/` (67 tests)
+- **Tests**: `Tests/TestRunner/Tests/`
 - **Test Framework**: `Tests/TestRunner/Framework/`
 
 ## Dependency Inversion Pattern

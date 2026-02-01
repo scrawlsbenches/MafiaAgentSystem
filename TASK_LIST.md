@@ -17,8 +17,7 @@
 | P3 | Testing & Quality | 🔄 **PARTIAL** | 7 tasks |
 | P4 | Documentation & Polish | ⏳ **PENDING** | 6 tasks |
 
-**Note**: P2-2 through P2-8 were already implemented. P2-10 integration tests added (22 tests).
-**Test count**: 89 tests (all passing)
+**Note**: P2-2 through P2-8 were already implemented. P2-10 integration tests added.
 
 ---
 
@@ -528,11 +527,11 @@ Complete the MafiaDemo game to serve as a proper test bed for the libraries.
 
 Improve test coverage and code quality.
 
-> **Status (2026-02-01)**: 89 tests total, all passing
-> - ✅ P3-1: Concurrency tests (4 tests)
-> - ✅ Async execution tests (14 tests)
-> - ✅ Validation and cache tests (10 tests)
-> - ✅ MafiaDemo integration tests (22 tests)
+> **Status (2026-02-01)**:
+> - ✅ P3-1: Concurrency tests
+> - ✅ Async execution tests
+> - ✅ Validation and cache tests
+> - ✅ MafiaDemo integration tests
 > - ⏳ P3-2 through P3-8: Still pending
 
 ### Task P3-1: Add Concurrency Tests for RulesEngine
