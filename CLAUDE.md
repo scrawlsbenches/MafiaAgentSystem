@@ -6,6 +6,7 @@
 |------|------------------|
 | Build | `dotnet build AgentRouting/AgentRouting.sln` |
 | Test | `dotnet run --project Tests/TestRunner/` |
+| Coverage | `dotnet tools/coverage/coverlet/tools/net6.0/any/coverlet.console.dll` |
 | Constraints | Zero 3rd party dependencies |
 
 ## Skill Files (For Complex Work)
@@ -80,6 +81,57 @@ dotnet run --project Tests/TestRunner/ -- Tests/RulesEngine.Tests/bin/Debug/net8
 ```
 
 The test runner has **zero NuGet dependencies** - it uses a custom lightweight test framework.
+
+## Code Coverage
+
+Line-by-line code coverage is available using Coverlet (included in `tools/coverage/`).
+
+### Running Coverage
+
+```bash
+# Coverage for RulesEngine
+dotnet tools/coverage/coverlet/tools/net6.0/any/coverlet.console.dll \
+  "Tests/RulesEngine.Tests/bin/Debug/net8.0/" \
+  -t "dotnet" \
+  -a "run --project Tests/TestRunner/ --no-build" \
+  -f cobertura \
+  -o coverage/rulesengine.xml
+
+# Coverage for AgentRouting
+dotnet tools/coverage/coverlet/tools/net6.0/any/coverlet.console.dll \
+  "Tests/AgentRouting.Tests/bin/Debug/net8.0/" \
+  -t "dotnet" \
+  -a "run --project Tests/TestRunner/ --no-build" \
+  -f cobertura \
+  -o coverage/agentrouting.xml
+```
+
+### Coverage Output Formats
+
+| Format | Flag | Use Case |
+|--------|------|----------|
+| Cobertura XML | `-f cobertura` | CI/CD integration, detailed reports |
+| LCOV | `-f lcov` | IDE integration, line highlighting |
+| JSON | `-f json` | Programmatic analysis |
+
+### Current Coverage (as of last run)
+
+| Module | Line | Branch | Method |
+|--------|------|--------|--------|
+| RulesEngine | 80.98% | 64.95% | 88.05% |
+| AgentRouting | 47.80% | 46.39% | 59.71% |
+
+### Offline Build (No NuGet Access)
+
+If NuGet is blocked by proxy, use this workaround:
+
+```bash
+# Restore with no external sources (works for zero-dependency projects)
+dotnet restore AgentRouting/AgentRouting.sln --source /nonexistent
+
+# Build without restore
+dotnet build AgentRouting/AgentRouting.sln --no-restore
+```
 
 ### Test Project Structure
 
