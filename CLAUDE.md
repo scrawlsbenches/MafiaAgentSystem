@@ -61,11 +61,40 @@ apt-get install -y dotnet-sdk-8.0 2>&1 | tail -20
 
 ## Build & Test
 ```bash
-dotnet build                              # Build all
-dotnet run --project Tests/TestRunner/    # Run all tests (zero dependencies)
+# Build everything
+dotnet build
+
+# Build test projects (must be built before running TestRunner)
+dotnet build Tests/RulesEngine.Tests/
+dotnet build Tests/AgentRouting.Tests/
+dotnet build Tests/MafiaDemo.Tests/
+
+# Run all tests (auto-discovers built test assemblies)
+dotnet run --project Tests/TestRunner/
+
+# Run with coverage report
+dotnet run --project Tests/TestRunner/ -- --coverage
+
+# Run specific test assembly
+dotnet run --project Tests/TestRunner/ -- Tests/RulesEngine.Tests/bin/Debug/net8.0/RulesEngine.Tests.dll
 ```
 
-The test runner has **zero NuGet dependencies** - it uses a custom lightweight test framework in `Tests/TestRunner/Framework/`.
+The test runner has **zero NuGet dependencies** - it uses a custom lightweight test framework.
+
+### Test Project Structure
+
+The TestRunner is decoupled from the code under test:
+
+```
+Tests/
+├── TestRunner/              # Test host (loads assemblies at runtime)
+├── TestRunner.Framework/    # Shared framework (Assert, [Test], [Theory])
+├── RulesEngine.Tests/       # Tests for RulesEngine
+├── AgentRouting.Tests/      # Tests for AgentRouting
+└── MafiaDemo.Tests/         # Tests for MafiaDemo
+```
+
+Each test project references only `TestRunner.Framework` and its target assembly.
 
 ## Architecture
 
@@ -142,8 +171,11 @@ AgentRouting/
 - **Middleware**: `AgentRouting/AgentRouting/Middleware/`
 - **Configuration**: `AgentRouting/AgentRouting/Configuration/` (defaults)
 - **Infrastructure**: `AgentRouting/AgentRouting/Infrastructure/` (SystemClock)
-- **Tests**: `Tests/TestRunner/Tests/`
-- **Test Framework**: `Tests/TestRunner/Framework/`
+- **Test Framework**: `Tests/TestRunner.Framework/` (Assert, attributes)
+- **Test Runner**: `Tests/TestRunner/` (runtime assembly loading)
+- **RulesEngine Tests**: `Tests/RulesEngine.Tests/`
+- **AgentRouting Tests**: `Tests/AgentRouting.Tests/`
+- **MafiaDemo Tests**: `Tests/MafiaDemo.Tests/`
 
 ## Dependency Inversion Pattern
 
