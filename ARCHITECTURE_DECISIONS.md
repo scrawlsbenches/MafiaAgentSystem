@@ -152,22 +152,42 @@ var cache = new CachingMiddleware(stateStore, TimeSpan.FromMinutes(5));
 
 ### 5. RuleResult.Error Semantics
 
-**Status:** 📋 Planned
+**Status:** ✅ Documented (2026-02-01)
 
-**Problem:** When a rule's action throws, `RuleResult.Error()` sets `Matched = false`. This loses information about whether the rule actually matched.
+**Problem:** When a rule's action throws, different rule implementations behave differently:
+- `ActionRule<T>` (from `AddRule()`): Correctly sets `Matched = true`
+- `Rule<T>` (from `RuleBuilder`): Uses `RuleResult.Error()` which sets `Matched = false`
 
-**Current behavior:**
+This inconsistency means you lose information about whether the condition matched when using `Rule<T>`.
+
+**Discovery:** Comprehensive tests were added that reveal the inconsistency:
+- `RuleResult_Error_ActionThrows_AfterMatchingCondition_SetsMatchedFalse` - Documents `Rule<T>` behavior
+- `RuleResult_Error_ActionRuleVsRuleT_InconsistentBehavior` - Shows the difference between the two
+
+**Current behavior comparison:**
 ```csharp
-// Rule matched, action threw
-return RuleResult.Error(Id, Name, ex.Message);
-// Matched = false, ActionExecuted = false
+// ActionRule (AddRule) - CORRECT behavior:
+catch (Exception ex)
+{
+    return new RuleResult { Matched = true, ActionExecuted = false, ErrorMessage = ex.Message };
+}
+
+// Rule<T> (RuleBuilder) - LOSES match information:
+catch (Exception ex)
+{
+    return RuleResult.Error(Id, Name, ex.Message);  // Matched = false
+}
 ```
 
-**Options:**
-1. **Keep as-is:** Error = not matched (simpler, current behavior)
-2. **Change semantics:** Matched = true, ActionExecuted = false, ErrorMessage set
+**Resolution options:**
+1. **Fix Rule<T>:** Change `Rule<T>.Execute()` to not use `RuleResult.Error()`, instead inline similar logic to `ActionRule`
+2. **Keep as-is:** Document the inconsistency, prefer `AddRule()` for rules that might throw
+3. **Add RuleResult.MatchedWithError:** New factory method that sets `Matched = true` with error
 
-**Decision:** Add comprehensive tests first to understand edge cases, then decide.
+**Decision:** For now, document the behavior with tests (9 new tests added). Future work may fix the inconsistency.
+
+**Files added/changed:**
+- `Tests/TestRunner/Tests/RuleEdgeCaseTests.cs` - 9 new tests in `RuleResult.Error Edge Cases` region
 
 ---
 

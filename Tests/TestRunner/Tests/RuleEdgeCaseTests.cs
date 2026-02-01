@@ -287,4 +287,232 @@ public class RuleEdgeCaseTests
         // This test ensures Dispose doesn't throw
         Assert.True(true);
     }
+
+    #region RuleResult.Error Edge Cases
+
+    /// <summary>
+    /// Documents behavior: when condition evaluation throws, rule is NOT matched.
+    /// Note: Expression trees can't contain throw, so we use a method call that throws.
+    /// </summary>
+    [Test]
+    public void RuleResult_Error_ConditionThrows_NotMatched()
+    {
+        var engine = new RulesEngineCore<TestFact>();
+
+        var rule = new RuleBuilder<TestFact>()
+            .WithId("CONDITION_THROWS")
+            .WithName("Condition Throws")
+            .When(fact => ThrowingCondition(fact))
+            .Then(fact => fact.Results.Add("Should not execute"))
+            .Build();
+
+        engine.RegisterRule(rule);
+
+        var fact = new TestFact { Value = 10 };
+        var result = engine.Execute(fact);
+
+        // Condition threw, so rule is not matched
+        Assert.Equal(0, result.MatchedRules);
+        Assert.Equal(0, fact.Results.Count);
+    }
+
+    private static bool ThrowingCondition(TestFact fact)
+    {
+        throw new InvalidOperationException("Condition error");
+    }
+
+    /// <summary>
+    /// KEY EDGE CASE: When condition matches but action throws,
+    /// RuleResult.Error sets Matched=false. This is the documented behavior.
+    /// See ARCHITECTURE_DECISIONS.md section 5.
+    /// </summary>
+    [Test]
+    public void RuleResult_Error_ActionThrows_AfterMatchingCondition_SetsMatchedFalse()
+    {
+        var engine = new RulesEngineCore<TestFact>();
+
+        // Use a simple condition (can't use statement body in expression tree)
+        var rule = new RuleBuilder<TestFact>()
+            .WithId("ACTION_THROWS")
+            .WithName("Action Throws")
+            .When(fact => fact.Value > 5) // Will match for Value=10
+            .Then(fact => throw new InvalidOperationException("Action error"))
+            .Build();
+
+        engine.RegisterRule(rule);
+
+        var fact = new TestFact { Value = 10 }; // Matches condition (10 > 5)
+        var result = engine.Execute(fact);
+
+        // Condition was evaluated and matched, but RuleResult.Error sets Matched=false
+        // IMPORTANT: This behavior loses the information that the rule actually matched
+        Assert.Equal(0, result.MatchedRules); // Currently 0 due to Error semantics
+        Assert.True(result.Errors > 0);
+
+        // Verify error message is captured
+        var errors = result.GetErrors().ToList();
+        Assert.Equal(1, errors.Count);
+        Assert.Contains("Action error", errors[0].ErrorMessage ?? "");
+    }
+
+    /// <summary>
+    /// Verifies that RuleResult.Error preserves the error message.
+    /// </summary>
+    [Test]
+    public void RuleResult_Error_PreservesExceptionMessage()
+    {
+        var ruleResult = RuleResult.Error("TEST_RULE", "Test Rule", "Specific error message");
+
+        Assert.Equal("TEST_RULE", ruleResult.RuleId);
+        Assert.Equal("Test Rule", ruleResult.RuleName);
+        Assert.False(ruleResult.Matched);
+        Assert.False(ruleResult.ActionExecuted);
+        Assert.Equal("Specific error message", ruleResult.ErrorMessage);
+    }
+
+    /// <summary>
+    /// Documents the differences between Success, NotMatched, and Error results.
+    /// </summary>
+    [Test]
+    public void RuleResult_StaticFactoryMethods_HaveDistinctProperties()
+    {
+        var success = RuleResult.Success("S1", "Success Rule");
+        var notMatched = RuleResult.NotMatched("N1", "NotMatched Rule");
+        var error = RuleResult.Error("E1", "Error Rule", "Some error");
+        var failure = RuleResult.Failure("F1", "Some failure");
+
+        // Success: Matched=true, ActionExecuted=true, no error
+        Assert.True(success.Matched);
+        Assert.True(success.ActionExecuted);
+        Assert.Null(success.ErrorMessage);
+
+        // NotMatched: Matched=false, ActionExecuted=false, no error
+        Assert.False(notMatched.Matched);
+        Assert.False(notMatched.ActionExecuted);
+        Assert.Null(notMatched.ErrorMessage);
+
+        // Error: Matched=false, ActionExecuted=false, HAS error
+        Assert.False(error.Matched);
+        Assert.False(error.ActionExecuted);
+        Assert.NotNull(error.ErrorMessage);
+
+        // Failure: Similar to Error but only takes ruleId and errorMessage
+        Assert.False(failure.Matched);
+        Assert.False(failure.ActionExecuted);
+        Assert.NotNull(failure.ErrorMessage);
+    }
+
+    /// <summary>
+    /// When multiple rules throw exceptions, all errors are captured.
+    /// NOTE: AddRule() creates ActionRule which correctly preserves Matched=true
+    /// when condition matched but action threw (unlike Rule&lt;T&gt; which uses RuleResult.Error).
+    /// </summary>
+    [Test]
+    public void Execute_MultipleRulesThrow_CapturesAllErrors()
+    {
+        var engine = new RulesEngineCore<TestFact>();
+
+        engine.AddRule("R1", "Rule 1", f => true, f => throw new InvalidOperationException("Error 1"), priority: 100);
+        engine.AddRule("R2", "Rule 2", f => true, f => throw new ArgumentException("Error 2"), priority: 50);
+        engine.AddRule("R3", "Rule 3", f => true, f => f.Results.Add("Success"), priority: 10);
+
+        var fact = new TestFact();
+        var result = engine.Execute(fact);
+
+        // ActionRule correctly sets Matched=true even when action throws,
+        // because the condition DID match. So all 3 are "matched".
+        Assert.Equal(3, result.MatchedRules);
+        Assert.Equal(2, result.Errors);
+
+        var errors = result.GetErrors().ToList();
+        Assert.True(errors.Any(e => e.ErrorMessage?.Contains("Error 1") == true));
+        Assert.True(errors.Any(e => e.ErrorMessage?.Contains("Error 2") == true));
+
+        // R3's action still executed (rules are independent)
+        Assert.Contains("Success", fact.Results);
+    }
+
+    /// <summary>
+    /// CRITICAL EDGE CASE: ActionRule and Rule&lt;T&gt; handle exceptions differently!
+    /// - ActionRule (from AddRule): Matched=true when condition matched but action threw
+    /// - Rule&lt;T&gt; (from RuleBuilder): Matched=false via RuleResult.Error()
+    /// This inconsistency is documented in ARCHITECTURE_DECISIONS.md section 5.
+    /// </summary>
+    [Test]
+    public void RuleResult_Error_ActionRuleVsRuleT_InconsistentBehavior()
+    {
+        // Test with ActionRule (AddRule) - preserves Matched=true
+        var engine1 = new RulesEngineCore<TestFact>();
+        engine1.AddRule("AR1", "ActionRule", f => f.Value > 5, f => throw new InvalidOperationException("Action error"));
+        var fact1 = new TestFact { Value = 10 };
+        var result1 = engine1.Execute(fact1);
+
+        // ActionRule correctly sets Matched=true
+        Assert.Equal(1, result1.MatchedRules);
+        Assert.Equal(1, result1.Errors);
+
+        // Test with Rule<T> (RuleBuilder) - loses match information
+        var engine2 = new RulesEngineCore<TestFact>();
+        var rule = new RuleBuilder<TestFact>()
+            .WithId("RT1")
+            .WithName("RuleT")
+            .When(f => f.Value > 5)
+            .Then(f => throw new InvalidOperationException("Action error"))
+            .Build();
+        engine2.RegisterRule(rule);
+        var fact2 = new TestFact { Value = 10 };
+        var result2 = engine2.Execute(fact2);
+
+        // Rule<T> incorrectly sets Matched=false via RuleResult.Error()
+        Assert.Equal(0, result2.MatchedRules); // BUG: Should be 1
+        Assert.Equal(1, result2.Errors);
+    }
+
+    /// <summary>
+    /// Verifies that ExecutedAt timestamp is set correctly.
+    /// </summary>
+    [Test]
+    public void RuleResult_ExecutedAt_IsReasonablyRecent()
+    {
+        var before = DateTime.UtcNow;
+        var result = RuleResult.Success("TEST", "Test");
+        var after = DateTime.UtcNow;
+
+        Assert.True(result.ExecutedAt >= before);
+        Assert.True(result.ExecutedAt <= after);
+    }
+
+    /// <summary>
+    /// Tests RuleResult.Success with custom outputs.
+    /// </summary>
+    [Test]
+    public void RuleResult_Success_WithOutputs_PreservesOutputs()
+    {
+        var outputs = new Dictionary<string, object>
+        {
+            ["score"] = 100,
+            ["decision"] = "approved",
+            ["metadata"] = new { source = "test" }
+        };
+
+        var result = RuleResult.Success("OUTPUT_RULE", "Output Rule", outputs);
+
+        Assert.Equal(3, result.Outputs.Count);
+        Assert.Equal(100, result.Outputs["score"]);
+        Assert.Equal("approved", result.Outputs["decision"]);
+    }
+
+    /// <summary>
+    /// Tests that null outputs parameter creates empty dictionary.
+    /// </summary>
+    [Test]
+    public void RuleResult_Success_NullOutputs_CreatesEmptyDictionary()
+    {
+        var result = RuleResult.Success("TEST", "Test", null);
+
+        Assert.NotNull(result.Outputs);
+        Assert.Equal(0, result.Outputs.Count);
+    }
+
+    #endregion
 }
