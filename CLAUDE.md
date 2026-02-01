@@ -1,5 +1,22 @@
 # MafiaAgentSystem Development Guide
 
+## Quick Reference
+
+| What | Command/Location |
+|------|------------------|
+| Build | `dotnet build AgentRouting/AgentRouting.sln` |
+| Test | `dotnet run --project Tests/TestRunner/` |
+| Test count | 67 tests (all passing) |
+| Constraints | Zero 3rd party dependencies |
+
+## Skill Files (For Complex Work)
+
+When working on complex multi-step tasks, consult:
+- **`SKILL_ORCHESTRATION.md`** - Multi-agent batch workflows, file ownership, verification gates
+- **`SKILL_TASK_ANALYSIS.md`** - Breaking down work, prioritization, dependency analysis
+- **`EXECUTION_PLAN.md`** - Current project state and completed batches
+- **`TASK_LIST.md`** - Full prioritized task list with estimates
+
 ## Prerequisites
 - .NET 8.0 SDK required (`dotnet --version` should show 8.x)
 
@@ -82,24 +99,30 @@ public class MyAgent : IAgent {
 
 ```
 RulesEngine/
-├── IRule<T>           # Single rule contract
-├── RulesEngineCore<T> # Depends on IRule<T> abstraction
-└── ThreadSafeRulesEngine<T> / LockedRulesEngine<T>  # Thread-safe variants
+├── IRule<T>              # Sync rule contract
+├── IAsyncRule<T>         # Async rule contract (for I/O operations)
+├── RulesEngineCore<T>    # Thread-safe, supports both sync and async rules
+├── RuleValidationException # Thrown on invalid rule registration
+└── RuleExecutionResult<T>  # Detailed execution result with exception info
 
 AgentRouting/
 ├── IAgent             # Agent contract
 ├── IAgentMiddleware   # Middleware contract (in MiddlewareInfrastructure.cs)
+├── IAgentLogger       # Logging abstraction (nullable fromAgent)
 ├── AgentRouter        # Depends on IAgent abstraction
-└── MiddlewarePipeline # Composes IAgentMiddleware
+├── MiddlewarePipeline # Composes IAgentMiddleware
+└── ISystemClock       # Testable time abstraction
 ```
 
 ## File Locations
 
-- **Rules**: `RulesEngine/RulesEngine/Core/`
+- **Rules**: `RulesEngine/RulesEngine/Core/` (includes `AsyncRule.cs`, `RuleValidationException.cs`)
 - **Thread Safety**: `RulesEngine/RulesEngine/Enhanced/`
 - **Agents**: `AgentRouting/AgentRouting/Core/`
 - **Middleware**: `AgentRouting/AgentRouting/Middleware/`
-- **Tests**: `Tests/TestRunner/Tests/`
+- **Configuration**: `AgentRouting/AgentRouting/Configuration/` (defaults)
+- **Infrastructure**: `AgentRouting/AgentRouting/Infrastructure/` (SystemClock)
+- **Tests**: `Tests/TestRunner/Tests/` (67 tests)
 - **Test Framework**: `Tests/TestRunner/Framework/`
 
 ## Dependency Inversion Pattern
@@ -155,6 +178,90 @@ engine.AddRule("RULE_ID", "Rule Name",
 **Execution modes:**
 - `Execute(fact)` - Returns results, rules don't modify fact
 - `EvaluateAll(fact)` - Applies all matching rules, modifies fact in-place
+- `ExecuteAsync(fact, cancellationToken)` - Async execution with cancellation support
+
+## Async Rules (IAsyncRule<T>)
+
+For rules that perform I/O operations (database, API calls):
+
+```csharp
+// Using the builder
+var asyncRule = new AsyncRuleBuilder<Order>()
+    .WithId("check-inventory")
+    .WithName("Check Inventory Async")
+    .WithPriority(100)
+    .WithCondition(async order => await inventoryService.HasStock(order.ProductId))
+    .WithAction(async order => {
+        await inventoryService.Reserve(order.ProductId);
+        return RuleResult.Success("check-inventory");
+    })
+    .Build();
+
+engine.RegisterAsyncRule(asyncRule);
+
+// Execute both sync and async rules
+var results = await engine.ExecuteAsync(order, cancellationToken);
+```
+
+## Thread Safety
+
+`RulesEngineCore<T>` is thread-safe using `ReaderWriterLockSlim`:
+- Multiple threads can execute rules concurrently (read lock)
+- Rule registration/removal acquires exclusive write lock
+- Implements `IDisposable` - call `Dispose()` when done
+
+```csharp
+using var engine = new RulesEngineCore<Order>();
+// Safe for concurrent access
+```
+
+## Rule Validation
+
+Rules are validated on registration:
+- `null` rule throws `ArgumentNullException`
+- Empty/null `Id` throws `RuleValidationException`
+- Empty/null `Name` throws `RuleValidationException`
+- Duplicate `Id` throws `RuleValidationException` (configurable)
+
+```csharp
+// Allow duplicate IDs if needed
+var options = new RulesEngineOptions { AllowDuplicateRuleIds = true };
+var engine = new RulesEngineCore<Order>(options);
+```
+
+## Performance: Sorted Rules Cache
+
+Rules are sorted by priority once and cached. Cache invalidates automatically on:
+- `RegisterRule()` / `RegisterRules()`
+- `AddRule()`
+- `RemoveRule()`
+- `ClearRules()`
+
+## Configuration Classes
+
+**AgentRouting defaults** (`AgentRouting/Configuration/`):
+```csharp
+AgentRoutingDefaults.MaxConcurrentMessages  // Default: 100
+AgentRoutingDefaults.DefaultTimeout         // Default: 30 seconds
+MiddlewareDefaults.DefaultCacheSize         // Default: 1000
+MiddlewareDefaults.DefaultRateLimitPerMinute // Default: 60
+```
+
+**Game timing** (`MafiaDemo/GameTimingOptions.cs`):
+```csharp
+GameTimingOptions.Current = GameTimingOptions.Instant; // No delays
+GameTimingOptions.Current = GameTimingOptions.Fast;    // 0.25x delays
+GameTimingOptions.Current = GameTimingOptions.Normal;  // Full delays
+```
+
+**Testable time** (`AgentRouting/Infrastructure/SystemClock.cs`):
+```csharp
+// Production
+var now = SystemClock.Instance.UtcNow;
+
+// Testing
+SystemClock.Instance = new FakeClock(fixedTime);
+```
 
 ## Historical Context
 
