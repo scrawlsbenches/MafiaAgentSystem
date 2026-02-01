@@ -448,7 +448,7 @@ Complete the MafiaDemo game to serve as a proper test bed for the libraries.
 **Files**: `AgentRouting/AgentRouting.MafiaDemo/Routing/FamilyRouter.cs` (new)
 
 **Subtasks**:
-- [ ] Create `FamilyRouter` extending `MiddlewareAgentRouter`
+- [ ] Create `FamilyRouter` extending `AgentRouter` (supports middleware natively)
 - [ ] Configure routing rules for hierarchy (orders flow down, reports flow up)
 - [ ] Add logging middleware for message tracing
 - [ ] Add timing middleware for performance tracking
