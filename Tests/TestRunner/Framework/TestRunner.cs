@@ -22,7 +22,9 @@ public class SimpleTestRunner
     {
         var testClasses = assembly.GetTypes()
             .Where(t => t.IsClass && !t.IsAbstract)
-            .Where(t => t.GetMethods().Any(m => m.GetCustomAttribute<TestAttribute>() != null));
+            .Where(t => t.GetMethods().Any(m =>
+                m.GetCustomAttribute<TestAttribute>() != null ||
+                m.GetCustomAttribute<TheoryAttribute>() != null));
 
         foreach (var type in testClasses)
         {
@@ -55,8 +57,12 @@ public class SimpleTestRunner
     {
         Console.WriteLine($"┌─ {testClass.Name}");
 
-        var methods = testClass.GetMethods(BindingFlags.Public | BindingFlags.Instance)
+        var factMethods = testClass.GetMethods(BindingFlags.Public | BindingFlags.Instance)
             .Where(m => m.GetCustomAttribute<TestAttribute>() != null)
+            .ToList();
+
+        var theoryMethods = testClass.GetMethods(BindingFlags.Public | BindingFlags.Instance)
+            .Where(m => m.GetCustomAttribute<TheoryAttribute>() != null)
             .ToList();
 
         object? instance = null;
@@ -69,11 +75,12 @@ public class SimpleTestRunner
             Console.ForegroundColor = ConsoleColor.Red;
             Console.WriteLine($"│  ✗ Failed to create instance: {ex.Message}");
             Console.ResetColor();
-            _failed += methods.Count;
+            _failed += factMethods.Count + theoryMethods.Count;
             return;
         }
 
-        foreach (var method in methods)
+        // Run [Test] methods
+        foreach (var method in factMethods)
         {
             var attr = method.GetCustomAttribute<TestAttribute>()!;
             var testName = attr.Name ?? method.Name;
@@ -88,6 +95,12 @@ public class SimpleTestRunner
             }
 
             await RunTestMethodAsync(instance!, method, testName);
+        }
+
+        // Run [Theory] methods
+        foreach (var method in theoryMethods)
+        {
+            await RunTheoryMethodAsync(instance!, method, testClass);
         }
 
         Console.WriteLine("└─");
@@ -136,6 +149,230 @@ public class SimpleTestRunner
         Console.ResetColor();
         _failed++;
         _failures.Add((testName, ex.Message));
+    }
+
+    private async Task RunTheoryMethodAsync(object instance, MethodInfo method, Type testClass)
+    {
+        var attr = method.GetCustomAttribute<TheoryAttribute>()!;
+        var baseName = attr.Name ?? method.Name;
+
+        if (attr.Skip != null)
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"│  ○ {baseName} (skipped: {attr.Skip})");
+            Console.ResetColor();
+            _skipped++;
+            return;
+        }
+
+        // Collect all test data from [InlineData] and [MemberData] attributes
+        var allTestData = new List<object?[]>();
+
+        // Get [InlineData] attributes
+        var inlineDataAttrs = method.GetCustomAttributes<InlineDataAttribute>();
+        foreach (var inlineData in inlineDataAttrs)
+        {
+            allTestData.Add(inlineData.Data);
+        }
+
+        // Get [MemberData] attributes
+        var memberDataAttrs = method.GetCustomAttributes<MemberDataAttribute>();
+        foreach (var memberData in memberDataAttrs)
+        {
+            var data = GetMemberData(memberData, testClass);
+            allTestData.AddRange(data);
+        }
+
+        if (allTestData.Count == 0)
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"│  ○ {baseName} (no test data provided)");
+            Console.ResetColor();
+            _skipped++;
+            return;
+        }
+
+        // Run test for each data set
+        var caseNumber = 0;
+        foreach (var testData in allTestData)
+        {
+            caseNumber++;
+            var dataDisplay = FormatTestData(testData);
+            var testName = $"{baseName}({dataDisplay})";
+
+            await RunTheoryTestCaseAsync(instance, method, testName, testData);
+        }
+    }
+
+    private async Task RunTheoryTestCaseAsync(object instance, MethodInfo method, string testName, object?[] args)
+    {
+        var stopwatch = Stopwatch.StartNew();
+
+        try
+        {
+            // Convert arguments to match parameter types
+            var parameters = method.GetParameters();
+            var convertedArgs = ConvertArguments(args, parameters);
+
+            var result = method.Invoke(instance, convertedArgs);
+
+            // Handle async methods
+            if (result is Task task)
+            {
+                await task;
+            }
+
+            stopwatch.Stop();
+
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine($"│  ✓ {testName} ({stopwatch.ElapsedMilliseconds}ms)");
+            Console.ResetColor();
+            _passed++;
+        }
+        catch (TargetInvocationException tie)
+        {
+            stopwatch.Stop();
+            var ex = tie.InnerException ?? tie;
+            RecordFailure(testName, ex, stopwatch.ElapsedMilliseconds);
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+            RecordFailure(testName, ex, stopwatch.ElapsedMilliseconds);
+        }
+    }
+
+    private static object?[] ConvertArguments(object?[] args, ParameterInfo[] parameters)
+    {
+        if (args.Length != parameters.Length)
+        {
+            throw new ArgumentException(
+                $"Argument count mismatch: expected {parameters.Length}, got {args.Length}");
+        }
+
+        var result = new object?[args.Length];
+        for (int i = 0; i < args.Length; i++)
+        {
+            result[i] = ConvertValue(args[i], parameters[i].ParameterType);
+        }
+        return result;
+    }
+
+    private static object? ConvertValue(object? value, Type targetType)
+    {
+        if (value == null)
+        {
+            return null;
+        }
+
+        var valueType = value.GetType();
+        if (targetType.IsAssignableFrom(valueType))
+        {
+            return value;
+        }
+
+        // Handle numeric conversions (e.g., int to double, long to int)
+        if (IsNumericType(targetType) && IsNumericType(valueType))
+        {
+            return Convert.ChangeType(value, targetType);
+        }
+
+        // Handle nullable types
+        var underlyingType = Nullable.GetUnderlyingType(targetType);
+        if (underlyingType != null)
+        {
+            return ConvertValue(value, underlyingType);
+        }
+
+        return value;
+    }
+
+    private static bool IsNumericType(Type type)
+    {
+        return type == typeof(byte) || type == typeof(sbyte) ||
+               type == typeof(short) || type == typeof(ushort) ||
+               type == typeof(int) || type == typeof(uint) ||
+               type == typeof(long) || type == typeof(ulong) ||
+               type == typeof(float) || type == typeof(double) ||
+               type == typeof(decimal);
+    }
+
+    private static IEnumerable<object?[]> GetMemberData(MemberDataAttribute attr, Type testClass)
+    {
+        var type = attr.MemberType ?? testClass;
+        var memberName = attr.MemberName;
+
+        // Try to find a static method
+        var method = type.GetMethod(memberName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+        if (method != null)
+        {
+            var result = method.Invoke(null, null);
+            if (result is IEnumerable<object?[]> enumerable)
+            {
+                return enumerable;
+            }
+            throw new InvalidOperationException(
+                $"MemberData method '{memberName}' must return IEnumerable<object?[]>");
+        }
+
+        // Try to find a static property
+        var property = type.GetProperty(memberName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+        if (property != null)
+        {
+            var result = property.GetValue(null);
+            if (result is IEnumerable<object?[]> enumerable)
+            {
+                return enumerable;
+            }
+            throw new InvalidOperationException(
+                $"MemberData property '{memberName}' must return IEnumerable<object?[]>");
+        }
+
+        // Try to find a static field
+        var field = type.GetField(memberName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+        if (field != null)
+        {
+            var result = field.GetValue(null);
+            if (result is IEnumerable<object?[]> enumerable)
+            {
+                return enumerable;
+            }
+            throw new InvalidOperationException(
+                $"MemberData field '{memberName}' must return IEnumerable<object?[]>");
+        }
+
+        throw new InvalidOperationException(
+            $"Could not find static member '{memberName}' on type '{type.Name}'");
+    }
+
+    private static string FormatTestData(object?[]? data)
+    {
+        if (data == null || data.Length == 0)
+        {
+            return "";
+        }
+
+        var parts = new List<string>();
+        foreach (var item in data)
+        {
+            if (item == null)
+            {
+                parts.Add("null");
+            }
+            else if (item is string s)
+            {
+                parts.Add($"\"{s}\"");
+            }
+            else if (item is bool b)
+            {
+                parts.Add(b ? "true" : "false");
+            }
+            else
+            {
+                parts.Add(item.ToString() ?? "null");
+            }
+        }
+        return string.Join(", ", parts);
     }
 
     private void PrintSummary(TimeSpan elapsed)
