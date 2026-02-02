@@ -616,17 +616,26 @@ public class AgentHealthCheckMiddlewareTests
         var cts = new CancellationTokenSource();
         cts.Cancel();
 
-        var result = await middleware.InvokeAsync(
-            message,
-            async (msg, ct) =>
-            {
-                ct.ThrowIfCancellationRequested();
-                return MessageResult.Ok("Done");
-            },
-            cts.Token);
+        // The middleware passes the cancellation token to the next handler
+        // So when the handler checks the token, it should throw OperationCanceledException
+        var exceptionThrown = false;
+        try
+        {
+            await middleware.InvokeAsync(
+                message,
+                (msg, ct) =>
+                {
+                    ct.ThrowIfCancellationRequested();
+                    return Task.FromResult(MessageResult.Ok("Done"));
+                },
+                cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            exceptionThrown = true;
+        }
 
-        // The middleware itself doesn't check cancellation, but it passes it to next
-        // So the exception should propagate from the next handler
+        Assert.True(exceptionThrown, "Expected OperationCanceledException to be thrown");
     }
 
     [Test]
@@ -699,7 +708,7 @@ public class AgentHealthCheckMiddlewareTests
     [InlineData("agent-b")]
     [InlineData("service-1")]
     [InlineData("worker_001")]
-    public async Task InvokeAsync_VariousAgentIds_TrackedCorrectly(string agentId)
+    public void InvokeAsync_VariousAgentIds_TrackedCorrectly(string agentId)
     {
         var middleware = new AgentHealthCheckMiddleware(TimeSpan.FromMinutes(1));
         middleware.RegisterAgent(agentId, () => Task.FromResult(true));
@@ -714,7 +723,7 @@ public class AgentHealthCheckMiddlewareTests
     [InlineData(5)]
     [InlineData(10)]
     [InlineData(50)]
-    public async Task InvokeAsync_VariousAgentCounts_AllTracked(int agentCount)
+    public void InvokeAsync_VariousAgentCounts_AllTracked(int agentCount)
     {
         var middleware = new AgentHealthCheckMiddleware(TimeSpan.FromMinutes(1));
 
@@ -864,14 +873,24 @@ public class AgentHealthCheckMiddlewareTests
 
         if (healthField != null)
         {
-            var health = healthField.GetValue(middleware) as System.Collections.Concurrent.ConcurrentDictionary<string, object>;
-            if (health != null && health.TryGetValue(agentId, out var statusObj))
+            // Get the dictionary (it's ConcurrentDictionary<string, HealthStatus> where HealthStatus is private)
+            var healthDict = healthField.GetValue(middleware);
+            if (healthDict != null)
             {
-                // Get the IsHealthy property of the HealthStatus inner class
-                var isHealthyProp = statusObj.GetType().GetProperty("IsHealthy");
-                if (isHealthyProp != null)
+                // Use the IDictionary interface to access it
+                var dict = healthDict as System.Collections.IDictionary;
+                if (dict != null && dict.Contains(agentId))
                 {
-                    isHealthyProp.SetValue(statusObj, isHealthy);
+                    var statusObj = dict[agentId];
+                    if (statusObj != null)
+                    {
+                        // Get the IsHealthy property of the HealthStatus inner class
+                        var isHealthyProp = statusObj.GetType().GetProperty("IsHealthy");
+                        if (isHealthyProp != null)
+                        {
+                            isHealthyProp.SetValue(statusObj, isHealthy);
+                        }
+                    }
                 }
             }
         }
