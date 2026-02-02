@@ -310,9 +310,9 @@ public class RuleAnalyzer<T>
             RuleId = rule.Id,
             RuleName = rule.Name
         };
-        
+
         var matchedCases = new List<T>();
-        
+
         foreach (var testCase in _testCases)
         {
             if (rule.Evaluate(testCase))
@@ -320,8 +320,10 @@ public class RuleAnalyzer<T>
                 matchedCases.Add(testCase);
             }
         }
-        
-        analysis.MatchRate = (double)matchedCases.Count / _testCases.Count;
+
+        analysis.MatchRate = _testCases.Count > 0
+            ? (double)matchedCases.Count / _testCases.Count
+            : 0.0;
         analysis.MatchedCount = matchedCases.Count;
         
         if (analysis.MatchRate == 0)
@@ -338,15 +340,20 @@ public class RuleAnalyzer<T>
     
     private void DetectOverlaps(IEnumerable<IRule<T>> rules, AnalysisReport report)
     {
+        if (_testCases.Count == 0)
+        {
+            return; // Cannot detect overlaps without test cases
+        }
+
         var ruleList = rules.ToList();
-        
+
         for (int i = 0; i < ruleList.Count; i++)
         {
             for (int j = i + 1; j < ruleList.Count; j++)
             {
                 var overlapCount = _testCases.Count(tc =>
                     ruleList[i].Evaluate(tc) && ruleList[j].Evaluate(tc));
-                
+
                 if (overlapCount > 0)
                 {
                     var overlapRate = (double)overlapCount / _testCases.Count;
@@ -366,6 +373,11 @@ public class RuleAnalyzer<T>
     
     private void DetectDeadRules(IEnumerable<IRule<T>> rules, AnalysisReport report)
     {
+        if (_testCases.Count == 0)
+        {
+            return; // Cannot detect dead rules without test cases
+        }
+
         foreach (var rule in rules)
         {
             if (!_testCases.Any(tc => rule.Evaluate(tc)))

@@ -698,6 +698,50 @@ public class RuleAnalyzerAdditionalTests
     }
 
     [Test]
+    public void Analyzer_EmptyTestCases_ReturnsZeroMatchRate_NoDivisionByZero()
+    {
+        using var engine = new RulesEngineCore<TestData>();
+        engine.AddRule("R1", "Rule 1", d => d.Value > 5, d => { });
+
+        var analyzer = new RuleAnalyzer<TestData>(engine, Enumerable.Empty<TestData>());
+
+        // Should not throw DivideByZeroException
+        var report = analyzer.Analyze();
+
+        var analysis = report.RuleAnalyses.First();
+        Assert.Equal(0.0, analysis.MatchRate);
+        Assert.Equal(0, analysis.MatchedCount);
+    }
+
+    [Test]
+    public void Analyzer_EmptyTestCases_SkipsOverlapDetection()
+    {
+        using var engine = new RulesEngineCore<TestData>();
+        engine.AddRule("R1", "Rule 1", d => d.Value > 5, d => { });
+        engine.AddRule("R2", "Rule 2", d => d.Value > 10, d => { });
+
+        var analyzer = new RuleAnalyzer<TestData>(engine, Enumerable.Empty<TestData>());
+
+        // Should not throw DivideByZeroException in DetectOverlaps
+        var report = analyzer.Analyze();
+
+        Assert.Empty(report.Overlaps);
+    }
+
+    [Test]
+    public void Analyzer_EmptyTestCases_EmptyDeadRules()
+    {
+        using var engine = new RulesEngineCore<TestData>();
+        engine.AddRule("R1", "Rule 1", d => d.Value > 5, d => { });
+
+        var analyzer = new RuleAnalyzer<TestData>(engine, Enumerable.Empty<TestData>());
+        var report = analyzer.Analyze();
+
+        // With no test cases, we can't determine dead rules
+        Assert.Empty(report.DeadRules);
+    }
+
+    [Test]
     public void Analyzer_RuleMatchesAll_AddsIssue()
     {
         using var engine = new RulesEngineCore<TestData>();
