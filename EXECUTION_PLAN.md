@@ -1,12 +1,13 @@
 # Execution Plan: MafiaAgentSystem Build & MVP
 
 > **Created**: 2026-01-31
+> **Last Updated**: 2026-02-02
 > **Constraint**: Zero 3rd party libraries (only .NET SDK)
-> **Goal**: Compiling codebase → Test baseline → MVP game
+> **Goal**: Compiling codebase → Test baseline → MVP game → Production Quality
 
 ---
 
-## Execution State (Updated 2026-02-01)
+## Execution State (Updated 2026-02-02)
 
 ### Phase 1: MVP Foundation ✅
 - [x] .NET SDK 8.0.122 installed ✅
@@ -253,6 +254,89 @@ Batch DI-C (Parallel - after DI-B):
 **Gate G6**: Build succeeds, all tests pass (184+), new DI tests pass
 
 **Total Phase 6 Estimate**: 31-41 hours (14 tasks)
+
+---
+
+### Phase 7: Code Review & Bug Fixes (Current)
+
+**Session**: 2026-02-02
+**Status**: PLANNED
+**Documentation**: `TASK_LIST.md` (updated with code review findings)
+
+**Comprehensive Code Review Completed**:
+A deep code review was performed covering all modules. Key findings:
+
+**Critical Bugs Found (P0-NEW)**:
+| ID | Issue | File | Severity |
+|----|-------|------|----------|
+| P0-NEW-1 | Parallel execution ignores StopOnFirstMatch | RulesEngineCore.cs:402-404 | CRITICAL |
+| P0-NEW-2 | Division by zero in RuleAnalyzer | RuleValidation.cs:324 | CRITICAL |
+| P0-NEW-3 | Timer resource leaks | AdvancedMiddleware.cs:296,454 | CRITICAL |
+| P0-NEW-4 | Mission ID collision (all same ID) | MissionSystem.cs:25 | CRITICAL |
+| P0-NEW-5 | Race conditions in GameEngine state | GameEngine.cs:323-366 | CRITICAL |
+| P0-NEW-6 | Random seeding predictability | Multiple files | HIGH |
+
+**Thread Safety Issues Found (P0-TS)**:
+| ID | Issue | File |
+|----|-------|------|
+| P0-TS-1 | RateLimitMiddleware race condition | CommonMiddleware.cs:104-138 |
+| P0-TS-2 | CircuitBreaker state machine race | CommonMiddleware.cs:411-435 |
+| P0-TS-3 | CachingMiddleware TOCTOU | CommonMiddleware.cs:186-222 |
+| P0-TS-4 | AgentBase capacity check race | Agent.cs:159-194 |
+| P0-TS-5 | AgentRouter double-check locking | AgentRouter.cs:43-44 |
+| P0-TS-6 | Parallel execution loses priority order | RulesEngineCore.cs:543 |
+
+**MafiaDemo Bugs (P2-FIX)**:
+- CancellationTokenSource leaks
+- EventLog unbounded growth
+- Empty agent rule action implementations
+- Crew recruitment has no effect
+- Game economy imbalance
+
+**Test Framework Gaps (P3-TF)**:
+- No Setup/Teardown support
+- Trivial assertions (`Assert.True(true)`)
+- Documented bug in RuleEdgeCaseTests
+- No test state isolation
+
+**Estimated New Work**: 92-126 hours (42 tasks)
+
+**Batch Plan for Phase 7**:
+
+```
+Batch 7A: Critical Bugs (Parallel - different files)
+├── P0-NEW-1: Parallel+StopOnFirstMatch
+├── P0-NEW-2: Division by zero
+├── P0-NEW-3: Timer leaks
+├── P0-NEW-4: Mission ID collision
+└── P0-NEW-6: Random seeding
+
+Batch 7B: GameEngine + Thread Safety (Sequential - shared concerns)
+├── P0-NEW-5: GameEngine race conditions
+├── P0-TS-1: RateLimitMiddleware
+├── P0-TS-2: CircuitBreaker
+└── P0-TS-3: CachingMiddleware
+
+Batch 7C: Remaining Thread Safety (Parallel)
+├── P0-TS-4: AgentBase capacity
+├── P0-TS-5: AgentRouter locking
+└── P0-TS-6: Parallel priority order
+
+Batch 7D: Test Framework (Sequential)
+├── P3-TF-1: Setup/Teardown support
+├── P3-TF-2: Fix trivial assertions
+├── P3-TF-3: Fix RuleEdgeCaseTests bug
+└── P3-TF-4: Test state isolation
+
+Batch 7E: MafiaDemo Fixes (Parallel)
+├── P2-FIX-1: CTS leaks
+├── P2-FIX-2: EventLog growth
+├── P2-FIX-3: Agent rule actions
+├── P2-FIX-4: Crew recruitment
+└── P2-FIX-5: Economy balance
+```
+
+**Gate G7**: All critical bugs fixed, thread safety verified, tests pass with proper isolation
 
 ---
 

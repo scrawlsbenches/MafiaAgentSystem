@@ -74,8 +74,6 @@ public class GameEvent
 /// </summary>
 public abstract class AutonomousAgent : AgentBase
 {
-    protected Random Random = new();
-
     public TimeSpan DecisionDelay { get; protected set; } = TimeSpan.FromSeconds(5);
     public int Ambition { get; protected set; } = 5; // 1-10
     public int Loyalty { get; protected set; } = 8; // 1-10
@@ -142,7 +140,16 @@ public class AgentDecision
 }
 
 /// <summary>
-/// Main game engine - runs the autonomous simulation
+/// Main game engine - runs the autonomous simulation.
+///
+/// THREADING MODEL: This class is designed for single-threaded operation.
+/// The game loop in StartGameAsync() and player actions via ExecutePlayerAction()
+/// should not be called concurrently from multiple threads. If multi-threaded
+/// access is needed in the future, synchronization (e.g., SemaphoreSlim) should
+/// be added around state modifications.
+///
+/// The GameState is publicly exposed via the State property and is mutable.
+/// External code should not modify GameState while the game loop is running.
 /// </summary>
 public class MafiaGameEngine
 {
@@ -151,7 +158,6 @@ public class MafiaGameEngine
     private readonly IAgentLogger _logger;
     private readonly Dictionary<string, GameAgentData> _gameAgents;
     private readonly Dictionary<string, AutonomousAgent> _autonomousAgents;
-    private readonly Random _random = new();
     private readonly ConcurrentQueue<string> _messageLog = new();
     private readonly GameRulesEngine? _rulesEngine;
     private CancellationTokenSource? _cts;
@@ -379,7 +385,7 @@ public class MafiaGameEngine
             var revenue = territory.WeeklyRevenue;
 
             // Random variation
-            var variation = _random.Next(-20, 20);
+            var variation = Random.Shared.Next(-20, 20);
             revenue += revenue * (variation / 100m);
 
             totalRevenue += revenue;
@@ -412,9 +418,9 @@ public class MafiaGameEngine
         }
 
         // Keep some random chance for variety (reduced from 20% to 10%)
-        if (_random.Next(100) < 10)
+        if (Random.Shared.Next(100) < 10)
         {
-            var eventType = _random.Next(6);
+            var eventType = Random.Shared.Next(6);
 
             switch (eventType)
             {
@@ -434,7 +440,7 @@ public class MafiaGameEngine
                     break;
 
                 case 2: // Opportunity
-                    var bonus = _random.Next(5000, 15000);
+                    var bonus = Random.Shared.Next(5000, 15000);
                     events.Add($"💎 OPPORTUNITY: Lucrative score!");
                     _state.FamilyWealth += bonus;
                     events.Add($"   Gained ${bonus:N0}\n");
@@ -442,7 +448,7 @@ public class MafiaGameEngine
                     break;
 
                 case 3: // Rival provocation
-                    var rival = _state.RivalFamilies.Values.ElementAt(_random.Next(_state.RivalFamilies.Count));
+                    var rival = _state.RivalFamilies.Values.ElementAt(Random.Shared.Next(_state.RivalFamilies.Count));
                     rival.Hostility += 10;
                     events.Add($"⚔️  {rival.Name} PROVOCATION!");
                     events.Add($"   Tensions rising (Hostility: {rival.Hostility}/100)\n");
@@ -495,7 +501,7 @@ public class MafiaGameEngine
                     events.Add($"  {result}");
                 }
 
-                agent.ActionCooldown = _random.Next(1, 3); // Cooldown 1-2 turns
+                agent.ActionCooldown = Random.Shared.Next(1, 3); // Cooldown 1-2 turns
             }
         }
 
@@ -521,7 +527,7 @@ public class MafiaGameEngine
         }
 
         // Fallback to existing probability-based logic
-        var roll = _random.Next(100);
+        var roll = Random.Shared.Next(100);
 
         // High aggression = more likely to initiate violence
         if (roll < agent.Personality.Aggression / 2)
@@ -555,7 +561,7 @@ public class MafiaGameEngine
                 return $"{agent.AgentId} intimidates {target} - Heat +3";
 
             case "collection":
-                var amount = _random.Next(1000, 5000);
+                var amount = Random.Shared.Next(1000, 5000);
                 _state.FamilyWealth += amount;
                 return $"{agent.AgentId} makes an extra collection: ${amount:N0}";
 
@@ -579,11 +585,11 @@ public class MafiaGameEngine
         foreach (var rival in _state.RivalFamilies.Values)
         {
             // High hostility = chance of attack
-            if (rival.Hostility > 70 && _random.Next(100) < 30)
+            if (rival.Hostility > 70 && Random.Shared.Next(100) < 30)
             {
                 events.Add($"⚔️  RIVAL ACTION: {rival.Name} attacks!");
 
-                var damage = _random.Next(5000, 15000);
+                var damage = Random.Shared.Next(5000, 15000);
                 _state.FamilyWealth -= damage;
                 _state.Reputation -= 5;
                 rival.Hostility -= 10; // Vented some hostility
@@ -597,7 +603,7 @@ public class MafiaGameEngine
             // Hostility slowly decreases over time
             if (rival.Hostility > 0)
             {
-                rival.Hostility -= _random.Next(1, 3);
+                rival.Hostility -= Random.Shared.Next(1, 3);
             }
         }
 

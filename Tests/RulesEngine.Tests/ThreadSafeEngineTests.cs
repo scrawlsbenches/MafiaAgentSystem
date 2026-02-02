@@ -358,6 +358,91 @@ public class ImmutableRulesEngineImmutableTests
         Assert.Null(caughtException);
     }
 
+    [Test]
+    public void Execute_ParallelExecution_WithStopOnFirstMatch_ReturnsOnlyFirstMatch()
+    {
+        // This test verifies the fix for P0-NEW-1: Parallel execution ignoring StopOnFirstMatch
+        var options = new RulesEngineOptions
+        {
+            EnableParallelExecution = true,
+            StopOnFirstMatch = true
+        };
+        var executedRules = new ConcurrentBag<string>();
+
+        // Use priorities to control order - highest priority should be the "first" match
+        var engine = new ImmutableRulesEngine<TestFact>(options)
+            .WithRule(new Rule<TestFact>("R1", "Rule 1", f => true, priority: 100)
+                .WithAction(f => executedRules.Add("R1")))
+            .WithRule(new Rule<TestFact>("R2", "Rule 2", f => true, priority: 50)
+                .WithAction(f => executedRules.Add("R2")))
+            .WithRule(new Rule<TestFact>("R3", "Rule 3", f => true, priority: 25)
+                .WithAction(f => executedRules.Add("R3")));
+
+        var result = engine.Execute(new TestFact());
+
+        // With StopOnFirstMatch, result should only contain results up to first match by priority
+        Assert.Equal(1, result.MatchedRules);
+        Assert.Equal("R1", result.RuleResults[0].RuleId);
+    }
+
+    [Test]
+    public void Execute_ParallelExecution_WithCancellation_ThrowsOperationCanceled()
+    {
+        var options = new RulesEngineOptions { EnableParallelExecution = true };
+        var engine = new ImmutableRulesEngine<TestFact>(options);
+
+        // Add rules that would take time
+        for (int i = 0; i < 50; i++)
+        {
+            int capturedI = i;
+            engine = engine.WithRule(new Rule<TestFact>($"R{i}", $"Rule {i}", f => true)
+                .WithAction(f => Thread.Sleep(10)));
+        }
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel(); // Cancel immediately
+
+        Assert.Throws<OperationCanceledException>(() => engine.Execute(new TestFact(), cts.Token));
+    }
+
+    [Test]
+    public void Execute_SequentialExecution_WithCancellation_ThrowsOperationCanceled()
+    {
+        var options = new RulesEngineOptions { EnableParallelExecution = false };
+        var engine = new ImmutableRulesEngine<TestFact>(options);
+
+        for (int i = 0; i < 10; i++)
+        {
+            int capturedI = i;
+            engine = engine.WithRule(new Rule<TestFact>($"R{i}", $"Rule {i}", f => true)
+                .WithAction(f => Thread.Sleep(10)));
+        }
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel(); // Cancel immediately
+
+        Assert.Throws<OperationCanceledException>(() => engine.Execute(new TestFact(), cts.Token));
+    }
+
+    [Test]
+    public void Execute_ParallelExecution_PreservesPriorityOrder()
+    {
+        // Verifies that results are returned in priority order even with parallel execution
+        var options = new RulesEngineOptions { EnableParallelExecution = true };
+        var engine = new ImmutableRulesEngine<TestFact>(options)
+            .WithRule(new Rule<TestFact>("R3", "Rule 3", f => true, priority: 10))  // Lowest priority
+            .WithRule(new Rule<TestFact>("R1", "Rule 1", f => true, priority: 100)) // Highest priority
+            .WithRule(new Rule<TestFact>("R2", "Rule 2", f => true, priority: 50)); // Middle priority
+
+        var result = engine.Execute(new TestFact());
+
+        // Results should be in priority order (highest first)
+        Assert.Equal(3, result.MatchedRules);
+        Assert.Equal("R1", result.RuleResults[0].RuleId);
+        Assert.Equal("R2", result.RuleResults[1].RuleId);
+        Assert.Equal("R3", result.RuleResults[2].RuleId);
+    }
+
     #endregion
 
     #region Performance Metrics Tests
@@ -1058,6 +1143,117 @@ public class RulesEngineCoreTests
         Assert.Empty(exceptions);
         Assert.Equal(1000, readCount); // 20 readers * 50 reads
         Assert.Equal(50, writeCount);  // 5 writers * 10 writes
+    }
+
+    #endregion
+
+    #region Parallel Execution with StopOnFirstMatch Tests
+
+    [Test]
+    public void Execute_ParallelWithStopOnFirstMatch_ReturnsOnlyFirstMatch()
+    {
+        // This test verifies the fix for P0-NEW-1: Parallel execution ignoring StopOnFirstMatch
+        var options = new RulesEngineOptions
+        {
+            EnableParallelExecution = true,
+            StopOnFirstMatch = true
+        };
+        using var engine = new RulesEngineCore<TestFact>(options);
+
+        // Highest priority should be the "first" match
+        engine.RegisterRule(new Rule<TestFact>("R1", "Rule 1", f => true, priority: 100));
+        engine.RegisterRule(new Rule<TestFact>("R2", "Rule 2", f => true, priority: 50));
+        engine.RegisterRule(new Rule<TestFact>("R3", "Rule 3", f => true, priority: 25));
+
+        var result = engine.Execute(new TestFact());
+
+        // With StopOnFirstMatch, result should only contain results up to first match by priority
+        Assert.Equal(1, result.MatchedRules);
+        Assert.Equal("R1", result.RuleResults[0].RuleId);
+    }
+
+    [Test]
+    public void Execute_ParallelWithCancellation_ThrowsOperationCanceled()
+    {
+        var options = new RulesEngineOptions { EnableParallelExecution = true };
+        using var engine = new RulesEngineCore<TestFact>(options);
+
+        for (int i = 0; i < 50; i++)
+        {
+            int capturedI = i;
+            engine.RegisterRule(new Rule<TestFact>($"R{i}", $"Rule {i}", f => true)
+                .WithAction(f => Thread.Sleep(10)));
+        }
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel(); // Cancel immediately
+
+        Assert.Throws<OperationCanceledException>(() => engine.Execute(new TestFact(), cts.Token));
+    }
+
+    [Test]
+    public void Execute_SequentialWithCancellation_ThrowsOperationCanceled()
+    {
+        var options = new RulesEngineOptions { EnableParallelExecution = false };
+        using var engine = new RulesEngineCore<TestFact>(options);
+
+        for (int i = 0; i < 10; i++)
+        {
+            int capturedI = i;
+            engine.RegisterRule(new Rule<TestFact>($"R{i}", $"Rule {i}", f => true)
+                .WithAction(f => Thread.Sleep(10)));
+        }
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        Assert.Throws<OperationCanceledException>(() => engine.Execute(new TestFact(), cts.Token));
+    }
+
+    [Test]
+    public void Execute_ParallelExecution_PreservesPriorityOrder()
+    {
+        // Verifies that results maintain priority order even with parallel execution
+        var options = new RulesEngineOptions { EnableParallelExecution = true };
+        using var engine = new RulesEngineCore<TestFact>(options);
+
+        engine.RegisterRule(new Rule<TestFact>("R3", "Rule 3", f => true, priority: 10));   // Lowest
+        engine.RegisterRule(new Rule<TestFact>("R1", "Rule 1", f => true, priority: 100));  // Highest
+        engine.RegisterRule(new Rule<TestFact>("R2", "Rule 2", f => true, priority: 50));   // Middle
+
+        var result = engine.Execute(new TestFact());
+
+        Assert.Equal(3, result.MatchedRules);
+        Assert.Equal("R1", result.RuleResults[0].RuleId);
+        Assert.Equal("R2", result.RuleResults[1].RuleId);
+        Assert.Equal("R3", result.RuleResults[2].RuleId);
+    }
+
+    [Test]
+    public void Execute_ParallelWithStopOnFirstMatch_ManyRules_OnlyFirstReturned()
+    {
+        // Test with many rules to ensure early termination works under load
+        var options = new RulesEngineOptions
+        {
+            EnableParallelExecution = true,
+            StopOnFirstMatch = true
+        };
+        using var engine = new RulesEngineCore<TestFact>(options);
+
+        // Add high-priority rule that matches
+        engine.RegisterRule(new Rule<TestFact>("HIGH", "High Priority", f => true, priority: 1000));
+
+        // Add many lower-priority rules
+        for (int i = 0; i < 100; i++)
+        {
+            engine.RegisterRule(new Rule<TestFact>($"LOW_{i}", $"Low Priority {i}", f => true, priority: i));
+        }
+
+        var result = engine.Execute(new TestFact());
+
+        // Should only have the highest priority match in results
+        Assert.Equal(1, result.MatchedRules);
+        Assert.Equal("HIGH", result.RuleResults[0].RuleId);
     }
 
     #endregion

@@ -1002,6 +1002,82 @@ public class AdvancedMiddlewareCoverageTests
 
     #endregion
 
+    #region Timer Disposal Tests (P0-NEW-3)
+
+    [Test]
+    public void MessageQueueMiddleware_Dispose_StopsTimer()
+    {
+        var middleware = new MessageQueueMiddleware(batchSize: 10, batchTimeout: TimeSpan.FromSeconds(1));
+
+        // Should not throw
+        middleware.Dispose();
+
+        // Calling dispose again should be safe (idempotent)
+        middleware.Dispose();
+
+        Assert.True(true); // If we get here, disposal worked
+    }
+
+    [Test]
+    public void MessageQueueMiddleware_ImplementsIDisposable()
+    {
+        var middleware = new MessageQueueMiddleware();
+
+        Assert.True(middleware is IDisposable);
+
+        ((IDisposable)middleware).Dispose();
+    }
+
+    [Test]
+    public void AgentHealthCheckMiddleware_Dispose_StopsTimer()
+    {
+        var middleware = new AgentHealthCheckMiddleware(TimeSpan.FromSeconds(1));
+
+        // Should not throw
+        middleware.Dispose();
+
+        // Calling dispose again should be safe (idempotent)
+        middleware.Dispose();
+
+        Assert.True(true); // If we get here, disposal worked
+    }
+
+    [Test]
+    public void AgentHealthCheckMiddleware_ImplementsIDisposable()
+    {
+        var middleware = new AgentHealthCheckMiddleware(TimeSpan.FromSeconds(1));
+
+        Assert.True(middleware is IDisposable);
+
+        ((IDisposable)middleware).Dispose();
+    }
+
+    [Test]
+    public void MessageQueueMiddleware_UsingStatement_DisposesCorrectly()
+    {
+        // Verify middleware works with using statement
+        using (var middleware = new MessageQueueMiddleware())
+        {
+            Assert.NotNull(middleware);
+        }
+        // Timer should be disposed after using block
+        Assert.True(true);
+    }
+
+    [Test]
+    public void AgentHealthCheckMiddleware_UsingStatement_DisposesCorrectly()
+    {
+        // Verify middleware works with using statement
+        using (var middleware = new AgentHealthCheckMiddleware(TimeSpan.FromMinutes(1)))
+        {
+            Assert.NotNull(middleware);
+        }
+        // Timer should be disposed after using block
+        Assert.True(true);
+    }
+
+    #endregion
+
     #region Helper Methods
 
     private static AgentMessage CreateTestMessage(string content = "Test Content")

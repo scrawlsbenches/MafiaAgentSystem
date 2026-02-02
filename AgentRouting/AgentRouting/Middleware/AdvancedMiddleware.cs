@@ -288,19 +288,38 @@ public class MessageTransformationMiddleware : MiddlewareBase
 /// <summary>
 /// Message queuing middleware with buffering and batch processing
 /// </summary>
-public class MessageQueueMiddleware : MiddlewareBase
+public class MessageQueueMiddleware : MiddlewareBase, IDisposable
 {
     private readonly ConcurrentQueue<(AgentMessage message, TaskCompletionSource<MessageResult> tcs)> _queue = new();
     private readonly int _batchSize;
     private readonly TimeSpan _batchTimeout;
     private readonly Timer _batchTimer;
     private MessageDelegate? _next;
-    
+    private bool _disposed;
+
     public MessageQueueMiddleware(int batchSize = 10, TimeSpan? batchTimeout = null)
     {
         _batchSize = batchSize;
         _batchTimeout = batchTimeout ?? TimeSpan.FromSeconds(5);
         _batchTimer = new Timer(ProcessBatch, null, _batchTimeout, _batchTimeout);
+    }
+
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!_disposed)
+        {
+            if (disposing)
+            {
+                _batchTimer.Dispose();
+            }
+            _disposed = true;
+        }
     }
     
     public override async Task<MessageResult> InvokeAsync(
@@ -448,14 +467,33 @@ public class FeatureFlagsMiddleware : MiddlewareBase
 /// Agent health checking middleware
 /// Monitors agent availability and routes around unhealthy agents
 /// </summary>
-public class AgentHealthCheckMiddleware : MiddlewareBase
+public class AgentHealthCheckMiddleware : MiddlewareBase, IDisposable
 {
     private readonly ConcurrentDictionary<string, HealthStatus> _health = new();
     private readonly Timer _healthCheckTimer;
-    
+    private bool _disposed;
+
     public AgentHealthCheckMiddleware(TimeSpan checkInterval)
     {
         _healthCheckTimer = new Timer(PerformHealthChecks, null, checkInterval, checkInterval);
+    }
+
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!_disposed)
+        {
+            if (disposing)
+            {
+                _healthCheckTimer.Dispose();
+            }
+            _disposed = true;
+        }
     }
     
     public void RegisterAgent(string agentId, Func<Task<bool>> healthCheck)
