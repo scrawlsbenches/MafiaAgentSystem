@@ -282,20 +282,20 @@ public class MafiaDemoIntegrationTests
 
     #endregion
 
-    #region RulesBasedGameEngine Tests
+    #region GameRulesEngine Tests
 
     [Test]
-    public void RulesBasedGameEngine_Construction_SetsUpRulesCorrectly()
+    public void GameRulesEngine_Construction_SetsUpRulesCorrectly()
     {
         var state = new GameState();
-        var engine = new RulesBasedGameEngine(state);
+        var engine = new GameRulesEngine(state);
 
         Assert.NotNull(engine);
         Assert.Same(state, engine.State);
     }
 
     [Test]
-    public void RulesBasedGameEngine_EvaluateGameRules_ReturnsMatchingRules()
+    public void GameRulesEngine_EvaluateGameRules_ReturnsMatchingRules()
     {
         var state = new GameState
         {
@@ -306,7 +306,7 @@ public class MafiaDemoIntegrationTests
         };
         state.Territories["Downtown"] = new Territory { Name = "Downtown" };
 
-        var engine = new RulesBasedGameEngine(state);
+        var engine = new GameRulesEngine(state);
         var events = engine.EvaluateGameRules();
 
         // Should match victory rules
@@ -314,7 +314,7 @@ public class MafiaDemoIntegrationTests
     }
 
     [Test]
-    public void RulesBasedGameEngine_GetAgentAction_ReturnsAction()
+    public void GameRulesEngine_GetAgentAction_ReturnsAction()
     {
         var state = new GameState
         {
@@ -322,7 +322,7 @@ public class MafiaDemoIntegrationTests
             HeatLevel = 30
         };
 
-        var engine = new RulesBasedGameEngine(state);
+        var engine = new GameRulesEngine(state);
 
         var greedyAgent = new GameAgentData
         {
@@ -345,7 +345,7 @@ public class MafiaDemoIntegrationTests
     }
 
     [Test]
-    public void RulesBasedGameEngine_GenerateEvents_ReturnsEvents()
+    public void GameRulesEngine_GenerateEvents_ReturnsEvents()
     {
         var state = new GameState
         {
@@ -359,7 +359,7 @@ public class MafiaDemoIntegrationTests
             Hostility = 75
         };
 
-        var engine = new RulesBasedGameEngine(state);
+        var engine = new GameRulesEngine(state);
         var events = engine.GenerateEvents();
 
         // High heat and weak position should generate events

@@ -7,7 +7,7 @@ namespace TestRunner.Tests;
 /// <summary>
 /// Tests for thread-safe rules engine implementations
 /// </summary>
-public class ThreadSafeRulesEngineTests
+public class ImmutableRulesEngineTests
 {
     private class TestData
     {
@@ -18,7 +18,7 @@ public class ThreadSafeRulesEngineTests
     [Test]
     public void ThreadSafeEngine_ImmutablePattern_ReturnsNewInstance()
     {
-        var engine1 = new ThreadSafeRulesEngine<TestData>();
+        var engine1 = new ImmutableRulesEngine<TestData>();
         var rule = new Rule<TestData>("R1", "Rule 1", d => d.Value > 5);
 
         var engine2 = engine1.WithRule(rule);
@@ -31,7 +31,7 @@ public class ThreadSafeRulesEngineTests
     [Test]
     public void ThreadSafeEngine_ConcurrentExecution_NoExceptions()
     {
-        var engine = new ThreadSafeRulesEngine<TestData>()
+        var engine = new ImmutableRulesEngine<TestData>()
             .WithRule(new Rule<TestData>("R1", "Rule 1", d => d.Value > 5))
             .WithRule(new Rule<TestData>("R2", "Rule 2", d => d.Value < 15));
 
@@ -59,8 +59,8 @@ public class ThreadSafeRulesEngineTests
     [Test]
     public void ThreadSafeEngine_ConcurrentModification_SafeWithImmutablePattern()
     {
-        var baseEngine = new ThreadSafeRulesEngine<TestData>();
-        var engines = new List<ThreadSafeRulesEngine<TestData>>();
+        var baseEngine = new ImmutableRulesEngine<TestData>();
+        var engines = new List<ImmutableRulesEngine<TestData>>();
         var lockObj = new object();
 
         Parallel.For(0, 10, i =>
@@ -81,7 +81,7 @@ public class ThreadSafeRulesEngineTests
     [Test]
     public void LockedEngine_ConcurrentModification_ThreadSafe()
     {
-        using var engine = new LockedRulesEngine<TestData>();
+        using var engine = new RulesEngineCore<TestData>();
         var exceptions = new List<Exception>();
 
         Parallel.Invoke(
