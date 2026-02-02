@@ -1,6 +1,5 @@
 using TestRunner.Framework;
 using AgentRouting.MafiaDemo;
-using AgentRouting.MafiaDemo.Autonomous;
 using AgentRouting.MafiaDemo.Game;
 using AgentRouting.MafiaDemo.Rules;
 using AgentRouting.Core;
@@ -162,7 +161,7 @@ public class AutonomousGameTests
         var logger = CreateTestLogger();
         var engine = new MafiaGameEngine(logger);
 
-        var godfather = new AutonomousGodfather("godfather-test", "Test Don", logger);
+        var godfather = new GodfatherAgent("godfather-test", "Test Don", logger);
         engine.RegisterAutonomousAgent(godfather);
 
         // Agent registered - no exception means success
@@ -1241,10 +1240,10 @@ public class AutonomousGameTests
         var engine = new MafiaGameEngine(logger);
 
         // Register agents
-        engine.RegisterAutonomousAgent(new AutonomousGodfather("godfather-001", "Test Don", logger));
-        engine.RegisterAutonomousAgent(new AutonomousUnderboss("underboss-001", "Test Underboss", logger));
-        engine.RegisterAutonomousAgent(new AutonomousCapo("capo-001", "Test Capo", logger));
-        engine.RegisterAutonomousAgent(new AutonomousSoldier("soldier-001", "Test Soldier", logger));
+        engine.RegisterAutonomousAgent(new GodfatherAgent("godfather-001", "Test Don", logger));
+        engine.RegisterAutonomousAgent(new UnderbossAgent("underboss-001", "Test Underboss", logger));
+        engine.RegisterAutonomousAgent(new CapoAgent("capo-001", "Test Capo", logger));
+        engine.RegisterAutonomousAgent(new SoldierAgent("soldier-001", "Test Soldier", logger));
 
         engine.SetupRoutingRules();
 

@@ -1,5 +1,5 @@
 using TestRunner.Framework;
-using AgentRouting.MafiaDemo.Autonomous;
+using AgentRouting.MafiaDemo;
 using AgentRouting.MafiaDemo.Game;
 using AgentRouting.Core;
 
@@ -35,13 +35,13 @@ public class AutonomousAgentsTests
         };
     }
 
-    #region AutonomousGodfather Tests
+    #region GodfatherAgent Tests
 
     [Test]
-    public void AutonomousGodfather_Construction_SetsCorrectProperties()
+    public void GodfatherAgent_Construction_SetsCorrectProperties()
     {
         var logger = CreateTestLogger();
-        var godfather = new AutonomousGodfather("godfather-001", "Don Corleone", logger);
+        var godfather = new GodfatherAgent("godfather-001", "Don Corleone", logger);
 
         Assert.Equal("godfather-001", godfather.Id);
         Assert.Equal("Don Corleone", godfather.Name);
@@ -52,10 +52,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousGodfather_Construction_SetsCorrectCapabilities()
+    public void GodfatherAgent_Construction_SetsCorrectCapabilities()
     {
         var logger = CreateTestLogger();
-        var godfather = new AutonomousGodfather("godfather-001", "Don Corleone", logger);
+        var godfather = new GodfatherAgent("godfather-001", "Don Corleone", logger);
 
         Assert.Contains("FinalDecision", godfather.Capabilities.SupportedCategories);
         Assert.Contains("MajorDispute", godfather.Capabilities.SupportedCategories);
@@ -63,10 +63,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousGodfather_MakeDecision_ReturnsWait_WhenRollHigherThanThreshold()
+    public void GodfatherAgent_MakeDecision_ReturnsWait_WhenRollHigherThanThreshold()
     {
         var logger = CreateTestLogger();
-        var godfather = new AutonomousGodfather("godfather-001", "Don Corleone", logger);
+        var godfather = new GodfatherAgent("godfather-001", "Don Corleone", logger);
         var gameState = CreateTestGameState();
 
         // Seed that produces roll >= 3 (Wait branch)
@@ -80,10 +80,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousGodfather_MakeDecision_SendsStrategicMessage_WhenRollLessThanThree()
+    public void GodfatherAgent_MakeDecision_SendsStrategicMessage_WhenRollLessThanThree()
     {
         var logger = CreateTestLogger();
-        var godfather = new AutonomousGodfather("godfather-001", "Don Corleone", logger);
+        var godfather = new GodfatherAgent("godfather-001", "Don Corleone", logger);
         var gameState = CreateTestGameState();
 
         // Find a seed that produces roll < 3
@@ -117,10 +117,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousGodfather_MakeDecision_ReturnsNull_WhenCalledTooSoon()
+    public void GodfatherAgent_MakeDecision_ReturnsNull_WhenCalledTooSoon()
     {
         var logger = CreateTestLogger();
-        var godfather = new AutonomousGodfather("godfather-001", "Don Corleone", logger);
+        var godfather = new GodfatherAgent("godfather-001", "Don Corleone", logger);
         var gameState = CreateTestGameState();
 
         // First call - should work if random allows
@@ -137,10 +137,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public async Task AutonomousGodfather_HandleMessage_PoliceRaid_ReturnsCalm()
+    public async Task GodfatherAgent_HandleMessage_PoliceRaid_ReturnsCalm()
     {
         var logger = CreateTestLogger();
-        var godfather = new AutonomousGodfather("godfather-001", "Don Corleone", logger);
+        var godfather = new GodfatherAgent("godfather-001", "Don Corleone", logger);
 
         var message = new AgentMessage
         {
@@ -158,10 +158,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public async Task AutonomousGodfather_HandleMessage_RaidKeyword_ReturnsCalm()
+    public async Task GodfatherAgent_HandleMessage_RaidKeyword_ReturnsCalm()
     {
         var logger = CreateTestLogger();
-        var godfather = new AutonomousGodfather("godfather-001", "Don Corleone", logger);
+        var godfather = new GodfatherAgent("godfather-001", "Don Corleone", logger);
 
         var message = new AgentMessage
         {
@@ -178,10 +178,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public async Task AutonomousGodfather_HandleMessage_Tattaglia_ReturnsRivalResponse()
+    public async Task GodfatherAgent_HandleMessage_Tattaglia_ReturnsRivalResponse()
     {
         var logger = CreateTestLogger();
-        var godfather = new AutonomousGodfather("godfather-001", "Don Corleone", logger);
+        var godfather = new GodfatherAgent("godfather-001", "Don Corleone", logger);
 
         var message = new AgentMessage
         {
@@ -201,10 +201,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public async Task AutonomousGodfather_HandleMessage_Barzini_ReturnsRivalResponse()
+    public async Task GodfatherAgent_HandleMessage_Barzini_ReturnsRivalResponse()
     {
         var logger = CreateTestLogger();
-        var godfather = new AutonomousGodfather("godfather-001", "Don Corleone", logger);
+        var godfather = new GodfatherAgent("godfather-001", "Don Corleone", logger);
 
         var message = new AgentMessage
         {
@@ -221,10 +221,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public async Task AutonomousGodfather_HandleMessage_Betrayal_ReturnsCold()
+    public async Task GodfatherAgent_HandleMessage_Betrayal_ReturnsCold()
     {
         var logger = CreateTestLogger();
-        var godfather = new AutonomousGodfather("godfather-001", "Don Corleone", logger);
+        var godfather = new GodfatherAgent("godfather-001", "Don Corleone", logger);
 
         var message = new AgentMessage
         {
@@ -242,10 +242,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public async Task AutonomousGodfather_HandleMessage_Informant_ReturnsCold()
+    public async Task GodfatherAgent_HandleMessage_Informant_ReturnsCold()
     {
         var logger = CreateTestLogger();
-        var godfather = new AutonomousGodfather("godfather-001", "Don Corleone", logger);
+        var godfather = new GodfatherAgent("godfather-001", "Don Corleone", logger);
 
         var message = new AgentMessage
         {
@@ -262,10 +262,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public async Task AutonomousGodfather_HandleMessage_Opportunity_ReturnsInvestmentDecision()
+    public async Task GodfatherAgent_HandleMessage_Opportunity_ReturnsInvestmentDecision()
     {
         var logger = CreateTestLogger();
-        var godfather = new AutonomousGodfather("godfather-001", "Don Corleone", logger);
+        var godfather = new GodfatherAgent("godfather-001", "Don Corleone", logger);
 
         var message = new AgentMessage
         {
@@ -285,10 +285,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public async Task AutonomousGodfather_HandleMessage_Deal_ReturnsInvestmentDecision()
+    public async Task GodfatherAgent_HandleMessage_Deal_ReturnsInvestmentDecision()
     {
         var logger = CreateTestLogger();
-        var godfather = new AutonomousGodfather("godfather-001", "Don Corleone", logger);
+        var godfather = new GodfatherAgent("godfather-001", "Don Corleone", logger);
 
         var message = new AgentMessage
         {
@@ -305,10 +305,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public async Task AutonomousGodfather_HandleMessage_Favor_ReturnsFavorResponse()
+    public async Task GodfatherAgent_HandleMessage_Favor_ReturnsFavorResponse()
     {
         var logger = CreateTestLogger();
-        var godfather = new AutonomousGodfather("godfather-001", "Don Corleone", logger);
+        var godfather = new GodfatherAgent("godfather-001", "Don Corleone", logger);
 
         var message = new AgentMessage
         {
@@ -326,10 +326,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public async Task AutonomousGodfather_HandleMessage_Help_ReturnsFavorResponse()
+    public async Task GodfatherAgent_HandleMessage_Help_ReturnsFavorResponse()
     {
         var logger = CreateTestLogger();
-        var godfather = new AutonomousGodfather("godfather-001", "Don Corleone", logger);
+        var godfather = new GodfatherAgent("godfather-001", "Don Corleone", logger);
 
         var message = new AgentMessage
         {
@@ -346,10 +346,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public async Task AutonomousGodfather_HandleMessage_Default_ReturnsGenericResponse()
+    public async Task GodfatherAgent_HandleMessage_Default_ReturnsGenericResponse()
     {
         var logger = CreateTestLogger();
-        var godfather = new AutonomousGodfather("godfather-001", "Don Corleone", logger);
+        var godfather = new GodfatherAgent("godfather-001", "Don Corleone", logger);
 
         var message = new AgentMessage
         {
@@ -368,13 +368,13 @@ public class AutonomousAgentsTests
 
     #endregion
 
-    #region AutonomousUnderboss Tests
+    #region UnderbossAgent Tests
 
     [Test]
-    public void AutonomousUnderboss_Construction_SetsCorrectProperties()
+    public void UnderbossAgent_Construction_SetsCorrectProperties()
     {
         var logger = CreateTestLogger();
-        var underboss = new AutonomousUnderboss("underboss-001", "Salvatore Tessio", logger);
+        var underboss = new UnderbossAgent("underboss-001", "Salvatore Tessio", logger);
 
         Assert.Equal("underboss-001", underboss.Id);
         Assert.Equal("Salvatore Tessio", underboss.Name);
@@ -385,10 +385,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousUnderboss_Construction_SetsCorrectCapabilities()
+    public void UnderbossAgent_Construction_SetsCorrectCapabilities()
     {
         var logger = CreateTestLogger();
-        var underboss = new AutonomousUnderboss("underboss-001", "Salvatore Tessio", logger);
+        var underboss = new UnderbossAgent("underboss-001", "Salvatore Tessio", logger);
 
         Assert.Contains("DailyOperations", underboss.Capabilities.SupportedCategories);
         Assert.Contains("CrewManagement", underboss.Capabilities.SupportedCategories);
@@ -396,10 +396,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousUnderboss_MakeDecision_CollectsMoney_WhenRollLessThanFour()
+    public void UnderbossAgent_MakeDecision_CollectsMoney_WhenRollLessThanFour()
     {
         var logger = CreateTestLogger();
-        var underboss = new AutonomousUnderboss("underboss-001", "Salvatore Tessio", logger);
+        var underboss = new UnderbossAgent("underboss-001", "Salvatore Tessio", logger);
         var gameState = CreateTestGameState();
 
         // Find a seed that produces roll < 4
@@ -423,10 +423,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousUnderboss_MakeDecision_SendsOrders_WhenRollBetweenFourAndSeven()
+    public void UnderbossAgent_MakeDecision_SendsOrders_WhenRollBetweenFourAndSeven()
     {
         var logger = CreateTestLogger();
-        var underboss = new AutonomousUnderboss("underboss-001", "Salvatore Tessio", logger);
+        var underboss = new UnderbossAgent("underboss-001", "Salvatore Tessio", logger);
         var gameState = CreateTestGameState();
 
         // Find a seed that produces 4 <= roll < 7
@@ -454,10 +454,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousUnderboss_MakeDecision_ReportsToGodfather_WhenRollBetweenSevenAndNineAndDayDivisibleByThree()
+    public void UnderbossAgent_MakeDecision_ReportsToGodfather_WhenRollBetweenSevenAndNineAndDayDivisibleByThree()
     {
         var logger = CreateTestLogger();
-        var underboss = new AutonomousUnderboss("underboss-001", "Salvatore Tessio", logger);
+        var underboss = new UnderbossAgent("underboss-001", "Salvatore Tessio", logger);
         var gameState = CreateTestGameState();
         gameState.Week = 9; // Day % 3 == 0
 
@@ -484,10 +484,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousUnderboss_MakeDecision_ReturnsWait_WhenRollNineOrHigher()
+    public void UnderbossAgent_MakeDecision_ReturnsWait_WhenRollNineOrHigher()
     {
         var logger = CreateTestLogger();
-        var underboss = new AutonomousUnderboss("underboss-001", "Salvatore Tessio", logger);
+        var underboss = new UnderbossAgent("underboss-001", "Salvatore Tessio", logger);
         var gameState = CreateTestGameState();
         gameState.Week = 5; // Day % 3 != 0
 
@@ -511,10 +511,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public async Task AutonomousUnderboss_HandleMessage_Report_ReturnsReportResponse()
+    public async Task UnderbossAgent_HandleMessage_Report_ReturnsReportResponse()
     {
         var logger = CreateTestLogger();
-        var underboss = new AutonomousUnderboss("underboss-001", "Salvatore Tessio", logger);
+        var underboss = new UnderbossAgent("underboss-001", "Salvatore Tessio", logger);
 
         var message = new AgentMessage
         {
@@ -532,10 +532,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public async Task AutonomousUnderboss_HandleMessage_Scout_ReturnsExpansionPlan()
+    public async Task UnderbossAgent_HandleMessage_Scout_ReturnsExpansionPlan()
     {
         var logger = CreateTestLogger();
-        var underboss = new AutonomousUnderboss("underboss-001", "Salvatore Tessio", logger);
+        var underboss = new UnderbossAgent("underboss-001", "Salvatore Tessio", logger);
 
         var message = new AgentMessage
         {
@@ -553,10 +553,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public async Task AutonomousUnderboss_HandleMessage_Expansion_ReturnsExpansionPlan()
+    public async Task UnderbossAgent_HandleMessage_Expansion_ReturnsExpansionPlan()
     {
         var logger = CreateTestLogger();
-        var underboss = new AutonomousUnderboss("underboss-001", "Salvatore Tessio", logger);
+        var underboss = new UnderbossAgent("underboss-001", "Salvatore Tessio", logger);
 
         var message = new AgentMessage
         {
@@ -573,10 +573,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public async Task AutonomousUnderboss_HandleMessage_Default_ReturnsLoyalResponse()
+    public async Task UnderbossAgent_HandleMessage_Default_ReturnsLoyalResponse()
     {
         var logger = CreateTestLogger();
-        var underboss = new AutonomousUnderboss("underboss-001", "Salvatore Tessio", logger);
+        var underboss = new UnderbossAgent("underboss-001", "Salvatore Tessio", logger);
 
         var message = new AgentMessage
         {
@@ -595,13 +595,13 @@ public class AutonomousAgentsTests
 
     #endregion
 
-    #region AutonomousConsigliere Tests
+    #region ConsigliereAgent Tests
 
     [Test]
-    public void AutonomousConsigliere_Construction_SetsCorrectProperties()
+    public void ConsigliereAgent_Construction_SetsCorrectProperties()
     {
         var logger = CreateTestLogger();
-        var consigliere = new AutonomousConsigliere("consigliere-001", "Tom Hagen", logger);
+        var consigliere = new ConsigliereAgent("consigliere-001", "Tom Hagen", logger);
 
         Assert.Equal("consigliere-001", consigliere.Id);
         Assert.Equal("Tom Hagen", consigliere.Name);
@@ -612,10 +612,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousConsigliere_Construction_SetsCorrectCapabilities()
+    public void ConsigliereAgent_Construction_SetsCorrectCapabilities()
     {
         var logger = CreateTestLogger();
-        var consigliere = new AutonomousConsigliere("consigliere-001", "Tom Hagen", logger);
+        var consigliere = new ConsigliereAgent("consigliere-001", "Tom Hagen", logger);
 
         Assert.Contains("Legal", consigliere.Capabilities.SupportedCategories);
         Assert.Contains("Strategy", consigliere.Capabilities.SupportedCategories);
@@ -623,10 +623,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousConsigliere_MakeDecision_SendsAdvice_WhenRollLessThanThree()
+    public void ConsigliereAgent_MakeDecision_SendsAdvice_WhenRollLessThanThree()
     {
         var logger = CreateTestLogger();
-        var consigliere = new AutonomousConsigliere("consigliere-001", "Tom Hagen", logger);
+        var consigliere = new ConsigliereAgent("consigliere-001", "Tom Hagen", logger);
         var gameState = CreateTestGameState();
 
         // Find a seed that produces roll < 3
@@ -654,10 +654,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousConsigliere_MakeDecision_ReturnsWait_WhenRollThreeOrHigher()
+    public void ConsigliereAgent_MakeDecision_ReturnsWait_WhenRollThreeOrHigher()
     {
         var logger = CreateTestLogger();
-        var consigliere = new AutonomousConsigliere("consigliere-001", "Tom Hagen", logger);
+        var consigliere = new ConsigliereAgent("consigliere-001", "Tom Hagen", logger);
         var gameState = CreateTestGameState();
 
         // Find a seed that produces roll >= 3
@@ -680,10 +680,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public async Task AutonomousConsigliere_HandleMessage_Police_ReturnsLegalResponse()
+    public async Task ConsigliereAgent_HandleMessage_Police_ReturnsLegalResponse()
     {
         var logger = CreateTestLogger();
-        var consigliere = new AutonomousConsigliere("consigliere-001", "Tom Hagen", logger);
+        var consigliere = new ConsigliereAgent("consigliere-001", "Tom Hagen", logger);
 
         var message = new AgentMessage
         {
@@ -701,10 +701,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public async Task AutonomousConsigliere_HandleMessage_Raid_ReturnsLegalResponse()
+    public async Task ConsigliereAgent_HandleMessage_Raid_ReturnsLegalResponse()
     {
         var logger = CreateTestLogger();
-        var consigliere = new AutonomousConsigliere("consigliere-001", "Tom Hagen", logger);
+        var consigliere = new ConsigliereAgent("consigliere-001", "Tom Hagen", logger);
 
         var message = new AgentMessage
         {
@@ -721,10 +721,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public async Task AutonomousConsigliere_HandleMessage_Legal_ReturnsLegalResponse()
+    public async Task ConsigliereAgent_HandleMessage_Legal_ReturnsLegalResponse()
     {
         var logger = CreateTestLogger();
-        var consigliere = new AutonomousConsigliere("consigliere-001", "Tom Hagen", logger);
+        var consigliere = new ConsigliereAgent("consigliere-001", "Tom Hagen", logger);
 
         var message = new AgentMessage
         {
@@ -741,10 +741,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public async Task AutonomousConsigliere_HandleMessage_OtherFamilies_ReturnsAnalysis()
+    public async Task ConsigliereAgent_HandleMessage_OtherFamilies_ReturnsAnalysis()
     {
         var logger = CreateTestLogger();
-        var consigliere = new AutonomousConsigliere("consigliere-001", "Tom Hagen", logger);
+        var consigliere = new ConsigliereAgent("consigliere-001", "Tom Hagen", logger);
 
         var message = new AgentMessage
         {
@@ -763,10 +763,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public async Task AutonomousConsigliere_HandleMessage_Strong_ReturnsAnalysis()
+    public async Task ConsigliereAgent_HandleMessage_Strong_ReturnsAnalysis()
     {
         var logger = CreateTestLogger();
-        var consigliere = new AutonomousConsigliere("consigliere-001", "Tom Hagen", logger);
+        var consigliere = new ConsigliereAgent("consigliere-001", "Tom Hagen", logger);
 
         var message = new AgentMessage
         {
@@ -783,10 +783,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public async Task AutonomousConsigliere_HandleMessage_Default_ReturnsThoughtfulResponse()
+    public async Task ConsigliereAgent_HandleMessage_Default_ReturnsThoughtfulResponse()
     {
         var logger = CreateTestLogger();
-        var consigliere = new AutonomousConsigliere("consigliere-001", "Tom Hagen", logger);
+        var consigliere = new ConsigliereAgent("consigliere-001", "Tom Hagen", logger);
 
         var message = new AgentMessage
         {
@@ -805,13 +805,13 @@ public class AutonomousAgentsTests
 
     #endregion
 
-    #region AutonomousCapo Tests
+    #region CapoAgent Tests
 
     [Test]
-    public void AutonomousCapo_Construction_SetsCorrectProperties()
+    public void CapoAgent_Construction_SetsCorrectProperties()
     {
         var logger = CreateTestLogger();
-        var capo = new AutonomousCapo("capo-001", "Peter Clemenza", logger);
+        var capo = new CapoAgent("capo-001", "Peter Clemenza", logger);
 
         Assert.Equal("capo-001", capo.Id);
         Assert.Equal("Peter Clemenza", capo.Name);
@@ -822,20 +822,20 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousCapo_Construction_SetsCorrectCapabilities()
+    public void CapoAgent_Construction_SetsCorrectCapabilities()
     {
         var logger = CreateTestLogger();
-        var capo = new AutonomousCapo("capo-001", "Peter Clemenza", logger);
+        var capo = new CapoAgent("capo-001", "Peter Clemenza", logger);
 
         Assert.Contains("ProtectionRacket", capo.Capabilities.SupportedCategories);
         Assert.Contains("CrewLeadership", capo.Capabilities.SupportedCategories);
     }
 
     [Test]
-    public void AutonomousCapo_MakeDecision_CollectsMoney_WhenRollLessThanFive()
+    public void CapoAgent_MakeDecision_CollectsMoney_WhenRollLessThanFive()
     {
         var logger = CreateTestLogger();
-        var capo = new AutonomousCapo("capo-001", "Peter Clemenza", logger);
+        var capo = new CapoAgent("capo-001", "Peter Clemenza", logger);
         var gameState = CreateTestGameState();
 
         // Find a seed that produces roll < 5
@@ -859,10 +859,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousCapo_MakeDecision_Recruits_WhenRollBetweenFiveAndSevenAndSoldiersLow()
+    public void CapoAgent_MakeDecision_Recruits_WhenRollBetweenFiveAndSevenAndSoldiersLow()
     {
         var logger = CreateTestLogger();
-        var capo = new AutonomousCapo("capo-001", "Peter Clemenza", logger);
+        var capo = new CapoAgent("capo-001", "Peter Clemenza", logger);
         var gameState = CreateTestGameState();
         gameState.SoldierCount = 10; // Less than 20
 
@@ -887,10 +887,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousCapo_MakeDecision_DoesNotRecruit_WhenSoldiersAtCapacity()
+    public void CapoAgent_MakeDecision_DoesNotRecruit_WhenSoldiersAtCapacity()
     {
         var logger = CreateTestLogger();
-        var capo = new AutonomousCapo("capo-001", "Peter Clemenza", logger);
+        var capo = new CapoAgent("capo-001", "Peter Clemenza", logger);
         var gameState = CreateTestGameState();
         gameState.SoldierCount = 25; // >= 20, so no recruiting
 
@@ -915,10 +915,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousCapo_MakeDecision_SendsReport_WhenRollBetweenSevenAndNine()
+    public void CapoAgent_MakeDecision_SendsReport_WhenRollBetweenSevenAndNine()
     {
         var logger = CreateTestLogger();
-        var capo = new AutonomousCapo("capo-001", "Peter Clemenza", logger);
+        var capo = new CapoAgent("capo-001", "Peter Clemenza", logger);
         var gameState = CreateTestGameState();
         gameState.SoldierCount = 25; // High soldier count to skip recruit branch
 
@@ -947,10 +947,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousCapo_MakeDecision_ReturnsWait_WhenRollNineOrHigher()
+    public void CapoAgent_MakeDecision_ReturnsWait_WhenRollNineOrHigher()
     {
         var logger = CreateTestLogger();
-        var capo = new AutonomousCapo("capo-001", "Peter Clemenza", logger);
+        var capo = new CapoAgent("capo-001", "Peter Clemenza", logger);
         var gameState = CreateTestGameState();
         gameState.SoldierCount = 25;
 
@@ -974,10 +974,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public async Task AutonomousCapo_HandleMessage_Collections_ReturnsCollectionResponse()
+    public async Task CapoAgent_HandleMessage_Collections_ReturnsCollectionResponse()
     {
         var logger = CreateTestLogger();
-        var capo = new AutonomousCapo("capo-001", "Peter Clemenza", logger);
+        var capo = new CapoAgent("capo-001", "Peter Clemenza", logger);
 
         var message = new AgentMessage
         {
@@ -990,15 +990,16 @@ public class AutonomousAgentsTests
         var result = await capo.ProcessMessageAsync(message);
 
         Assert.True(result.Success);
-        Assert.Contains("I'm on it", result.Response!);
-        Assert.Contains("Friday", result.Response!);
+        // "collect" in "collections" triggers the collection handler
+        Assert.Contains("collected", result.Response!);
+        Assert.Contains("Underboss", result.Response!);
     }
 
     [Test]
-    public async Task AutonomousCapo_HandleMessage_Schedule_ReturnsCollectionResponse()
+    public async Task CapoAgent_HandleMessage_Schedule_ReturnsCollectionResponse()
     {
         var logger = CreateTestLogger();
-        var capo = new AutonomousCapo("capo-001", "Peter Clemenza", logger);
+        var capo = new CapoAgent("capo-001", "Peter Clemenza", logger);
 
         var message = new AgentMessage
         {
@@ -1011,14 +1012,15 @@ public class AutonomousAgentsTests
         var result = await capo.ProcessMessageAsync(message);
 
         Assert.True(result.Success);
-        Assert.Contains("money by Friday", result.Response!);
+        // "collect" in "collection" triggers the collection handler
+        Assert.Contains("collected", result.Response!);
     }
 
     [Test]
-    public async Task AutonomousCapo_HandleMessage_Crew_ReturnsCrewResponse()
+    public async Task CapoAgent_HandleMessage_Crew_ReturnsCrewResponse()
     {
         var logger = CreateTestLogger();
-        var capo = new AutonomousCapo("capo-001", "Peter Clemenza", logger);
+        var capo = new CapoAgent("capo-001", "Peter Clemenza", logger);
 
         var message = new AgentMessage
         {
@@ -1036,10 +1038,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public async Task AutonomousCapo_HandleMessage_Line_ReturnsCrewResponse()
+    public async Task CapoAgent_HandleMessage_Line_ReturnsCrewResponse()
     {
         var logger = CreateTestLogger();
-        var capo = new AutonomousCapo("capo-001", "Peter Clemenza", logger);
+        var capo = new CapoAgent("capo-001", "Peter Clemenza", logger);
 
         var message = new AgentMessage
         {
@@ -1056,10 +1058,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public async Task AutonomousCapo_HandleMessage_PushHarder_ReturnsAggressiveResponse()
+    public async Task CapoAgent_HandleMessage_PushHarder_ReturnsAggressiveResponse()
     {
         var logger = CreateTestLogger();
-        var capo = new AutonomousCapo("capo-001", "Peter Clemenza", logger);
+        var capo = new CapoAgent("capo-001", "Peter Clemenza", logger);
 
         var message = new AgentMessage
         {
@@ -1077,10 +1079,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public async Task AutonomousCapo_HandleMessage_Numbers_ReturnsAggressiveResponse()
+    public async Task CapoAgent_HandleMessage_Numbers_ReturnsAggressiveResponse()
     {
         var logger = CreateTestLogger();
-        var capo = new AutonomousCapo("capo-001", "Peter Clemenza", logger);
+        var capo = new CapoAgent("capo-001", "Peter Clemenza", logger);
 
         var message = new AgentMessage
         {
@@ -1097,10 +1099,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public async Task AutonomousCapo_HandleMessage_Default_ReturnsGenericResponse()
+    public async Task CapoAgent_HandleMessage_Default_ReturnsGenericResponse()
     {
         var logger = CreateTestLogger();
-        var capo = new AutonomousCapo("capo-001", "Peter Clemenza", logger);
+        var capo = new CapoAgent("capo-001", "Peter Clemenza", logger);
 
         var message = new AgentMessage
         {
@@ -1119,13 +1121,13 @@ public class AutonomousAgentsTests
 
     #endregion
 
-    #region AutonomousSoldier Tests
+    #region SoldierAgent Tests
 
     [Test]
-    public void AutonomousSoldier_Construction_SetsCorrectProperties()
+    public void SoldierAgent_Construction_SetsCorrectProperties()
     {
         var logger = CreateTestLogger();
-        var soldier = new AutonomousSoldier("soldier-001", "Rocco Lampone", logger);
+        var soldier = new SoldierAgent("soldier-001", "Rocco Lampone", logger);
 
         Assert.Equal("soldier-001", soldier.Id);
         Assert.Equal("Rocco Lampone", soldier.Name);
@@ -1136,20 +1138,20 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousSoldier_Construction_SetsCorrectCapabilities()
+    public void SoldierAgent_Construction_SetsCorrectCapabilities()
     {
         var logger = CreateTestLogger();
-        var soldier = new AutonomousSoldier("soldier-001", "Rocco Lampone", logger);
+        var soldier = new SoldierAgent("soldier-001", "Rocco Lampone", logger);
 
         Assert.Contains("Enforcement", soldier.Capabilities.SupportedCategories);
         Assert.Contains("Collections", soldier.Capabilities.SupportedCategories);
     }
 
     [Test]
-    public void AutonomousSoldier_MakeDecision_CollectsMoney_WhenRollLessThanSix()
+    public void SoldierAgent_MakeDecision_CollectsMoney_WhenRollLessThanSix()
     {
         var logger = CreateTestLogger();
-        var soldier = new AutonomousSoldier("soldier-001", "Rocco Lampone", logger);
+        var soldier = new SoldierAgent("soldier-001", "Rocco Lampone", logger);
         var gameState = CreateTestGameState();
 
         // Find a seed that produces roll < 6
@@ -1173,10 +1175,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousSoldier_MakeDecision_SendsReport_WhenRollBetweenSixAndNine()
+    public void SoldierAgent_MakeDecision_SendsReport_WhenRollBetweenSixAndNine()
     {
         var logger = CreateTestLogger();
-        var soldier = new AutonomousSoldier("soldier-001", "Rocco Lampone", logger);
+        var soldier = new SoldierAgent("soldier-001", "Rocco Lampone", logger);
         var gameState = CreateTestGameState();
 
         // Find a seed that produces 6 <= roll < 9
@@ -1204,10 +1206,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousSoldier_MakeDecision_ReturnsWait_WhenRollNineOrHigher()
+    public void SoldierAgent_MakeDecision_ReturnsWait_WhenRollNineOrHigher()
     {
         var logger = CreateTestLogger();
-        var soldier = new AutonomousSoldier("soldier-001", "Rocco Lampone", logger);
+        var soldier = new SoldierAgent("soldier-001", "Rocco Lampone", logger);
         var gameState = CreateTestGameState();
 
         // Find a seed that produces roll >= 9
@@ -1230,10 +1232,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public async Task AutonomousSoldier_HandleMessage_AnyMessage_ReturnsSimpleResponse()
+    public async Task SoldierAgent_HandleMessage_AnyMessage_ReturnsSimpleResponse()
     {
         var logger = CreateTestLogger();
-        var soldier = new AutonomousSoldier("soldier-001", "Rocco Lampone", logger);
+        var soldier = new SoldierAgent("soldier-001", "Rocco Lampone", logger);
 
         var message = new AgentMessage
         {
@@ -1246,15 +1248,16 @@ public class AutonomousAgentsTests
         var result = await soldier.ProcessMessageAsync(message);
 
         Assert.True(result.Success);
-        Assert.Contains("I'm on it", result.Response!);
-        Assert.Contains("No problem", result.Response!);
+        // "collect" triggers the collection handler
+        Assert.Contains("knuckles", result.Response!);
+        Assert.Contains("Capo", result.Response!);
     }
 
     [Test]
-    public async Task AutonomousSoldier_HandleMessage_Urgent_ReturnsSimpleResponse()
+    public async Task SoldierAgent_HandleMessage_Urgent_ReturnsSimpleResponse()
     {
         var logger = CreateTestLogger();
-        var soldier = new AutonomousSoldier("soldier-001", "Rocco Lampone", logger);
+        var soldier = new SoldierAgent("soldier-001", "Rocco Lampone", logger);
 
         var message = new AgentMessage
         {
@@ -1276,10 +1279,10 @@ public class AutonomousAgentsTests
     #region Agent Status and CanHandle Tests
 
     [Test]
-    public void AutonomousGodfather_CanHandle_ReturnsTrueForValidMessage()
+    public void GodfatherAgent_CanHandle_ReturnsTrueForValidMessage()
     {
         var logger = CreateTestLogger();
-        var godfather = new AutonomousGodfather("godfather-001", "Don Corleone", logger);
+        var godfather = new GodfatherAgent("godfather-001", "Don Corleone", logger);
 
         var message = new AgentMessage
         {
@@ -1294,10 +1297,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousGodfather_CanHandle_ReturnsTrueForMajorDispute()
+    public void GodfatherAgent_CanHandle_ReturnsTrueForMajorDispute()
     {
         var logger = CreateTestLogger();
-        var godfather = new AutonomousGodfather("godfather-001", "Don Corleone", logger);
+        var godfather = new GodfatherAgent("godfather-001", "Don Corleone", logger);
 
         var message = new AgentMessage
         {
@@ -1312,10 +1315,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousGodfather_CanHandle_ReturnsTrueForFavorRequest()
+    public void GodfatherAgent_CanHandle_ReturnsTrueForFavorRequest()
     {
         var logger = CreateTestLogger();
-        var godfather = new AutonomousGodfather("godfather-001", "Don Corleone", logger);
+        var godfather = new GodfatherAgent("godfather-001", "Don Corleone", logger);
 
         var message = new AgentMessage
         {
@@ -1330,10 +1333,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousUnderboss_CanHandle_ReturnsTrueForDailyOperations()
+    public void UnderbossAgent_CanHandle_ReturnsTrueForDailyOperations()
     {
         var logger = CreateTestLogger();
-        var underboss = new AutonomousUnderboss("underboss-001", "Salvatore Tessio", logger);
+        var underboss = new UnderbossAgent("underboss-001", "Salvatore Tessio", logger);
 
         var message = new AgentMessage
         {
@@ -1348,10 +1351,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousConsigliere_CanHandle_ReturnsTrueForLegal()
+    public void ConsigliereAgent_CanHandle_ReturnsTrueForLegal()
     {
         var logger = CreateTestLogger();
-        var consigliere = new AutonomousConsigliere("consigliere-001", "Tom Hagen", logger);
+        var consigliere = new ConsigliereAgent("consigliere-001", "Tom Hagen", logger);
 
         var message = new AgentMessage
         {
@@ -1366,10 +1369,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousCapo_CanHandle_ReturnsTrueForProtectionRacket()
+    public void CapoAgent_CanHandle_ReturnsTrueForProtectionRacket()
     {
         var logger = CreateTestLogger();
-        var capo = new AutonomousCapo("capo-001", "Peter Clemenza", logger);
+        var capo = new CapoAgent("capo-001", "Peter Clemenza", logger);
 
         var message = new AgentMessage
         {
@@ -1384,10 +1387,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousSoldier_CanHandle_ReturnsTrueForEnforcement()
+    public void SoldierAgent_CanHandle_ReturnsTrueForEnforcement()
     {
         var logger = CreateTestLogger();
-        var soldier = new AutonomousSoldier("soldier-001", "Rocco Lampone", logger);
+        var soldier = new SoldierAgent("soldier-001", "Rocco Lampone", logger);
 
         var message = new AgentMessage
         {
@@ -1402,10 +1405,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousSoldier_CanHandle_ReturnsTrueForCollections()
+    public void SoldierAgent_CanHandle_ReturnsTrueForCollections()
     {
         var logger = CreateTestLogger();
-        var soldier = new AutonomousSoldier("soldier-001", "Rocco Lampone", logger);
+        var soldier = new SoldierAgent("soldier-001", "Rocco Lampone", logger);
 
         var message = new AgentMessage
         {
@@ -1424,10 +1427,10 @@ public class AutonomousAgentsTests
     #region Message Integration Tests
 
     [Test]
-    public void AutonomousGodfather_MakeDecision_MessageHasValidRecipients()
+    public void GodfatherAgent_MakeDecision_MessageHasValidRecipients()
     {
         var logger = CreateTestLogger();
-        var godfather = new AutonomousGodfather("godfather-001", "Don Corleone", logger);
+        var godfather = new GodfatherAgent("godfather-001", "Don Corleone", logger);
         var gameState = CreateTestGameState();
 
         // Find a seed that triggers SendMessage
@@ -1449,10 +1452,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousUnderboss_MakeDecision_WeeklyReportContainsGameStats()
+    public void UnderbossAgent_MakeDecision_WeeklyReportContainsGameStats()
     {
         var logger = CreateTestLogger();
-        var underboss = new AutonomousUnderboss("underboss-001", "Salvatore Tessio", logger);
+        var underboss = new UnderbossAgent("underboss-001", "Salvatore Tessio", logger);
         var gameState = CreateTestGameState();
         gameState.Week = 6; // Day % 3 == 0
         gameState.Territories["Downtown"] = new Territory { WeeklyRevenue = 10000 };
@@ -1478,10 +1481,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousConsigliere_MakeDecision_AdviceHasStrategicContent()
+    public void ConsigliereAgent_MakeDecision_AdviceHasStrategicContent()
     {
         var logger = CreateTestLogger();
-        var consigliere = new AutonomousConsigliere("consigliere-001", "Tom Hagen", logger);
+        var consigliere = new ConsigliereAgent("consigliere-001", "Tom Hagen", logger);
         var gameState = CreateTestGameState();
 
         // Find a seed that triggers SendMessage
@@ -1507,10 +1510,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousSoldier_MakeDecision_ReportsHaveVariety()
+    public void SoldierAgent_MakeDecision_ReportsHaveVariety()
     {
         var logger = CreateTestLogger();
-        var soldier = new AutonomousSoldier("soldier-001", "Rocco Lampone", logger);
+        var soldier = new SoldierAgent("soldier-001", "Rocco Lampone", logger);
         var gameState = CreateTestGameState();
 
         var reportContents = new HashSet<string>();
@@ -1552,11 +1555,11 @@ public class AutonomousAgentsTests
     {
         var logger = CreateTestLogger();
 
-        var godfather = new AutonomousGodfather("godfather-001", "Don Corleone", logger);
-        var underboss = new AutonomousUnderboss("underboss-001", "Salvatore Tessio", logger);
-        var consigliere = new AutonomousConsigliere("consigliere-001", "Tom Hagen", logger);
-        var capo = new AutonomousCapo("capo-001", "Peter Clemenza", logger);
-        var soldier = new AutonomousSoldier("soldier-001", "Rocco Lampone", logger);
+        var godfather = new GodfatherAgent("godfather-001", "Don Corleone", logger);
+        var underboss = new UnderbossAgent("underboss-001", "Salvatore Tessio", logger);
+        var consigliere = new ConsigliereAgent("consigliere-001", "Tom Hagen", logger);
+        var capo = new CapoAgent("capo-001", "Peter Clemenza", logger);
+        var soldier = new SoldierAgent("soldier-001", "Rocco Lampone", logger);
 
         Assert.Equal(AgentStatus.Available, godfather.Status);
         Assert.Equal(AgentStatus.Available, underboss.Status);
@@ -1570,11 +1573,11 @@ public class AutonomousAgentsTests
     {
         var logger = CreateTestLogger();
 
-        var godfather = new AutonomousGodfather("godfather-001", "Don Corleone", logger);
-        var underboss = new AutonomousUnderboss("underboss-001", "Salvatore Tessio", logger);
-        var consigliere = new AutonomousConsigliere("consigliere-001", "Tom Hagen", logger);
-        var capo = new AutonomousCapo("capo-001", "Peter Clemenza", logger);
-        var soldier = new AutonomousSoldier("soldier-001", "Rocco Lampone", logger);
+        var godfather = new GodfatherAgent("godfather-001", "Don Corleone", logger);
+        var underboss = new UnderbossAgent("underboss-001", "Salvatore Tessio", logger);
+        var consigliere = new ConsigliereAgent("consigliere-001", "Tom Hagen", logger);
+        var capo = new CapoAgent("capo-001", "Peter Clemenza", logger);
+        var soldier = new SoldierAgent("soldier-001", "Rocco Lampone", logger);
 
         Assert.NotEmpty(godfather.Capabilities.SupportedCategories);
         Assert.NotEmpty(underboss.Capabilities.SupportedCategories);
@@ -1584,10 +1587,10 @@ public class AutonomousAgentsTests
     }
 
     [Test]
-    public void AutonomousCapo_MakeDecision_DoesNotRecruitWhenAtMax()
+    public void CapoAgent_MakeDecision_DoesNotRecruitWhenAtMax()
     {
         var logger = CreateTestLogger();
-        var capo = new AutonomousCapo("capo-001", "Peter Clemenza", logger);
+        var capo = new CapoAgent("capo-001", "Peter Clemenza", logger);
         var gameState = CreateTestGameState();
         gameState.SoldierCount = 20; // At the threshold
 
@@ -1613,7 +1616,7 @@ public class AutonomousAgentsTests
     public async Task AllAgents_HandleEmptyContent_Gracefully()
     {
         var logger = CreateTestLogger();
-        var soldier = new AutonomousSoldier("soldier-001", "Rocco Lampone", logger);
+        var soldier = new SoldierAgent("soldier-001", "Rocco Lampone", logger);
 
         var message = new AgentMessage
         {
@@ -1633,11 +1636,11 @@ public class AutonomousAgentsTests
     {
         var logger = CreateTestLogger();
 
-        var godfather = new AutonomousGodfather("godfather-001", "Don Corleone", logger);
-        var underboss = new AutonomousUnderboss("underboss-001", "Salvatore Tessio", logger);
-        var consigliere = new AutonomousConsigliere("consigliere-001", "Tom Hagen", logger);
-        var capo = new AutonomousCapo("capo-001", "Peter Clemenza", logger);
-        var soldier = new AutonomousSoldier("soldier-001", "Rocco Lampone", logger);
+        var godfather = new GodfatherAgent("godfather-001", "Don Corleone", logger);
+        var underboss = new UnderbossAgent("underboss-001", "Salvatore Tessio", logger);
+        var consigliere = new ConsigliereAgent("consigliere-001", "Tom Hagen", logger);
+        var capo = new CapoAgent("capo-001", "Peter Clemenza", logger);
+        var soldier = new SoldierAgent("soldier-001", "Rocco Lampone", logger);
 
         Assert.True(godfather.DecisionDelay > TimeSpan.Zero);
         Assert.True(underboss.DecisionDelay > TimeSpan.Zero);
@@ -1651,11 +1654,11 @@ public class AutonomousAgentsTests
     {
         var logger = CreateTestLogger();
 
-        var godfather = new AutonomousGodfather("godfather-001", "Don Corleone", logger);
-        var underboss = new AutonomousUnderboss("underboss-001", "Salvatore Tessio", logger);
-        var consigliere = new AutonomousConsigliere("consigliere-001", "Tom Hagen", logger);
-        var capo = new AutonomousCapo("capo-001", "Peter Clemenza", logger);
-        var soldier = new AutonomousSoldier("soldier-001", "Rocco Lampone", logger);
+        var godfather = new GodfatherAgent("godfather-001", "Don Corleone", logger);
+        var underboss = new UnderbossAgent("underboss-001", "Salvatore Tessio", logger);
+        var consigliere = new ConsigliereAgent("consigliere-001", "Tom Hagen", logger);
+        var capo = new CapoAgent("capo-001", "Peter Clemenza", logger);
+        var soldier = new SoldierAgent("soldier-001", "Rocco Lampone", logger);
 
         // All traits should be 1-10
         Assert.InRange(godfather.Ambition, 1, 10);
