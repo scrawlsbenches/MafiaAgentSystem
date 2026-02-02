@@ -5,16 +5,15 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using RulesEngine.Core;
-using RulesEngine.Enhanced;
 using TestRunner.Framework;
 
 namespace TestRunner.Tests;
 
 /// <summary>
-/// Comprehensive tests for ThreadSafeRulesEngine&lt;T&gt; - immutable pattern implementation
+/// Comprehensive tests for ImmutableRulesEngine&lt;T&gt; - immutable pattern implementation
 /// </summary>
 [TestClass]
-public class ThreadSafeRulesEngineImmutableTests
+public class ImmutableRulesEngineImmutableTests
 {
     private class TestFact
     {
@@ -28,7 +27,7 @@ public class ThreadSafeRulesEngineImmutableTests
     [Test]
     public void Constructor_DefaultOptions_CreatesEmptyEngine()
     {
-        var engine = new ThreadSafeRulesEngine<TestFact>();
+        var engine = new ImmutableRulesEngine<TestFact>();
 
         Assert.NotNull(engine);
         Assert.Empty(engine.GetRules());
@@ -44,7 +43,7 @@ public class ThreadSafeRulesEngineImmutableTests
             TrackPerformance = true
         };
 
-        var engine = new ThreadSafeRulesEngine<TestFact>(options);
+        var engine = new ImmutableRulesEngine<TestFact>(options);
 
         Assert.NotNull(engine);
         Assert.Empty(engine.GetRules());
@@ -53,7 +52,7 @@ public class ThreadSafeRulesEngineImmutableTests
     [Test]
     public void Constructor_NullOptions_UsesDefaults()
     {
-        var engine = new ThreadSafeRulesEngine<TestFact>(null);
+        var engine = new ImmutableRulesEngine<TestFact>(null);
 
         Assert.NotNull(engine);
         // Engine should work normally with default options
@@ -68,7 +67,7 @@ public class ThreadSafeRulesEngineImmutableTests
     [Test]
     public void WithRule_ReturnsNewInstance()
     {
-        var engine1 = new ThreadSafeRulesEngine<TestFact>();
+        var engine1 = new ImmutableRulesEngine<TestFact>();
         var rule = new Rule<TestFact>("R1", "Rule 1", f => f.Value > 5);
 
         var engine2 = engine1.WithRule(rule);
@@ -79,7 +78,7 @@ public class ThreadSafeRulesEngineImmutableTests
     [Test]
     public void WithRule_OriginalEngineUnchanged()
     {
-        var engine1 = new ThreadSafeRulesEngine<TestFact>();
+        var engine1 = new ImmutableRulesEngine<TestFact>();
         var rule = new Rule<TestFact>("R1", "Rule 1", f => f.Value > 5);
 
         var engine2 = engine1.WithRule(rule);
@@ -91,7 +90,7 @@ public class ThreadSafeRulesEngineImmutableTests
     [Test]
     public void WithRule_ChainedCalls_AccumulateRules()
     {
-        var engine = new ThreadSafeRulesEngine<TestFact>()
+        var engine = new ImmutableRulesEngine<TestFact>()
             .WithRule(new Rule<TestFact>("R1", "Rule 1", f => f.Value > 5))
             .WithRule(new Rule<TestFact>("R2", "Rule 2", f => f.Value > 10))
             .WithRule(new Rule<TestFact>("R3", "Rule 3", f => f.Value > 15));
@@ -106,7 +105,7 @@ public class ThreadSafeRulesEngineImmutableTests
         var rule = new Rule<TestFact>("R1", "Rule 1", f => f.Value > 5)
             .WithAction(f => executed = true);
 
-        var engine = new ThreadSafeRulesEngine<TestFact>().WithRule(rule);
+        var engine = new ImmutableRulesEngine<TestFact>().WithRule(rule);
         engine.Execute(new TestFact { Value = 10 });
 
         Assert.True(executed);
@@ -119,7 +118,7 @@ public class ThreadSafeRulesEngineImmutableTests
     [Test]
     public void WithRules_AddsMultipleRulesAtOnce()
     {
-        var engine = new ThreadSafeRulesEngine<TestFact>().WithRules(
+        var engine = new ImmutableRulesEngine<TestFact>().WithRules(
             new Rule<TestFact>("R1", "Rule 1", f => f.Value > 5),
             new Rule<TestFact>("R2", "Rule 2", f => f.Value > 10)
         );
@@ -130,7 +129,7 @@ public class ThreadSafeRulesEngineImmutableTests
     [Test]
     public void WithRules_OriginalEngineUnchanged()
     {
-        var engine1 = new ThreadSafeRulesEngine<TestFact>();
+        var engine1 = new ImmutableRulesEngine<TestFact>();
         var engine2 = engine1.WithRules(
             new Rule<TestFact>("R1", "Rule 1", f => f.Value > 5),
             new Rule<TestFact>("R2", "Rule 2", f => f.Value > 10)
@@ -143,7 +142,7 @@ public class ThreadSafeRulesEngineImmutableTests
     [Test]
     public void WithRules_EmptyArray_ReturnsNewEngineWithSameRules()
     {
-        var engine1 = new ThreadSafeRulesEngine<TestFact>()
+        var engine1 = new ImmutableRulesEngine<TestFact>()
             .WithRule(new Rule<TestFact>("R1", "Rule 1", f => f.Value > 5));
 
         var engine2 = engine1.WithRules();
@@ -159,7 +158,7 @@ public class ThreadSafeRulesEngineImmutableTests
     [Test]
     public void WithoutRule_RemovesSpecifiedRule()
     {
-        var engine1 = new ThreadSafeRulesEngine<TestFact>()
+        var engine1 = new ImmutableRulesEngine<TestFact>()
             .WithRule(new Rule<TestFact>("R1", "Rule 1", f => f.Value > 5))
             .WithRule(new Rule<TestFact>("R2", "Rule 2", f => f.Value > 10));
 
@@ -173,7 +172,7 @@ public class ThreadSafeRulesEngineImmutableTests
     [Test]
     public void WithoutRule_NonExistentId_ReturnsNewEngineWithSameRules()
     {
-        var engine1 = new ThreadSafeRulesEngine<TestFact>()
+        var engine1 = new ImmutableRulesEngine<TestFact>()
             .WithRule(new Rule<TestFact>("R1", "Rule 1", f => f.Value > 5));
 
         var engine2 = engine1.WithoutRule("NONEXISTENT");
@@ -185,7 +184,7 @@ public class ThreadSafeRulesEngineImmutableTests
     [Test]
     public void WithoutRule_EmptyEngine_ReturnsEmptyEngine()
     {
-        var engine1 = new ThreadSafeRulesEngine<TestFact>();
+        var engine1 = new ImmutableRulesEngine<TestFact>();
 
         var engine2 = engine1.WithoutRule("R1");
 
@@ -196,7 +195,7 @@ public class ThreadSafeRulesEngineImmutableTests
     public void WithoutRule_RemovesAllMatchingRules()
     {
         // Add same ID twice (immutable allows this)
-        var engine1 = new ThreadSafeRulesEngine<TestFact>()
+        var engine1 = new ImmutableRulesEngine<TestFact>()
             .WithRule(new Rule<TestFact>("R1", "Rule 1a", f => f.Value > 5))
             .WithRule(new Rule<TestFact>("R1", "Rule 1b", f => f.Value > 10));
 
@@ -212,7 +211,7 @@ public class ThreadSafeRulesEngineImmutableTests
     [Test]
     public void Execute_EmptyEngine_ReturnsEmptyResult()
     {
-        var engine = new ThreadSafeRulesEngine<TestFact>();
+        var engine = new ImmutableRulesEngine<TestFact>();
 
         var result = engine.Execute(new TestFact { Value = 10 });
 
@@ -223,7 +222,7 @@ public class ThreadSafeRulesEngineImmutableTests
     [Test]
     public void Execute_MatchingRule_ReturnsMatchedResult()
     {
-        var engine = new ThreadSafeRulesEngine<TestFact>()
+        var engine = new ImmutableRulesEngine<TestFact>()
             .WithRule(new Rule<TestFact>("R1", "Rule 1", f => f.Value > 5));
 
         var result = engine.Execute(new TestFact { Value = 10 });
@@ -234,7 +233,7 @@ public class ThreadSafeRulesEngineImmutableTests
     [Test]
     public void Execute_NonMatchingRule_ReturnsNoMatch()
     {
-        var engine = new ThreadSafeRulesEngine<TestFact>()
+        var engine = new ImmutableRulesEngine<TestFact>()
             .WithRule(new Rule<TestFact>("R1", "Rule 1", f => f.Value > 100));
 
         var result = engine.Execute(new TestFact { Value = 10 });
@@ -247,7 +246,7 @@ public class ThreadSafeRulesEngineImmutableTests
     public void Execute_ExecutesRulesInPriorityOrder()
     {
         var executionOrder = new List<string>();
-        var engine = new ThreadSafeRulesEngine<TestFact>()
+        var engine = new ImmutableRulesEngine<TestFact>()
             .WithRule(new Rule<TestFact>("R1", "Low Priority", f => true, priority: 1)
                 .WithAction(f => executionOrder.Add("R1")))
             .WithRule(new Rule<TestFact>("R2", "High Priority", f => true, priority: 100)
@@ -268,7 +267,7 @@ public class ThreadSafeRulesEngineImmutableTests
     {
         var executionOrder = new List<string>();
         var options = new RulesEngineOptions { StopOnFirstMatch = true };
-        var engine = new ThreadSafeRulesEngine<TestFact>(options)
+        var engine = new ImmutableRulesEngine<TestFact>(options)
             .WithRule(new Rule<TestFact>("R1", "First", f => true, priority: 100)
                 .WithAction(f => executionOrder.Add("R1")))
             .WithRule(new Rule<TestFact>("R2", "Second", f => true, priority: 50)
@@ -286,7 +285,7 @@ public class ThreadSafeRulesEngineImmutableTests
     {
         var executionCount = 0;
         var options = new RulesEngineOptions { StopOnFirstMatch = true };
-        var engine = new ThreadSafeRulesEngine<TestFact>(options)
+        var engine = new ImmutableRulesEngine<TestFact>(options)
             .WithRule(new Rule<TestFact>("R1", "NoMatch", f => false, priority: 100)
                 .WithAction(f => executionCount++))
             .WithRule(new Rule<TestFact>("R2", "Match", f => true, priority: 50)
@@ -301,7 +300,7 @@ public class ThreadSafeRulesEngineImmutableTests
     [Test]
     public void Execute_RecordsTotalExecutionTime()
     {
-        var engine = new ThreadSafeRulesEngine<TestFact>()
+        var engine = new ImmutableRulesEngine<TestFact>()
             .WithRule(new Rule<TestFact>("R1", "Rule 1", f => true)
                 .WithAction(f => Thread.Sleep(10)));
 
@@ -319,7 +318,7 @@ public class ThreadSafeRulesEngineImmutableTests
     {
         var options = new RulesEngineOptions { EnableParallelExecution = true };
         var executedRules = new ConcurrentBag<string>();
-        var engine = new ThreadSafeRulesEngine<TestFact>(options)
+        var engine = new ImmutableRulesEngine<TestFact>(options)
             .WithRule(new Rule<TestFact>("R1", "Rule 1", f => true)
                 .WithAction(f => executedRules.Add("R1")))
             .WithRule(new Rule<TestFact>("R2", "Rule 2", f => true)
@@ -337,7 +336,7 @@ public class ThreadSafeRulesEngineImmutableTests
     public void Execute_ParallelExecution_NoExceptions()
     {
         var options = new RulesEngineOptions { EnableParallelExecution = true };
-        var engine = new ThreadSafeRulesEngine<TestFact>(options);
+        var engine = new ImmutableRulesEngine<TestFact>(options);
 
         // Add many rules
         for (int i = 0; i < 100; i++)
@@ -367,7 +366,7 @@ public class ThreadSafeRulesEngineImmutableTests
     public void GetMetrics_TracksExecutionCount()
     {
         var options = new RulesEngineOptions { TrackPerformance = true };
-        var engine = new ThreadSafeRulesEngine<TestFact>(options)
+        var engine = new ImmutableRulesEngine<TestFact>(options)
             .WithRule(new Rule<TestFact>("R1", "Rule 1", f => true));
 
         engine.Execute(new TestFact());
@@ -382,7 +381,7 @@ public class ThreadSafeRulesEngineImmutableTests
     [Test]
     public void GetMetrics_NonExistentRule_ReturnsNull()
     {
-        var engine = new ThreadSafeRulesEngine<TestFact>();
+        var engine = new ImmutableRulesEngine<TestFact>();
 
         var metrics = engine.GetMetrics("NONEXISTENT");
 
@@ -393,7 +392,7 @@ public class ThreadSafeRulesEngineImmutableTests
     public void GetAllMetrics_ReturnsAllTrackedMetrics()
     {
         var options = new RulesEngineOptions { TrackPerformance = true };
-        var engine = new ThreadSafeRulesEngine<TestFact>(options)
+        var engine = new ImmutableRulesEngine<TestFact>(options)
             .WithRule(new Rule<TestFact>("R1", "Rule 1", f => true))
             .WithRule(new Rule<TestFact>("R2", "Rule 2", f => true));
 
@@ -409,7 +408,7 @@ public class ThreadSafeRulesEngineImmutableTests
     public void GetMetrics_TracksMinMaxExecutionTime()
     {
         var options = new RulesEngineOptions { TrackPerformance = true };
-        var engine = new ThreadSafeRulesEngine<TestFact>(options)
+        var engine = new ImmutableRulesEngine<TestFact>(options)
             .WithRule(new Rule<TestFact>("R1", "Rule 1", f => true));
 
         engine.Execute(new TestFact());
@@ -423,7 +422,7 @@ public class ThreadSafeRulesEngineImmutableTests
     public void GetMetrics_TrackingDisabled_NoMetrics()
     {
         var options = new RulesEngineOptions { TrackPerformance = false };
-        var engine = new ThreadSafeRulesEngine<TestFact>(options)
+        var engine = new ImmutableRulesEngine<TestFact>(options)
             .WithRule(new Rule<TestFact>("R1", "Rule 1", f => true));
 
         engine.Execute(new TestFact());
@@ -439,7 +438,7 @@ public class ThreadSafeRulesEngineImmutableTests
     [Test]
     public void GetRules_ReturnsImmutableList()
     {
-        var engine = new ThreadSafeRulesEngine<TestFact>()
+        var engine = new ImmutableRulesEngine<TestFact>()
             .WithRule(new Rule<TestFact>("R1", "Rule 1", f => true));
 
         var rules1 = engine.GetRules();
@@ -451,7 +450,7 @@ public class ThreadSafeRulesEngineImmutableTests
     [Test]
     public void GetRules_PreservesRuleOrder()
     {
-        var engine = new ThreadSafeRulesEngine<TestFact>()
+        var engine = new ImmutableRulesEngine<TestFact>()
             .WithRule(new Rule<TestFact>("R1", "Rule 1", f => true))
             .WithRule(new Rule<TestFact>("R2", "Rule 2", f => true))
             .WithRule(new Rule<TestFact>("R3", "Rule 3", f => true));
@@ -470,7 +469,7 @@ public class ThreadSafeRulesEngineImmutableTests
     [Test]
     public async Task ConcurrentExecution_NoExceptions()
     {
-        var engine = new ThreadSafeRulesEngine<TestFact>()
+        var engine = new ImmutableRulesEngine<TestFact>()
             .WithRule(new Rule<TestFact>("R1", "Rule 1", f => f.Value > 5))
             .WithRule(new Rule<TestFact>("R2", "Rule 2", f => f.Value > 10));
 
@@ -500,8 +499,8 @@ public class ThreadSafeRulesEngineImmutableTests
     [Test]
     public async Task ConcurrentWithRule_NoDataCorruption()
     {
-        var baseEngine = new ThreadSafeRulesEngine<TestFact>();
-        var engines = new ConcurrentBag<ThreadSafeRulesEngine<TestFact>>();
+        var baseEngine = new ImmutableRulesEngine<TestFact>();
+        var engines = new ConcurrentBag<ImmutableRulesEngine<TestFact>>();
 
         var tasks = new List<Task>();
         for (int i = 0; i < 50; i++)
@@ -525,7 +524,7 @@ public class ThreadSafeRulesEngineImmutableTests
     [Test]
     public async Task ConcurrentWithRuleAndExecute_NoExceptions()
     {
-        var engine = new ThreadSafeRulesEngine<TestFact>()
+        var engine = new ImmutableRulesEngine<TestFact>()
             .WithRule(new Rule<TestFact>("R1", "Initial Rule", f => true));
 
         var exceptions = new ConcurrentBag<Exception>();
@@ -567,7 +566,7 @@ public class ThreadSafeRulesEngineImmutableTests
     [Test]
     public async Task StressTest_ManyOperations_NoDataCorruption()
     {
-        var engine = new ThreadSafeRulesEngine<TestFact>()
+        var engine = new ImmutableRulesEngine<TestFact>()
             .WithRule(new Rule<TestFact>("R1", "Rule 1", f => true));
 
         var successCount = 0;
@@ -590,10 +589,10 @@ public class ThreadSafeRulesEngineImmutableTests
 }
 
 /// <summary>
-/// Comprehensive tests for LockedRulesEngine&lt;T&gt; - mutable pattern with locking
+/// Comprehensive tests for RulesEngineCore&lt;T&gt; - mutable pattern with locking
 /// </summary>
 [TestClass]
-public class LockedRulesEngineTests
+public class RulesEngineCoreTests
 {
     private class TestFact
     {
@@ -607,7 +606,7 @@ public class LockedRulesEngineTests
     [Test]
     public void Constructor_DefaultOptions_CreatesEngine()
     {
-        using var engine = new LockedRulesEngine<TestFact>();
+        using var engine = new RulesEngineCore<TestFact>();
         Assert.NotNull(engine);
     }
 
@@ -615,7 +614,7 @@ public class LockedRulesEngineTests
     public void Constructor_WithOptions_AppliesOptions()
     {
         var options = new RulesEngineOptions { StopOnFirstMatch = true };
-        using var engine = new LockedRulesEngine<TestFact>(options);
+        using var engine = new RulesEngineCore<TestFact>(options);
 
         engine.RegisterRule(new Rule<TestFact>("R1", "Rule 1", f => true, priority: 100));
         engine.RegisterRule(new Rule<TestFact>("R2", "Rule 2", f => true, priority: 50));
@@ -633,7 +632,7 @@ public class LockedRulesEngineTests
     [Test]
     public void Constructor_NullOptions_UsesDefaults()
     {
-        using var engine = new LockedRulesEngine<TestFact>(null);
+        using var engine = new RulesEngineCore<TestFact>(null);
         Assert.NotNull(engine);
     }
 
@@ -644,7 +643,7 @@ public class LockedRulesEngineTests
     [Test]
     public void RegisterRule_AddsRuleToEngine()
     {
-        using var engine = new LockedRulesEngine<TestFact>();
+        using var engine = new RulesEngineCore<TestFact>();
         var rule = new Rule<TestFact>("R1", "Rule 1", f => f.Value > 5);
 
         engine.RegisterRule(rule);
@@ -656,7 +655,7 @@ public class LockedRulesEngineTests
     [Test]
     public void RegisterRule_MultipleRules_AllRegistered()
     {
-        using var engine = new LockedRulesEngine<TestFact>();
+        using var engine = new RulesEngineCore<TestFact>();
 
         engine.RegisterRule(new Rule<TestFact>("R1", "Rule 1", f => true));
         engine.RegisterRule(new Rule<TestFact>("R2", "Rule 2", f => true));
@@ -673,7 +672,7 @@ public class LockedRulesEngineTests
     [Test]
     public void RemoveRule_ExistingRule_ReturnsTrue()
     {
-        using var engine = new LockedRulesEngine<TestFact>();
+        using var engine = new RulesEngineCore<TestFact>();
         engine.RegisterRule(new Rule<TestFact>("R1", "Rule 1", f => true));
 
         var removed = engine.RemoveRule("R1");
@@ -684,7 +683,7 @@ public class LockedRulesEngineTests
     [Test]
     public void RemoveRule_NonExistentRule_ReturnsFalse()
     {
-        using var engine = new LockedRulesEngine<TestFact>();
+        using var engine = new RulesEngineCore<TestFact>();
 
         var removed = engine.RemoveRule("NONEXISTENT");
 
@@ -694,7 +693,7 @@ public class LockedRulesEngineTests
     [Test]
     public void RemoveRule_RuleNoLongerExecutes()
     {
-        using var engine = new LockedRulesEngine<TestFact>();
+        using var engine = new RulesEngineCore<TestFact>();
         engine.RegisterRule(new Rule<TestFact>("R1", "Rule 1", f => true));
 
         engine.RemoveRule("R1");
@@ -706,7 +705,7 @@ public class LockedRulesEngineTests
     [Test]
     public void RemoveRule_OnlyRemovesSpecifiedRule()
     {
-        using var engine = new LockedRulesEngine<TestFact>();
+        using var engine = new RulesEngineCore<TestFact>();
         engine.RegisterRule(new Rule<TestFact>("R1", "Rule 1", f => true));
         engine.RegisterRule(new Rule<TestFact>("R2", "Rule 2", f => true));
 
@@ -724,7 +723,7 @@ public class LockedRulesEngineTests
     [Test]
     public void Execute_EmptyEngine_ReturnsEmptyResult()
     {
-        using var engine = new LockedRulesEngine<TestFact>();
+        using var engine = new RulesEngineCore<TestFact>();
 
         var result = engine.Execute(new TestFact());
 
@@ -734,7 +733,7 @@ public class LockedRulesEngineTests
     [Test]
     public void Execute_RulesInPriorityOrder()
     {
-        using var engine = new LockedRulesEngine<TestFact>();
+        using var engine = new RulesEngineCore<TestFact>();
         var executionOrder = new List<string>();
 
         engine.RegisterRule(new Rule<TestFact>("R1", "Low", f => true, priority: 1)
@@ -756,7 +755,7 @@ public class LockedRulesEngineTests
     public void Execute_StopOnFirstMatch_StopsAfterMatch()
     {
         var options = new RulesEngineOptions { StopOnFirstMatch = true };
-        using var engine = new LockedRulesEngine<TestFact>(options);
+        using var engine = new RulesEngineCore<TestFact>(options);
         var executionOrder = new List<string>();
 
         engine.RegisterRule(new Rule<TestFact>("R1", "First", f => true, priority: 100)
@@ -773,7 +772,7 @@ public class LockedRulesEngineTests
     [Test]
     public void Execute_NonMatchingRules_NoActionsExecuted()
     {
-        using var engine = new LockedRulesEngine<TestFact>();
+        using var engine = new RulesEngineCore<TestFact>();
         var executed = false;
 
         engine.RegisterRule(new Rule<TestFact>("R1", "Rule 1", f => f.Value > 100)
@@ -791,7 +790,7 @@ public class LockedRulesEngineTests
     [Test]
     public void Dispose_CanBeCalledMultipleTimes()
     {
-        var engine = new LockedRulesEngine<TestFact>();
+        var engine = new RulesEngineCore<TestFact>();
 
         engine.Dispose();
         engine.Dispose(); // Should not throw
@@ -802,7 +801,7 @@ public class LockedRulesEngineTests
     [Test]
     public void Dispose_ReleasesResources()
     {
-        var engine = new LockedRulesEngine<TestFact>();
+        var engine = new RulesEngineCore<TestFact>();
         engine.RegisterRule(new Rule<TestFact>("R1", "Rule 1", f => true));
 
         engine.Dispose();
@@ -819,7 +818,7 @@ public class LockedRulesEngineTests
     [Test]
     public async Task ConcurrentRegistration_NoExceptions()
     {
-        using var engine = new LockedRulesEngine<TestFact>();
+        using var engine = new RulesEngineCore<TestFact>();
         var exceptions = new ConcurrentBag<Exception>();
         var tasks = new List<Task>();
 
@@ -847,7 +846,7 @@ public class LockedRulesEngineTests
     [Test]
     public async Task ConcurrentExecution_NoExceptions()
     {
-        using var engine = new LockedRulesEngine<TestFact>();
+        using var engine = new RulesEngineCore<TestFact>();
         engine.RegisterRule(new Rule<TestFact>("R1", "Rule 1", f => f.Value > 5));
 
         var exceptions = new ConcurrentBag<Exception>();
@@ -876,7 +875,7 @@ public class LockedRulesEngineTests
     [Test]
     public async Task ConcurrentRegistrationAndExecution_NoExceptions()
     {
-        using var engine = new LockedRulesEngine<TestFact>();
+        using var engine = new RulesEngineCore<TestFact>();
         engine.RegisterRule(new Rule<TestFact>("R0", "Initial", f => true));
 
         var exceptions = new ConcurrentBag<Exception>();
@@ -923,7 +922,7 @@ public class LockedRulesEngineTests
     [Test]
     public async Task ConcurrentRemovalAndExecution_NoExceptions()
     {
-        using var engine = new LockedRulesEngine<TestFact>();
+        using var engine = new RulesEngineCore<TestFact>();
 
         // Pre-register many rules
         for (int i = 0; i < 50; i++)
@@ -970,7 +969,7 @@ public class LockedRulesEngineTests
     [Test]
     public async Task StressTest_ManyThreads_NoDataCorruption()
     {
-        using var engine = new LockedRulesEngine<TestFact>();
+        using var engine = new RulesEngineCore<TestFact>();
         var counter = 0;
         var lockObj = new object();
 
@@ -996,7 +995,7 @@ public class LockedRulesEngineTests
     [Test]
     public async Task ReadersAndWriters_ProperSynchronization()
     {
-        using var engine = new LockedRulesEngine<TestFact>();
+        using var engine = new RulesEngineCore<TestFact>();
         var readCount = 0;
         var writeCount = 0;
         var exceptions = new ConcurrentBag<Exception>();

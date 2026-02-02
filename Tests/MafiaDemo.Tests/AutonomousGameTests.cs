@@ -8,7 +8,7 @@ using AgentRouting.Core;
 namespace TestRunner.Tests;
 
 /// <summary>
-/// Unit tests for AutonomousPlaythrough, GameEngine, RulesBasedEngine, and AdvancedRulesEngine
+/// Unit tests for AutonomousPlaythrough, GameEngine, RulesBasedEngine, and GameRulesEngine
 /// </summary>
 public class AutonomousGameTests
 {
@@ -577,10 +577,10 @@ public class AutonomousGameTests
 
     #endregion
 
-    #region RulesBasedGameEngine Additional Tests
+    #region GameRulesEngine Additional Tests
 
     [Test]
-    public void RulesBasedGameEngine_EvaluateGameRules_DetectsVictory()
+    public void GameRulesEngine_EvaluateGameRules_DetectsVictory()
     {
         var state = new GameState
         {
@@ -591,7 +591,7 @@ public class AutonomousGameTests
         };
         state.Territories["test"] = new Territory();
 
-        var engine = new RulesBasedGameEngine(state);
+        var engine = new GameRulesEngine(state);
         var events = engine.EvaluateGameRules();
 
         Assert.NotEmpty(events);
@@ -599,7 +599,7 @@ public class AutonomousGameTests
     }
 
     [Test]
-    public void RulesBasedGameEngine_GetAgentAction_ReturnsCollectionForGreedy()
+    public void GameRulesEngine_GetAgentAction_ReturnsCollectionForGreedy()
     {
         var state = new GameState
         {
@@ -607,7 +607,7 @@ public class AutonomousGameTests
             HeatLevel = 20
         };
 
-        var engine = new RulesBasedGameEngine(state);
+        var engine = new GameRulesEngine(state);
         var agent = new GameAgentData
         {
             AgentId = "test",
@@ -628,7 +628,7 @@ public class AutonomousGameTests
     }
 
     [Test]
-    public void RulesBasedGameEngine_GetAgentAction_ReturnsIntimidateForAggressive()
+    public void GameRulesEngine_GetAgentAction_ReturnsIntimidateForAggressive()
     {
         var state = new GameState
         {
@@ -637,7 +637,7 @@ public class AutonomousGameTests
         };
         state.RivalFamilies["test"] = new RivalFamily { Hostility = 85 };
 
-        var engine = new RulesBasedGameEngine(state);
+        var engine = new GameRulesEngine(state);
         var agent = new GameAgentData
         {
             AgentId = "test",
@@ -656,7 +656,7 @@ public class AutonomousGameTests
     }
 
     [Test]
-    public void RulesBasedGameEngine_GetAgentAction_ReturnsExpandForAmbitious()
+    public void GameRulesEngine_GetAgentAction_ReturnsExpandForAmbitious()
     {
         var state = new GameState
         {
@@ -664,7 +664,7 @@ public class AutonomousGameTests
             HeatLevel = 30
         };
 
-        var engine = new RulesBasedGameEngine(state);
+        var engine = new GameRulesEngine(state);
         var agent = new GameAgentData
         {
             AgentId = "test",
@@ -683,7 +683,7 @@ public class AutonomousGameTests
     }
 
     [Test]
-    public void RulesBasedGameEngine_GenerateEvents_WithHighHeat()
+    public void GameRulesEngine_GenerateEvents_WithHighHeat()
     {
         var state = new GameState
         {
@@ -693,7 +693,7 @@ public class AutonomousGameTests
         };
         state.RivalFamilies["test"] = new RivalFamily { Hostility = 80 };
 
-        var engine = new RulesBasedGameEngine(state);
+        var engine = new GameRulesEngine(state);
         var events = engine.GenerateEvents();
 
         Assert.NotNull(events);
@@ -701,25 +701,26 @@ public class AutonomousGameTests
 
     #endregion
 
-    #region AdvancedRulesEngine Tests
+    #region GameRulesEngine Tests
 
     [Test]
-    public void AdvancedRulesEngine_Construction_Works()
+    public void GameRulesEngine_Construction_Works()
     {
-        var engine = new AdvancedRulesEngine();
+        var state = new GameState();
+        var engine = new GameRulesEngine(state);
         Assert.NotNull(engine);
     }
 
     [Test]
-    public void AdvancedRulesEngine_ApplyTerritoryValuation_Works()
+    public void GameRulesEngine_ApplyTerritoryValuation_Works()
     {
-        var engine = new AdvancedRulesEngine();
         var state = new GameState
         {
             FamilyWealth = 200000m,
             Reputation = 80,
             HeatLevel = 30
         };
+        var engine = new GameRulesEngine(state);
         var territory = new Territory
         {
             Name = "Test Territory",
@@ -735,15 +736,15 @@ public class AutonomousGameTests
     }
 
     [Test]
-    public void AdvancedRulesEngine_ApplyTerritoryValuation_DisputedTerritory()
+    public void GameRulesEngine_ApplyTerritoryValuation_DisputedTerritory()
     {
-        var engine = new AdvancedRulesEngine();
         var state = new GameState
         {
             FamilyWealth = 200000m,
             Reputation = 60,
             HeatLevel = 30
         };
+        var engine = new GameRulesEngine(state);
         var territory = new Territory
         {
             Name = "Disputed Territory",
@@ -759,9 +760,8 @@ public class AutonomousGameTests
     }
 
     [Test]
-    public void AdvancedRulesEngine_ApplyDifficultyAdjustment_Works()
+    public void GameRulesEngine_ApplyDifficultyAdjustment_Works()
     {
-        var engine = new AdvancedRulesEngine();
         var state = new GameState
         {
             Week = 20,
@@ -770,6 +770,7 @@ public class AutonomousGameTests
             HeatLevel = 30
         };
         state.RivalFamilies["test"] = new RivalFamily { Strength = 50, Hostility = 30 };
+        var engine = new GameRulesEngine(state);
 
         engine.ApplyDifficultyAdjustment(state, 35000m, 0, 0);
 
@@ -778,9 +779,8 @@ public class AutonomousGameTests
     }
 
     [Test]
-    public void AdvancedRulesEngine_ApplyDifficultyAdjustment_PlayerDominating()
+    public void GameRulesEngine_ApplyDifficultyAdjustment_PlayerDominating()
     {
-        var engine = new AdvancedRulesEngine();
         var state = new GameState
         {
             Week = 20,
@@ -790,6 +790,7 @@ public class AutonomousGameTests
         };
         state.RivalFamilies["test"] = new RivalFamily { Strength = 50, Hostility = 30 };
 
+        var engine = new GameRulesEngine(state);
         var initialStrength = state.RivalFamilies["test"].Strength;
         engine.ApplyDifficultyAdjustment(state, 50000m, 5, 0);
 
@@ -798,9 +799,8 @@ public class AutonomousGameTests
     }
 
     [Test]
-    public void AdvancedRulesEngine_ApplyRivalStrategy_Works()
+    public void GameRulesEngine_ApplyRivalStrategy_Works()
     {
-        var engine = new AdvancedRulesEngine();
         var state = new GameState
         {
             FamilyWealth = 200000m,
@@ -813,6 +813,7 @@ public class AutonomousGameTests
             Strength = 60,
             Hostility = 40
         };
+        var engine = new GameRulesEngine(state);
 
         engine.ApplyRivalStrategy(rival, state);
 
@@ -821,9 +822,8 @@ public class AutonomousGameTests
     }
 
     [Test]
-    public void AdvancedRulesEngine_ApplyRivalStrategy_AttackWeakPlayer()
+    public void GameRulesEngine_ApplyRivalStrategy_AttackWeakPlayer()
     {
-        var engine = new AdvancedRulesEngine();
         var state = new GameState
         {
             FamilyWealth = 50000m,
@@ -837,6 +837,7 @@ public class AutonomousGameTests
             Hostility = 50
         };
 
+        var engine = new GameRulesEngine(state);
         var initialWealth = state.FamilyWealth;
         engine.ApplyRivalStrategy(rival, state);
 
@@ -845,15 +846,15 @@ public class AutonomousGameTests
     }
 
     [Test]
-    public void AdvancedRulesEngine_ApplyChainReactions_PoliceRaid()
+    public void GameRulesEngine_ApplyChainReactions_PoliceRaid()
     {
-        var engine = new AdvancedRulesEngine();
         var state = new GameState
         {
             FamilyWealth = 100000m,
             Reputation = 50,
             HeatLevel = 60
         };
+        var engine = new GameRulesEngine(state);
 
         engine.ApplyChainReactions("PoliceRaid", state);
 
@@ -862,9 +863,8 @@ public class AutonomousGameTests
     }
 
     [Test]
-    public void AdvancedRulesEngine_ApplyChainReactions_Hit()
+    public void GameRulesEngine_ApplyChainReactions_Hit()
     {
-        var engine = new AdvancedRulesEngine();
         var state = new GameState
         {
             FamilyWealth = 100000m,
@@ -872,6 +872,7 @@ public class AutonomousGameTests
             HeatLevel = 40
         };
         state.RivalFamilies["test"] = new RivalFamily { Hostility = 85 };
+        var engine = new GameRulesEngine(state);
 
         engine.ApplyChainReactions("Hit", state);
 
@@ -880,15 +881,15 @@ public class AutonomousGameTests
     }
 
     [Test]
-    public void AdvancedRulesEngine_ApplyChainReactions_Betrayal()
+    public void GameRulesEngine_ApplyChainReactions_Betrayal()
     {
-        var engine = new AdvancedRulesEngine();
         var state = new GameState
         {
             FamilyWealth = 100000m,
             Reputation = 35,
             HeatLevel = 70
         };
+        var engine = new GameRulesEngine(state);
 
         engine.ApplyChainReactions("Betrayal", state);
 
@@ -897,15 +898,15 @@ public class AutonomousGameTests
     }
 
     [Test]
-    public void AdvancedRulesEngine_ApplyChainReactions_TerritoryLoss()
+    public void GameRulesEngine_ApplyChainReactions_TerritoryLoss()
     {
-        var engine = new AdvancedRulesEngine();
         var state = new GameState
         {
             FamilyWealth = 100000m,
             Reputation = 50,
             HeatLevel = 30
         };
+        var engine = new GameRulesEngine(state);
 
         engine.ApplyChainReactions("TerritoryLost", state);
 
@@ -914,9 +915,8 @@ public class AutonomousGameTests
     }
 
     [Test]
-    public void AdvancedRulesEngine_ApplyChainReactions_WithData()
+    public void GameRulesEngine_ApplyChainReactions_WithData()
     {
-        var engine = new AdvancedRulesEngine();
         var state = new GameState
         {
             FamilyWealth = 100000m,
@@ -928,6 +928,7 @@ public class AutonomousGameTests
             { "location", "Little Italy" },
             { "damage", 5000m }
         };
+        var engine = new GameRulesEngine(state);
 
         engine.ApplyChainReactions("PoliceRaid", state, data);
 
@@ -1255,7 +1256,7 @@ public class AutonomousGameTests
     }
 
     [Test]
-    public void RulesBasedGameEngine_WithAdvancedRulesEngine_Integration()
+    public void GameRulesEngine_WithGameRulesEngine_Integration()
     {
         var state = new GameState
         {
@@ -1277,13 +1278,12 @@ public class AutonomousGameTests
             Hostility = 40
         };
 
-        var rulesEngine = new RulesBasedGameEngine(state);
-        var advancedEngine = new AdvancedRulesEngine();
+        var engine = new GameRulesEngine(state);
 
-        // Apply rules from both engines
-        var gameEvents = rulesEngine.EvaluateGameRules();
-        advancedEngine.ApplyTerritoryValuation(state.Territories["downtown"], state);
-        advancedEngine.ApplyRivalStrategy(state.RivalFamilies["test"], state);
+        // Apply rules from the unified engine
+        var gameEvents = engine.EvaluateGameRules();
+        engine.ApplyTerritoryValuation(state.Territories["downtown"], state);
+        engine.ApplyRivalStrategy(state.RivalFamilies["test"], state);
 
         Assert.NotNull(gameEvents);
     }

@@ -153,7 +153,7 @@ public class MafiaGameEngine
     private readonly Dictionary<string, AutonomousAgent> _autonomousAgents;
     private readonly Random _random = new();
     private readonly ConcurrentQueue<string> _messageLog = new();
-    private readonly RulesBasedGameEngine? _rulesEngine;
+    private readonly GameRulesEngine? _rulesEngine;
     private CancellationTokenSource? _cts;
     private bool _running = false;
 
@@ -167,7 +167,7 @@ public class MafiaGameEngine
         _gameAgents = new Dictionary<string, GameAgentData>();
         _autonomousAgents = new Dictionary<string, AutonomousAgent>();
         InitializeGame();
-        _rulesEngine = new RulesBasedGameEngine(_state);
+        _rulesEngine = new GameRulesEngine(_state);
     }
 
     public MafiaGameEngine(IAgentLogger logger)
@@ -178,7 +178,7 @@ public class MafiaGameEngine
         _gameAgents = new Dictionary<string, GameAgentData>();
         _autonomousAgents = new Dictionary<string, AutonomousAgent>();
         InitializeGame();
-        _rulesEngine = new RulesBasedGameEngine(_state);
+        _rulesEngine = new GameRulesEngine(_state);
     }
 
     /// <summary>

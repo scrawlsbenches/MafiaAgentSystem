@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
 
 namespace RulesEngine.Core;
 
@@ -813,5 +814,183 @@ public class RuleExecutionResult<T>
         Result = result;
         Success = success;
         Exception = exception;
+    }
+}
+
+// =============================================================================
+// IMMUTABLE THREAD-SAFE VARIANT
+// =============================================================================
+
+/// <summary>
+/// Thread-safe, immutable rules engine using immutable collections.
+/// Returns new instances on modifications rather than mutating in place.
+/// Use this when you need lock-free concurrent access with immutable semantics.
+/// For mutable access with locking, use RulesEngineCore instead.
+/// </summary>
+public class ImmutableRulesEngine<T>
+{
+    private readonly ImmutableList<IRule<T>> _rules;
+    private readonly RulesEngineOptions _options;
+    private readonly ConcurrentDictionary<string, RulePerformanceMetrics> _metrics;
+
+    private ImmutableRulesEngine(
+        ImmutableList<IRule<T>> rules,
+        RulesEngineOptions options,
+        ConcurrentDictionary<string, RulePerformanceMetrics> metrics)
+    {
+        _rules = rules;
+        _options = options;
+        _metrics = metrics;
+    }
+
+    public ImmutableRulesEngine(RulesEngineOptions? options = null)
+        : this(
+            ImmutableList<IRule<T>>.Empty,
+            options ?? new RulesEngineOptions(),
+            new ConcurrentDictionary<string, RulePerformanceMetrics>())
+    {
+    }
+
+    /// <summary>
+    /// Returns a new engine with the rule added (immutable pattern)
+    /// Thread-safe: No shared mutable state
+    /// </summary>
+    public ImmutableRulesEngine<T> WithRule(IRule<T> rule)
+    {
+        var newRules = _rules.Add(rule);
+        return new ImmutableRulesEngine<T>(newRules, _options, _metrics);
+    }
+
+    /// <summary>
+    /// Returns a new engine with multiple rules added
+    /// </summary>
+    public ImmutableRulesEngine<T> WithRules(params IRule<T>[] rules)
+    {
+        var newRules = _rules.AddRange(rules);
+        return new ImmutableRulesEngine<T>(newRules, _options, _metrics);
+    }
+
+    /// <summary>
+    /// Returns a new engine without the specified rule
+    /// </summary>
+    public ImmutableRulesEngine<T> WithoutRule(string ruleId)
+    {
+        var newRules = _rules.RemoveAll(r => r.Id == ruleId);
+        return new ImmutableRulesEngine<T>(newRules, _options, _metrics);
+    }
+
+    /// <summary>
+    /// Execute all rules - fully thread-safe
+    /// Multiple threads can call this simultaneously
+    /// </summary>
+    public RulesEngineResult Execute(T fact)
+    {
+        var result = new RulesEngineResult();
+        var startTime = DateTime.UtcNow;
+
+        // Snapshot rules (already immutable, so this is safe)
+        var sortedRules = _rules
+            .OrderByDescending(r => r.Priority)
+            .ToList();
+
+        if (_options.EnableParallelExecution)
+        {
+            ExecuteParallel(fact, sortedRules, result);
+        }
+        else
+        {
+            ExecuteSequential(fact, sortedRules, result);
+        }
+
+        result.TotalExecutionTime = DateTime.UtcNow - startTime;
+        return result;
+    }
+
+    private void ExecuteSequential(T fact, List<IRule<T>> rules, RulesEngineResult result)
+    {
+        foreach (var rule in rules)
+        {
+            var ruleStart = DateTime.UtcNow;
+            var ruleResult = rule.Execute(fact);
+            var duration = DateTime.UtcNow - ruleStart;
+
+            result.AddRuleResult(ruleResult);
+
+            if (_options.TrackPerformance)
+            {
+                TrackPerformance(rule.Id, duration);
+            }
+
+            if (_options.StopOnFirstMatch && ruleResult.Matched)
+            {
+                break;
+            }
+        }
+    }
+
+    private void ExecuteParallel(T fact, List<IRule<T>> rules, RulesEngineResult result)
+    {
+        var results = new ConcurrentBag<(RuleResult result, TimeSpan duration)>();
+
+        Parallel.ForEach(rules, rule =>
+        {
+            var ruleStart = DateTime.UtcNow;
+            var ruleResult = rule.Execute(fact);
+            var duration = DateTime.UtcNow - ruleStart;
+
+            results.Add((ruleResult, duration));
+
+            if (_options.TrackPerformance)
+            {
+                TrackPerformance(rule.Id, duration);
+            }
+        });
+
+        foreach (var (ruleResult, _) in results.OrderByDescending(r => r.result.Matched))
+        {
+            result.AddRuleResult(ruleResult);
+        }
+    }
+
+    private void TrackPerformance(string ruleId, TimeSpan duration)
+    {
+        _metrics.AddOrUpdate(
+            ruleId,
+            _ => new RulePerformanceMetrics
+            {
+                RuleId = ruleId,
+                ExecutionCount = 1,
+                TotalExecutionTime = duration,
+                AverageExecutionTime = duration,
+                MinExecutionTime = duration,
+                MaxExecutionTime = duration
+            },
+            (_, existing) =>
+            {
+                existing.ExecutionCount++;
+                existing.TotalExecutionTime += duration;
+                existing.AverageExecutionTime = TimeSpan.FromTicks(
+                    existing.TotalExecutionTime.Ticks / existing.ExecutionCount);
+                existing.MinExecutionTime = duration < existing.MinExecutionTime
+                    ? duration
+                    : existing.MinExecutionTime;
+                existing.MaxExecutionTime = duration > existing.MaxExecutionTime
+                    ? duration
+                    : existing.MaxExecutionTime;
+                return existing;
+            }
+        );
+    }
+
+    public IReadOnlyList<IRule<T>> GetRules() => _rules;
+
+    public RulePerformanceMetrics? GetMetrics(string ruleId)
+    {
+        return _metrics.TryGetValue(ruleId, out var metrics) ? metrics : null;
+    }
+
+    public Dictionary<string, RulePerformanceMetrics> GetAllMetrics()
+    {
+        return new Dictionary<string, RulePerformanceMetrics>(_metrics);
     }
 }

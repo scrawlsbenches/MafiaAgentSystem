@@ -46,7 +46,7 @@ public class AgentRouterBuilderTests
         public bool CanHandle(AgentMessage message) =>
             Capabilities.SupportedCategories.Contains(message.Category);
 
-        public Task<MessageResult> ProcessAsync(AgentMessage message, CancellationToken ct)
+        public Task<MessageResult> ProcessMessageAsync(AgentMessage message, CancellationToken ct)
             => Task.FromResult(MessageResult.Ok($"Processed by {Name}"));
     }
 
@@ -99,7 +99,7 @@ public class AgentRouterBuilderTests
         router.RegisterAgent(new TestAgent("test-1", "Test Agent", "Test"));
 
         var message = CreateTestMessage();
-        var result = await router.RouteAsync(message, CancellationToken.None);
+        var result = await router.RouteMessageAsync(message, CancellationToken.None);
 
         Assert.True(result.Success);
     }
@@ -131,7 +131,7 @@ public class AgentRouterBuilderTests
         var router = builder.Build();
         var message = CreateTestMessage();
 
-        await router.RouteAsync(message, CancellationToken.None);
+        await router.RouteMessageAsync(message, CancellationToken.None);
 
         Assert.True(logger.Logs.Count > 0);
     }
@@ -182,7 +182,7 @@ public class AgentRouterBuilderTests
             .RegisterAgent(new TestAgent("test-1", "Test Agent", "Test"));
 
         var router = builder.Build();
-        await router.RouteAsync(CreateTestMessage(), CancellationToken.None);
+        await router.RouteMessageAsync(CreateTestMessage(), CancellationToken.None);
 
         Assert.Equal(1, middleware.InvokeCount);
     }
@@ -246,7 +246,7 @@ public class AgentRouterBuilderTests
             .RegisterAgent(new TestAgent("test-1", "Test Agent", "Test"));
 
         var router = builder.Build();
-        await router.RouteAsync(CreateTestMessage(), CancellationToken.None);
+        await router.RouteMessageAsync(CreateTestMessage(), CancellationToken.None);
 
         Assert.Equal(1, middleware.InvokeCount);
     }
@@ -264,7 +264,7 @@ public class AgentRouterBuilderTests
             .RegisterAgent(new TestAgent("test-1", "Test Agent", "Test"));
 
         var router = builder.Build();
-        await router.RouteAsync(CreateTestMessage(), CancellationToken.None);
+        await router.RouteMessageAsync(CreateTestMessage(), CancellationToken.None);
 
         Assert.True(order.IndexOf("First-Before") < order.IndexOf("Second-Before"));
     }
@@ -340,7 +340,7 @@ public class AgentRouterBuilderTests
             .RegisterAgent(agent);
 
         var router = builder.Build();
-        var result = await router.RouteAsync(CreateTestMessage(), CancellationToken.None);
+        var result = await router.RouteMessageAsync(CreateTestMessage(), CancellationToken.None);
 
         Assert.True(result.Success);
         Assert.Contains("Processed by Test Agent", result.Response!);
@@ -433,7 +433,7 @@ public class AgentRouterBuilderTests
         var router = builder.Build();
 
         var billingMessage = CreateTestMessage("Billing");
-        var billingResult = await router.RouteAsync(billingMessage, CancellationToken.None);
+        var billingResult = await router.RouteMessageAsync(billingMessage, CancellationToken.None);
 
         Assert.True(billingResult.Success);
         Assert.Equal(1, middleware.InvokeCount);
