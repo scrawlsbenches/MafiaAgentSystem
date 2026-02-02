@@ -142,7 +142,16 @@ public class AgentDecision
 }
 
 /// <summary>
-/// Main game engine - runs the autonomous simulation
+/// Main game engine - runs the autonomous simulation.
+///
+/// THREADING MODEL: This class is designed for single-threaded operation.
+/// The game loop in StartGameAsync() and player actions via ExecutePlayerAction()
+/// should not be called concurrently from multiple threads. If multi-threaded
+/// access is needed in the future, synchronization (e.g., SemaphoreSlim) should
+/// be added around state modifications.
+///
+/// The GameState is publicly exposed via the State property and is mutable.
+/// External code should not modify GameState while the game loop is running.
 /// </summary>
 public class MafiaGameEngine
 {
