@@ -380,10 +380,46 @@ MafiaAgentSystem/
 - **Player Mode**: Interactive gameplay with missions
 - **Rules Integration**: Game logic via RulesEngine
 
+## Origins
+
+> The story of how a deep dive into expression trees led to a production-ready rules engine and agent communication platform.
+
+This project began as an exploration of **C# expression trees** - a powerful but often overlooked feature of the .NET framework. What started as a learning exercise evolved into a comprehensive agent-to-agent communication system.
+
+### The Journey
+
+**Expression Trees → Rules Engine → Agent Routing → MafiaDemo**
+
+1. **Expression Trees**: Unlike compiled delegates (opaque black boxes), expression trees represent **code as data** - enabling inspection, modification, and composition of logic at runtime.
+
+2. **The "Aha" Moment**: Expression trees are perfect for building a **rules engine** where business rules become first-class data that can be inspected, prioritized, and tested in isolation.
+
+3. **Agent Communication**: Rules engines make decisions. Agents make decisions. This led to **AgentRouting** - a message routing system where agents use rules to decide how to handle, forward, or escalate messages.
+
+4. **MafiaDemo**: To stress-test both systems, we built a mafia family simulation where hierarchy = routing, decisions = rules, and communication = message passing.
+
+### Key Insight
+
+> **Expression trees unlock a fundamental shift: rules become first-class data.**
+
+```csharp
+// Regular delegate - opaque, can only execute
+Func<Order, bool> isLarge = order => order.Total > 1000;
+
+// Expression tree - inspectable AND executable
+Expression<Func<Order, bool>> isLarge = order => order.Total > 1000;
+// Can examine: body.NodeType == GreaterThan, body.Left == order.Total, body.Right == 1000
+```
+
+This separation of rule definitions from execution logic enables dynamic business rules, configurable workflows, intelligent agent routing, and auditable decision-making.
+
+For the full story, see [ORIGINS.md](ORIGINS.md).
+
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
+| [ORIGINS.md](ORIGINS.md) | How expression trees led to this architecture |
 | [CLAUDE.md](CLAUDE.md) | Development guide and commands |
 | [RulesEngine/README.md](RulesEngine/README.md) | RulesEngine documentation |
 | [AgentRouting/README.md](AgentRouting/README.md) | AgentRouting documentation |
