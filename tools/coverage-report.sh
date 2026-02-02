@@ -5,9 +5,16 @@
 # Options:
 #   --summary-only    Show only the summary, no gap details
 #   --module NAME     Filter to specific module (agentrouting, rulesengine, mafiademo)
+#   --detail CLASS    Show method-level coverage for a specific class (partial match)
 #   --help            Show this help
 #
-# Output: Writes to coverage/REPORT.txt and stdout
+# Examples:
+#   ./tools/coverage-report.sh                      # Full report with gap analysis
+#   ./tools/coverage-report.sh --summary-only       # Quick status check
+#   ./tools/coverage-report.sh --module agentrouting  # Focus on one module
+#   ./tools/coverage-report.sh --detail BillingAgent  # See which methods need tests
+#
+# Output: Writes to coverage/REPORT.txt and stdout (or just stdout for --detail)
 
 set -e
 
@@ -15,6 +22,7 @@ COVERAGE_DIR="coverage"
 REPORT_FILE="$COVERAGE_DIR/REPORT.txt"
 SUMMARY_ONLY=false
 FILTER_MODULE=""
+DETAIL_CLASS=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -27,8 +35,12 @@ while [[ $# -gt 0 ]]; do
             FILTER_MODULE="$2"
             shift 2
             ;;
+        --detail)
+            DETAIL_CLASS="$2"
+            shift 2
+            ;;
         --help)
-            head -15 "$0" | tail -13
+            head -17 "$0" | tail -16
             exit 0
             ;;
         *)
@@ -61,6 +73,101 @@ if [ ! -f "${xml_files[0]}" ]; then
     echo ""
     echo "Run coverage first. See CLAUDE.md for commands."
     exit 1
+fi
+
+# Detail mode - show method-level coverage for a specific class
+if [ -n "$DETAIL_CLASS" ]; then
+    echo "═══════════════════════════════════════════════════════════════════════════════"
+    echo "METHOD COVERAGE DETAIL"
+    echo "Search: $DETAIL_CLASS"
+    echo "═══════════════════════════════════════════════════════════════════════════════"
+    echo ""
+
+    found_any=false
+    for xml_file in "$COVERAGE_DIR"/*.xml; do
+        [ -f "$xml_file" ] || continue
+        module=$(basename "$xml_file" .xml)
+
+        # Find matching classes (case-insensitive partial match)
+        while IFS= read -r class_line; do
+            [ -z "$class_line" ] && continue
+
+            # Extract class name, filename, and line-rate
+            class_name=$(echo "$class_line" | sed -E 's/.*class name="([^"]+)".*/\1/')
+            file_name=$(echo "$class_line" | sed -E 's/.*filename="([^"]+)".*/\1/')
+            line_rate=$(echo "$class_line" | sed -E 's/.*line-rate="([^"]+)".*/\1/')
+            branch_rate=$(echo "$class_line" | sed -E 's/.*branch-rate="([^"]+)".*/\1/' 2>/dev/null || echo "0")
+
+            # Calculate percentages
+            line_pct=$(echo "$line_rate * 100" | bc -l 2>/dev/null | xargs printf "%.1f" 2>/dev/null || echo "0.0")
+            branch_pct=$(echo "$branch_rate * 100" | bc -l 2>/dev/null | xargs printf "%.1f" 2>/dev/null || echo "0.0")
+
+            # Clean class name for display
+            clean_class=$(echo "$class_name" | sed -E 's/<[^>]+>//g' | sed 's/`1//g')
+
+            echo "───────────────────────────────────────────────────────────────────────────────"
+            echo "CLASS: $clean_class"
+            echo "Module: $module"
+            echo "File: $file_name"
+            echo "Coverage: ${line_pct}% line, ${branch_pct}% branch"
+            echo "───────────────────────────────────────────────────────────────────────────────"
+            echo ""
+
+            found_any=true
+
+            # Extract methods for this class
+            # We need to find the class block and extract methods within it
+            # Use awk to extract methods between this class and the next class or end of classes
+            class_escaped=$(echo "$class_name" | sed 's/[[\.*^$()+?{|]/\\&/g')
+
+            # Find all methods in this class
+            awk -v class="$class_escaped" '
+                BEGIN { in_class=0; found_class=0 }
+                /<class name="[^"]*"/ {
+                    if (in_class) { in_class=0 }
+                    if ($0 ~ "class name=\"" class "\"") {
+                        in_class=1
+                        found_class=1
+                    }
+                }
+                /<\/class>/ { if (in_class) in_class=0 }
+                in_class && /<method / { print }
+            ' "$xml_file" | while IFS= read -r method_line; do
+                method_name=$(echo "$method_line" | sed -E 's/.*name="([^"]+)".*/\1/')
+                method_sig=$(echo "$method_line" | sed -E 's/.*signature="([^"]+)".*/\1/')
+                method_rate=$(echo "$method_line" | sed -E 's/.*line-rate="([^"]+)".*/\1/')
+
+                method_pct=$(echo "$method_rate * 100" | bc -l 2>/dev/null | xargs printf "%.0f" 2>/dev/null || echo "0")
+
+                # Status indicator
+                if [ "$method_pct" -eq 100 ] 2>/dev/null; then
+                    status="✓"
+                elif [ "$method_pct" -eq 0 ] 2>/dev/null; then
+                    status="✗"
+                else
+                    status="○"
+                fi
+
+                # Format signature to be more readable (remove System. prefixes, etc.)
+                clean_sig=$(echo "$method_sig" | sed 's/System\.//g' | sed 's/Collections\.Generic\.//g')
+
+                printf "  %s %3d%%  %s%s\n" "$status" "$method_pct" "$method_name" "$clean_sig"
+            done
+
+            echo ""
+
+        done < <(grep -i "class name=\"[^\"]*${DETAIL_CLASS}[^\"]*\"" "$xml_file" 2>/dev/null | grep -v '/d__[0-9]\|__c__\|DisplayClass')
+    done
+
+    if ! $found_any; then
+        echo "No classes found matching: $DETAIL_CLASS"
+        echo ""
+        echo "Try a broader search or check available classes with:"
+        echo "  ./tools/coverage-report.sh --module agentrouting"
+    fi
+
+    echo "═══════════════════════════════════════════════════════════════════════════════"
+    exit 0
 fi
 
 # Function to get human-readable time ago
