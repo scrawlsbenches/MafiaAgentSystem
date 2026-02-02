@@ -375,10 +375,76 @@ MafiaAgentSystem/
 
 ### MafiaDemo
 
-- **Hierarchical Agents**: Godfather → Underboss → Capos → Soldiers
-- **Autonomous Decisions**: Personality-driven agent behavior
-- **Player Mode**: Interactive gameplay with missions
-- **Rules Integration**: Game logic via RulesEngine
+A text-based mafia family simulation that serves as a **proving ground** for both RulesEngine and AgentRouting. The game isn't just a demo—it's designed to stress-test the core libraries and uncover API gaps through real-world usage patterns.
+
+#### Vision
+
+The mafia hierarchy is a perfect metaphor for enterprise agent communication:
+- **Chain of command** = Message routing (orders flow down, reports flow up)
+- **Decision making** = Rules engine (personality traits → actions)
+- **Cross-cutting concerns** = Middleware (logging, timing, validation)
+
+#### Three Play Modes
+
+| Mode | Description | Purpose |
+|------|-------------|---------|
+| **Player Mode** | Interactive gameplay with missions and progression | Test human-agent interaction |
+| **Autonomous Mode** | Self-playing simulation with personality-driven NPCs | Stress-test agent decisions |
+| **AI Career Mode** | AI plays from Associate to Don using rules | Validate rules-driven behavior |
+
+#### Game Mechanics
+
+**Family Hierarchy**: Each rank has distinct responsibilities and message categories:
+- **Godfather**: Final decisions, major disputes, strategy
+- **Underboss**: Daily operations, crew management
+- **Consigliere**: Legal advice, negotiations
+- **Capo**: Territory control, soldier management
+- **Soldier**: Enforcement, collections
+
+**Personality Traits** (1-10 scale): Ambition, Loyalty, Aggression—these drive autonomous decisions.
+
+**Game State**:
+- **FamilyWealth**: $0 = Game Over
+- **Reputation**: 0-100, below 10 triggers betrayal
+- **HeatLevel**: 0-100, reaching 100 means RICO prosecution
+- **Week**: Turn counter, 52+ weeks with goals met = Victory
+
+**Territories**: Protection rackets, gambling, smuggling—each generates revenue and heat.
+
+**Rival Families**: Hostility levels determine if they attack; war affects all metrics.
+
+#### Design Goals
+
+1. **Demonstrate RulesEngine**: Agents evaluate conditions using expression trees, not hardcoded if-else
+2. **Demonstrate AgentRouting**: Messages flow through middleware pipeline before reaching agents
+3. **Find API Gaps**: Real usage reveals missing features in core libraries
+4. **Prove Extensibility**: Adding new agents/rules shouldn't require modifying existing code (Open/Closed)
+
+#### Roadmap
+
+**Phase 1: Core Integration** (Current Focus)
+- [ ] Wire RulesBasedGameEngine to MafiaGameEngine
+- [ ] Replace probability-based agent decisions with rules
+- [ ] Connect agent message handling to routing pipeline
+
+**Phase 2: Enhanced Gameplay**
+- [ ] More sophisticated event generation rules
+- [ ] Inter-agent relationships and loyalty dynamics
+- [ ] Territory disputes with rival families
+- [ ] Save/load game state
+
+**Phase 3: AI & Automation**
+- [ ] Rules-driven AI autopilot mode
+- [ ] Async rule support for I/O-bound decisions
+- [ ] Performance profiling under load
+
+#### Open Questions
+
+These design questions remain to be resolved:
+- Should `RulesBasedGameEngine` replace or wrap `MafiaGameEngine`?
+- How should personality traits map to rule priorities?
+- What's the right balance of randomness vs. deterministic rules?
+- Should agents communicate directly or always through the router?
 
 ## Origins
 
