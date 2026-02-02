@@ -384,8 +384,18 @@ public class RulesEngineCore<T> : IRulesEngine<T>
     /// <summary>
     /// Evaluates all applicable rules against the fact
     /// </summary>
-    public RulesEngineResult Execute(T fact)
+    public RulesEngineResult Execute(T fact) => Execute(fact, CancellationToken.None);
+
+    /// <summary>
+    /// Evaluates all applicable rules against the fact with cancellation support
+    /// </summary>
+    /// <param name="fact">The fact to evaluate rules against</param>
+    /// <param name="cancellationToken">Token to cancel the operation</param>
+    /// <returns>The result of rule execution</returns>
+    public RulesEngineResult Execute(T fact, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         var result = new RulesEngineResult();
         var startTime = DateTime.UtcNow;
 
@@ -401,11 +411,11 @@ public class RulesEngineCore<T> : IRulesEngine<T>
         // Execute outside the lock to avoid holding lock during potentially long-running rule execution
         if (_options.EnableParallelExecution)
         {
-            ExecuteParallel(fact, rulesToExecute, result);
+            ExecuteParallel(fact, rulesToExecute.ToList(), result, cancellationToken);
         }
         else
         {
-            ExecuteSequential(fact, rulesToExecute, result);
+            ExecuteSequential(fact, rulesToExecute, result, cancellationToken);
         }
 
         result.TotalExecutionTime = DateTime.UtcNow - startTime;
@@ -500,49 +510,94 @@ public class RulesEngineCore<T> : IRulesEngine<T>
         return results;
     }
 
-    private void ExecuteSequential(T fact, IEnumerable<IRule<T>> rules, RulesEngineResult result)
+    private void ExecuteSequential(T fact, IEnumerable<IRule<T>> rules, RulesEngineResult result, CancellationToken cancellationToken)
     {
         foreach (var rule in rules)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             var ruleStart = DateTime.UtcNow;
             var ruleResult = rule.Execute(fact);
             var duration = DateTime.UtcNow - ruleStart;
-            
+
             result.AddRuleResult(ruleResult);
-            
+
             if (_options.TrackPerformance)
             {
                 TrackPerformance(rule.Id, duration);
             }
-            
+
             if (_options.StopOnFirstMatch && ruleResult.Matched)
             {
                 break;
             }
         }
     }
-    
-    private void ExecuteParallel(T fact, IEnumerable<IRule<T>> rules, RulesEngineResult result)
+
+    private void ExecuteParallel(T fact, List<IRule<T>> rules, RulesEngineResult result, CancellationToken cancellationToken)
     {
-        var results = new ConcurrentBag<RuleResult>();
-        
-        Parallel.ForEach(rules, rule =>
+        var results = new ConcurrentBag<(RuleResult result, int originalIndex)>();
+        var matchFound = 0; // 0 = false, 1 = true (for Interlocked)
+
+        // Create a linked token that combines external cancellation with StopOnFirstMatch
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        var parallelOptions = new ParallelOptions
         {
-            var ruleStart = DateTime.UtcNow;
-            var ruleResult = rule.Execute(fact);
-            var duration = DateTime.UtcNow - ruleStart;
-            
-            results.Add(ruleResult);
-            
-            if (_options.TrackPerformance)
+            CancellationToken = linkedCts.Token
+        };
+
+        try
+        {
+            Parallel.For(0, rules.Count, parallelOptions, (index, loopState) =>
             {
-                TrackPerformance(rule.Id, duration);
-            }
-        });
-        
-        foreach (var r in results.OrderByDescending(r => r.Matched))
+                // Check if we should stop (either cancelled or match found with StopOnFirstMatch)
+                if (linkedCts.Token.IsCancellationRequested)
+                {
+                    loopState.Stop();
+                    return;
+                }
+
+                var rule = rules[index];
+                var ruleStart = DateTime.UtcNow;
+                var ruleResult = rule.Execute(fact);
+                var duration = DateTime.UtcNow - ruleStart;
+
+                results.Add((ruleResult, index));
+
+                if (_options.TrackPerformance)
+                {
+                    TrackPerformance(rule.Id, duration);
+                }
+
+                // If StopOnFirstMatch is enabled and this rule matched, signal to stop
+                if (_options.StopOnFirstMatch && ruleResult.Matched)
+                {
+                    // Use Interlocked to safely set the flag
+                    if (Interlocked.Exchange(ref matchFound, 1) == 0)
+                    {
+                        // We're the first to find a match, cancel remaining work
+                        linkedCts.Cancel();
+                        loopState.Stop();
+                    }
+                }
+            });
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            result.AddRuleResult(r);
+            // Cancelled due to StopOnFirstMatch, not external cancellation - this is expected
+        }
+
+        // Sort results by original index to maintain priority order, then add to result
+        foreach (var (ruleResult, _) in results.OrderBy(r => r.originalIndex))
+        {
+            result.AddRuleResult(ruleResult);
+
+            // If StopOnFirstMatch, only include results up to and including the first match
+            if (_options.StopOnFirstMatch && ruleResult.Matched)
+            {
+                break;
+            }
         }
     }
     
@@ -883,8 +938,19 @@ public class ImmutableRulesEngine<T>
     /// Execute all rules - fully thread-safe
     /// Multiple threads can call this simultaneously
     /// </summary>
-    public RulesEngineResult Execute(T fact)
+    public RulesEngineResult Execute(T fact) => Execute(fact, CancellationToken.None);
+
+    /// <summary>
+    /// Execute all rules with cancellation support - fully thread-safe
+    /// Multiple threads can call this simultaneously
+    /// </summary>
+    /// <param name="fact">The fact to evaluate rules against</param>
+    /// <param name="cancellationToken">Token to cancel the operation</param>
+    /// <returns>The result of rule execution</returns>
+    public RulesEngineResult Execute(T fact, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         var result = new RulesEngineResult();
         var startTime = DateTime.UtcNow;
 
@@ -895,21 +961,23 @@ public class ImmutableRulesEngine<T>
 
         if (_options.EnableParallelExecution)
         {
-            ExecuteParallel(fact, sortedRules, result);
+            ExecuteParallel(fact, sortedRules, result, cancellationToken);
         }
         else
         {
-            ExecuteSequential(fact, sortedRules, result);
+            ExecuteSequential(fact, sortedRules, result, cancellationToken);
         }
 
         result.TotalExecutionTime = DateTime.UtcNow - startTime;
         return result;
     }
 
-    private void ExecuteSequential(T fact, List<IRule<T>> rules, RulesEngineResult result)
+    private void ExecuteSequential(T fact, List<IRule<T>> rules, RulesEngineResult result, CancellationToken cancellationToken)
     {
         foreach (var rule in rules)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             var ruleStart = DateTime.UtcNow;
             var ruleResult = rule.Execute(fact);
             var duration = DateTime.UtcNow - ruleStart;
@@ -928,27 +996,70 @@ public class ImmutableRulesEngine<T>
         }
     }
 
-    private void ExecuteParallel(T fact, List<IRule<T>> rules, RulesEngineResult result)
+    private void ExecuteParallel(T fact, List<IRule<T>> rules, RulesEngineResult result, CancellationToken cancellationToken)
     {
-        var results = new ConcurrentBag<(RuleResult result, TimeSpan duration)>();
+        var results = new ConcurrentBag<(RuleResult result, int originalIndex)>();
+        var matchFound = 0; // 0 = false, 1 = true (for Interlocked)
 
-        Parallel.ForEach(rules, rule =>
+        // Create a linked token that combines external cancellation with StopOnFirstMatch
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        var parallelOptions = new ParallelOptions
         {
-            var ruleStart = DateTime.UtcNow;
-            var ruleResult = rule.Execute(fact);
-            var duration = DateTime.UtcNow - ruleStart;
+            CancellationToken = linkedCts.Token
+        };
 
-            results.Add((ruleResult, duration));
-
-            if (_options.TrackPerformance)
+        try
+        {
+            Parallel.For(0, rules.Count, parallelOptions, (index, loopState) =>
             {
-                TrackPerformance(rule.Id, duration);
-            }
-        });
+                // Check if we should stop (either cancelled or match found with StopOnFirstMatch)
+                if (linkedCts.Token.IsCancellationRequested)
+                {
+                    loopState.Stop();
+                    return;
+                }
 
-        foreach (var (ruleResult, _) in results.OrderByDescending(r => r.result.Matched))
+                var rule = rules[index];
+                var ruleStart = DateTime.UtcNow;
+                var ruleResult = rule.Execute(fact);
+                var duration = DateTime.UtcNow - ruleStart;
+
+                results.Add((ruleResult, index));
+
+                if (_options.TrackPerformance)
+                {
+                    TrackPerformance(rule.Id, duration);
+                }
+
+                // If StopOnFirstMatch is enabled and this rule matched, signal to stop
+                if (_options.StopOnFirstMatch && ruleResult.Matched)
+                {
+                    // Use Interlocked to safely set the flag
+                    if (Interlocked.Exchange(ref matchFound, 1) == 0)
+                    {
+                        // We're the first to find a match, cancel remaining work
+                        linkedCts.Cancel();
+                        loopState.Stop();
+                    }
+                }
+            });
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Cancelled due to StopOnFirstMatch, not external cancellation - this is expected
+        }
+
+        // Sort results by original index to maintain priority order, then add to result
+        foreach (var (ruleResult, _) in results.OrderBy(r => r.originalIndex))
         {
             result.AddRuleResult(ruleResult);
+
+            // If StopOnFirstMatch, only include results up to and including the first match
+            if (_options.StopOnFirstMatch && ruleResult.Matched)
+            {
+                break;
+            }
         }
     }
 

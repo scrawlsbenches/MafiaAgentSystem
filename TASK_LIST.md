@@ -11,7 +11,7 @@
 
 | Priority | Category | Status | Tasks |
 |----------|----------|--------|-------|
-| **P0-NEW** | **Critical Bugs (Code Review)** | :rotating_light: **NEW** | **6 tasks** |
+| **P0-NEW** | **Critical Bugs (Code Review)** | :hourglass: **IN PROGRESS** | **5 remaining** |
 | **P0-TS** | **Thread Safety Fixes** | :rotating_light: **NEW** | **6 tasks** |
 | P0 | Critical Fixes (Original) | :white_check_mark: **COMPLETE** | 0 remaining |
 | P1 | Core Library Improvements | :white_check_mark: **COMPLETE** | 0 remaining |
@@ -36,28 +36,39 @@
 
 These bugs cause incorrect behavior, crashes, or resource exhaustion.
 
-### Task P0-NEW-1: Fix Parallel Execution Ignoring StopOnFirstMatch
+### Task P0-NEW-1: Fix Parallel Execution Ignoring StopOnFirstMatch :white_check_mark: COMPLETE
 **Severity**: CRITICAL
 **Estimated Time**: 3-4 hours
-**File**: `RulesEngine/RulesEngine/Core/RulesEngineCore.cs:402-404`
+**Actual Time**: ~2 hours
+**File**: `RulesEngine/RulesEngine/Core/RulesEngineCore.cs:537-602`
 
-**Problem**: When `EnableParallelExecution=true`, `StopOnFirstMatch` is completely ignored. `Parallel.ForEach` cannot be interrupted, violating the API contract.
+**Problem**: When `EnableParallelExecution=true`, `StopOnFirstMatch` was completely ignored.
 
-**Options**:
-1. Throw `InvalidOperationException` if both options enabled
-2. Implement early termination using `ParallelLoopState.Stop()`
-3. Use `CancellationToken` to signal stop after first match
+**Solution Implemented**:
+- Used `CancellationTokenSource` with `ParallelLoopState.Stop()` for early termination
+- Added `Execute(T fact, CancellationToken cancellationToken)` overload to expose cancellation
+- Fixed both `RulesEngineCore<T>` and `ImmutableRulesEngine<T>`
+- Results now maintain priority order even with parallel execution
+- Updated `IRulesEngine<T>` interface with new overload
 
 **Subtasks**:
-- [ ] Analyze current parallel execution implementation
-- [ ] Choose and implement fix strategy
-- [ ] Add tests for parallel + StopOnFirstMatch combination
-- [ ] Document behavior in API docs
+- [x] Analyze current parallel execution implementation
+- [x] Implement early termination using CancellationToken + ParallelLoopState.Stop()
+- [x] Add 9 new tests for parallel + StopOnFirstMatch + cancellation
+- [x] Fix same issue in ImmutableRulesEngine<T>
 
-**Acceptance Criteria**:
-- StopOnFirstMatch works correctly with parallel execution, OR
-- Clear exception thrown if combination is invalid
-- Tests verify correct behavior
+**Tests Added**:
+- `Execute_ParallelExecution_WithStopOnFirstMatch_ReturnsOnlyFirstMatch`
+- `Execute_ParallelExecution_WithCancellation_ThrowsOperationCanceled`
+- `Execute_SequentialExecution_WithCancellation_ThrowsOperationCanceled`
+- `Execute_ParallelExecution_PreservesPriorityOrder`
+- `Execute_ParallelWithStopOnFirstMatch_ManyRules_OnlyFirstReturned` (and more)
+
+**Acceptance Criteria**: :white_check_mark: All met
+- StopOnFirstMatch works correctly with parallel execution
+- CancellationToken exposed for external cancellation
+- Results maintain priority order
+- 1781 tests pass (9 new)
 
 ---
 

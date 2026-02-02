@@ -88,6 +88,14 @@ public interface IRulesEngine<T> : IDisposable
     RulesEngineResult Execute(T fact);
 
     /// <summary>
+    /// Evaluates all applicable rules against the fact with cancellation support.
+    /// </summary>
+    /// <param name="fact">The fact to evaluate rules against</param>
+    /// <param name="cancellationToken">Token to cancel the operation</param>
+    /// <returns>Results of rule execution</returns>
+    RulesEngineResult Execute(T fact, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Asynchronously executes all applicable rules against the fact with cancellation support.
     /// Processes sync rules first, then async rules, both in priority order.
     /// </summary>
