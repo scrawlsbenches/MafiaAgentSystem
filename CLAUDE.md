@@ -127,6 +127,14 @@ dotnet exec tools/coverage/coverlet/tools/net6.0/any/coverlet.console.dll \
   -o coverage/mafiademo.xml
 ```
 
+### Reading Coverage Reports
+
+```bash
+./tools/coverage-report.sh                    # Full gap analysis
+./tools/coverage-report.sh --summary-only     # Quick status
+./tools/coverage-report.sh --detail ClassName # Method-level breakdown
+```
+
 ### Coverage Output Formats
 
 | Format | Flag | Use Case |
