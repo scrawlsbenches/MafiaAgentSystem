@@ -361,10 +361,14 @@ public class PriorityBoostMiddlewareTests
         await builtPipeline(message, CancellationToken.None);
 
         Assert.Equal(MessagePriority.High, message.Priority);
+        // PriorityBoostMiddleware doesn't add to executionOrder, so order is:
+        // First-Before -> Last-Before -> Handler -> Last-After -> First-After
         Assert.Equal(5, executionOrder.Count);
         Assert.Equal("First-Before", executionOrder[0]);
-        Assert.Equal("Last-Before", executionOrder[2]);
-        Assert.Equal("Handler", executionOrder[3]);
+        Assert.Equal("Last-Before", executionOrder[1]);
+        Assert.Equal("Handler", executionOrder[2]);
+        Assert.Equal("Last-After", executionOrder[3]);
+        Assert.Equal("First-After", executionOrder[4]);
     }
 
     [Test]
