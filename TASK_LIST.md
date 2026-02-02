@@ -1,7 +1,7 @@
 # MafiaAgentSystem Task List
 
 > **Generated**: 2026-01-31
-> **Last Updated**: 2026-02-02 (Reorganized by dependency layers)
+> **Last Updated**: 2026-02-02 (Test Infrastructure prioritized first)
 > **Approach**: Layered batches to minimize churn
 > **Constraint**: All tasks are 2-4 hours, none exceeding 1 day
 
@@ -16,6 +16,8 @@ Previous organization grouped by *category* (thread safety, MafiaDemo, tests), w
 
 **New approach**: Tasks organized by **what blocks what**. Complete each layer before moving up.
 
+**Key insight**: Test Infrastructure has NO production code dependencies and benefits ALL other batches. Do it first.
+
 ```
 ┌─────────────────────────────────────────────────────────┐
 │ Layer F: POLISH (last)                                  │
@@ -27,14 +29,14 @@ Previous organization grouped by *category* (thread safety, MafiaDemo, tests), w
 │ Layer D: APPLICATION FIXES                              │
 │   MafiaDemo gameplay bugs (foundation now solid)        │
 ├─────────────────────────────────────────────────────────┤
-│ Layer C: TEST INFRASTRUCTURE                            │
-│   Setup/Teardown, state isolation                       │
-├─────────────────────────────────────────────────────────┤
 │ Layer B: RESOURCE STABILITY                             │
 │   Memory leaks, unbounded growth, TOCTOU                │
 ├─────────────────────────────────────────────────────────┤
-│ Layer A: FOUNDATION (first)                             │
+│ Layer A: FOUNDATION                                     │
 │   Thread safety in core libraries                       │
+├─────────────────────────────────────────────────────────┤
+│ Layer C: TEST INFRASTRUCTURE (first)                    │
+│   Setup/Teardown, state isolation - enables all testing │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -44,12 +46,12 @@ Previous organization grouped by *category* (thread safety, MafiaDemo, tests), w
 
 | Batch | Layer | Status | Tasks | Hours |
 |-------|-------|--------|-------|-------|
-| **A** | Foundation | :clock3: READY | 4 tasks | 8-11 |
-| **B** | Resources | :hourglass: BLOCKED by A | 3 tasks | 5-8 |
-| **C** | Test Infra | :hourglass: BLOCKED by B | 2 tasks | 5-7 |
-| **D** | App Fixes | :hourglass: BLOCKED by A | 5 tasks | 10-14 |
-| **E** | Enhancement | :hourglass: BLOCKED by C | 15 tasks | 35-47 |
-| **F** | Polish | :hourglass: BLOCKED by D,E | 10 tasks | 20-28 |
+| **C** | Test Infra | :rocket: **START HERE** | 2 tasks | 5-7 |
+| **A** | Foundation | :hourglass: After C | 4 tasks | 8-11 |
+| **B** | Resources | :hourglass: After A | 3 tasks | 5-8 |
+| **D** | App Fixes | :hourglass: After A | 5 tasks | 10-14 |
+| **E** | Enhancement | :hourglass: After B | 15 tasks | 35-47 |
+| **F** | Polish | :hourglass: After D,E | 10 tasks | 20-28 |
 | | | **TOTAL** | **39 tasks** | **83-115** |
 
 ### Completed (Reference)
@@ -61,9 +63,9 @@ Previous organization grouped by *category* (thread safety, MafiaDemo, tests), w
 
 ## Batch A: Foundation (Thread Safety)
 
-> **Prerequisite**: None
+> **Prerequisite**: Batch C complete (test infrastructure ready)
 > **Unlocks**: Batches B, D
-> **Why first**: All other code runs on these primitives. Fixing bugs on thread-unsafe code wastes effort.
+> **Why second**: All other code runs on these primitives. Now with proper test support.
 
 ### Task A-1: Fix CircuitBreakerMiddleware State Machine Race
 **Previously**: P0-TS-2
@@ -123,7 +125,7 @@ Previous organization grouped by *category* (thread safety, MafiaDemo, tests), w
 ## Batch B: Resource Stability
 
 > **Prerequisite**: Batch A complete
-> **Unlocks**: Batch C
+> **Unlocks**: Batch E
 > **Why after A**: Resource issues compound with threading issues. Fix threading first.
 
 ### Task B-1: Fix CancellationTokenSource Leaks
@@ -168,11 +170,11 @@ Previous organization grouped by *category* (thread safety, MafiaDemo, tests), w
 
 ---
 
-## Batch C: Test Infrastructure
+## Batch C: Test Infrastructure (START HERE)
 
-> **Prerequisite**: Batch B complete
-> **Unlocks**: Batch E (new tests)
-> **Why before more tests**: Writing tests without Setup/Teardown means retrofitting later.
+> **Prerequisite**: None - has no production code dependencies
+> **Unlocks**: ALL batches (better testing for everything)
+> **Why first**: Setup/Teardown and state isolation benefit every test we write for A, B, D, E.
 
 ### Task C-1: Add Setup/Teardown Support
 **Previously**: P3-TF-1
@@ -416,33 +418,33 @@ See EXECUTION_PLAN.md for details.
 
 ### Dependency Graph
 ```
-A (Foundation) ──┬──► B (Resources) ──► C (Test Infra) ──► E (Enhancement) ──┐
-                 │                                                            │
-                 └──► D (App Fixes) ─────────────────────────────────────────┴──► F (Polish)
+C (Test Infra) ──► A (Foundation) ──┬──► B (Resources) ──► E (Enhancement) ──┐
+                                    │                                         │
+                                    └──► D (App Fixes) ──────────────────────┴──► F (Polish)
 ```
 
 ### Batch Summary
 
-| Batch | Focus | Tasks | Hours | Key Deliverable |
-|-------|-------|-------|-------|-----------------|
-| A | Thread Safety | 4 | 8-11 | Concurrent-safe core libraries |
-| B | Resources | 3 | 5-8 | No leaks, bounded collections |
-| C | Test Infra | 2 | 5-7 | Setup/Teardown, isolation |
-| D | App Fixes | 5 | 10-14 | Working MafiaDemo gameplay |
-| E | Enhancement | 15 | 35-47 | DI, interfaces, more tests |
-| F | Polish | 10 | 20-28 | Clean docs, stable release |
+| Order | Batch | Focus | Tasks | Hours | Key Deliverable |
+|-------|-------|-------|-------|-------|-----------------|
+| 1 | C | Test Infra | 2 | 5-7 | Setup/Teardown, isolation |
+| 2 | A | Thread Safety | 4 | 8-11 | Concurrent-safe core libraries |
+| 3 | B | Resources | 3 | 5-8 | No leaks, bounded collections |
+| 4 | D | App Fixes | 5 | 10-14 | Working MafiaDemo gameplay |
+| 5 | E | Enhancement | 15 | 35-47 | DI, interfaces, more tests |
+| 6 | F | Polish | 10 | 20-28 | Clean docs, stable release |
 
 ### Critical Files by Batch
 
 | Batch | Files |
 |-------|-------|
+| C | `TestRunner.Framework/`, `TestRunner/` |
 | A | `CommonMiddleware.cs`, `Agent.cs`, `AgentRouter.cs` |
 | B | `GameEngine.cs`, `RulesEngineCore.cs` |
-| C | `TestRunner.Framework/`, `TestRunner/` |
 | D | `GameRulesEngine.cs`, `MafiaAgents.cs`, test files |
 | E | Various core library files |
 | F | All markdown documentation |
 
 ---
 
-**Last Updated**: 2026-02-02 (Reorganized by dependency layers)
+**Last Updated**: 2026-02-02 (Test Infrastructure prioritized first)
