@@ -1,7 +1,7 @@
 # MafiaAgentSystem Task List
 
 > **Generated**: 2026-01-31
-> **Last Updated**: 2026-02-02 (Test Infrastructure prioritized first)
+> **Last Updated**: 2026-02-02 (Batch C: Test Infrastructure complete)
 > **Approach**: Layered batches to minimize churn
 > **Constraint**: All tasks are 2-4 hours, none exceeding 1 day
 
@@ -46,8 +46,8 @@ Previous organization grouped by *category* (thread safety, MafiaDemo, tests), w
 
 | Batch | Layer | Status | Tasks | Hours |
 |-------|-------|--------|-------|-------|
-| **C** | Test Infra | :rocket: **START HERE** | 2 tasks | 5-7 |
-| **A** | Foundation | :hourglass: After C | 4 tasks | 8-11 |
+| **C** | Test Infra | :white_check_mark: **COMPLETE** | 2 tasks | 5-7 |
+| **A** | Foundation | :rocket: **START HERE** | 4 tasks | 8-11 |
 | **B** | Resources | :hourglass: After A | 3 tasks | 5-8 |
 | **D** | App Fixes | :hourglass: After A | 5 tasks | 10-14 |
 | **E** | Enhancement | :hourglass: After B | 15 tasks | 35-47 |
@@ -55,6 +55,9 @@ Previous organization grouped by *category* (thread safety, MafiaDemo, tests), w
 | | | **TOTAL** | **39 tasks** | **83-115** |
 
 ### Completed (Reference)
+- [x] **Batch C: Test Infrastructure** (2026-02-02)
+  - C-1: Setup/Teardown support (SetUp, TearDown, OneTimeSetUp, OneTimeTearDown attributes)
+  - C-2: Test state isolation (TestBase, AgentRoutingTestBase, MafiaTestBase)
 - [x] P0-NEW-1 through P0-NEW-6 (Critical bugs from code review)
 - [x] P0-TS-1: RateLimitMiddleware (verified fixed with lock pattern)
 - [x] P0, P1, P2 original tasks (see EXECUTION_PLAN.md)
@@ -170,13 +173,14 @@ Previous organization grouped by *category* (thread safety, MafiaDemo, tests), w
 
 ---
 
-## Batch C: Test Infrastructure (START HERE)
+## Batch C: Test Infrastructure (COMPLETE)
 
 > **Prerequisite**: None - has no production code dependencies
 > **Unlocks**: ALL batches (better testing for everything)
 > **Why first**: Setup/Teardown and state isolation benefit every test we write for A, B, D, E.
+> **Completed**: 2026-02-02
 
-### Task C-1: Add Setup/Teardown Support
+### Task C-1: Add Setup/Teardown Support :white_check_mark:
 **Previously**: P3-TF-1
 **Estimated Time**: 3-4 hours
 **Files**: `Tests/TestRunner.Framework/`, `Tests/TestRunner/`
@@ -184,15 +188,15 @@ Previous organization grouped by *category* (thread safety, MafiaDemo, tests), w
 **Problem**: No way to run initialization before tests or cleanup after.
 
 **Subtasks**:
-- [ ] Add `[SetUp]` attribute for per-test initialization
-- [ ] Add `[TearDown]` attribute for per-test cleanup
-- [ ] Update TestRunner to discover and invoke setup/teardown
-- [ ] Add `[OneTimeSetUp]` and `[OneTimeTearDown]` for class-level
-- [ ] Add tests for the new attributes
+- [x] Add `[SetUp]` attribute for per-test initialization
+- [x] Add `[TearDown]` attribute for per-test cleanup
+- [x] Update TestRunner to discover and invoke setup/teardown
+- [x] Add `[OneTimeSetUp]` and `[OneTimeTearDown]` for class-level
+- [x] Add tests for the new attributes (`LifecycleAttributeTests.cs`)
 
 ---
 
-### Task C-2: Add Test State Isolation
+### Task C-2: Add Test State Isolation :white_check_mark:
 **Previously**: P3-TF-4
 **Estimated Time**: 2-3 hours
 **Files**: Multiple test files
@@ -200,11 +204,11 @@ Previous organization grouped by *category* (thread safety, MafiaDemo, tests), w
 **Problem**: `SystemClock.Instance`, `GameTimingOptions.Current` are global mutable state.
 
 **Subtasks**:
-- [ ] Create test base class with state reset
-- [ ] Reset `SystemClock.Instance` to default after each test
-- [ ] Reset `GameTimingOptions.Current` after each test
-- [ ] Audit other global state
-- [ ] Use Setup/Teardown from C-1
+- [x] Create test base class with state reset (`TestBase` in TestRunner.Framework)
+- [x] Reset `SystemClock.Instance` to default after each test (`AgentRoutingTestBase`)
+- [x] Reset `GameTimingOptions.Current` after each test (`MafiaTestBase`)
+- [x] Audit other global state (only 2 global singletons found)
+- [x] Use Setup/Teardown from C-1
 
 ---
 
@@ -447,4 +451,4 @@ C (Test Infra) ──► A (Foundation) ──┬──► B (Resources) ──�
 
 ---
 
-**Last Updated**: 2026-02-02 (Test Infrastructure prioritized first)
+**Last Updated**: 2026-02-02 (Batch C: Test Infrastructure complete)

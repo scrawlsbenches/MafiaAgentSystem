@@ -57,13 +57,21 @@ public class SimpleTestRunner
     {
         Console.WriteLine($"┌─ {testClass.Name}");
 
-        var factMethods = testClass.GetMethods(BindingFlags.Public | BindingFlags.Instance)
+        var allMethods = testClass.GetMethods(BindingFlags.Public | BindingFlags.Instance);
+
+        var factMethods = allMethods
             .Where(m => m.GetCustomAttribute<TestAttribute>() != null)
             .ToList();
 
-        var theoryMethods = testClass.GetMethods(BindingFlags.Public | BindingFlags.Instance)
+        var theoryMethods = allMethods
             .Where(m => m.GetCustomAttribute<TheoryAttribute>() != null)
             .ToList();
+
+        // Discover lifecycle methods
+        var setUpMethod = allMethods.FirstOrDefault(m => m.GetCustomAttribute<SetUpAttribute>() != null);
+        var tearDownMethod = allMethods.FirstOrDefault(m => m.GetCustomAttribute<TearDownAttribute>() != null);
+        var oneTimeSetUpMethod = allMethods.FirstOrDefault(m => m.GetCustomAttribute<OneTimeSetUpAttribute>() != null);
+        var oneTimeTearDownMethod = allMethods.FirstOrDefault(m => m.GetCustomAttribute<OneTimeTearDownAttribute>() != null);
 
         object? instance = null;
         try
@@ -79,65 +87,144 @@ public class SimpleTestRunner
             return;
         }
 
-        // Run [Test] methods
-        foreach (var method in factMethods)
+        try
         {
-            var attr = method.GetCustomAttribute<TestAttribute>()!;
-            var testName = attr.Name ?? method.Name;
-
-            if (attr.Skip != null)
+            // Run [OneTimeSetUp] before any tests
+            if (oneTimeSetUpMethod != null)
             {
-                Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine($"│  ○ {testName} (skipped: {attr.Skip})");
-                Console.ResetColor();
-                _skipped++;
-                continue;
+                await InvokeLifecycleMethodAsync(instance!, oneTimeSetUpMethod, "OneTimeSetUp");
             }
 
-            await RunTestMethodAsync(instance!, method, testName);
-        }
+            // Run [Test] methods
+            foreach (var method in factMethods)
+            {
+                var attr = method.GetCustomAttribute<TestAttribute>()!;
+                var testName = attr.Name ?? method.Name;
 
-        // Run [Theory] methods
-        foreach (var method in theoryMethods)
+                if (attr.Skip != null)
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"│  ○ {testName} (skipped: {attr.Skip})");
+                    Console.ResetColor();
+                    _skipped++;
+                    continue;
+                }
+
+                await RunTestWithLifecycleAsync(instance!, method, testName, setUpMethod, tearDownMethod);
+            }
+
+            // Run [Theory] methods
+            foreach (var method in theoryMethods)
+            {
+                await RunTheoryMethodAsync(instance!, method, testClass, setUpMethod, tearDownMethod);
+            }
+        }
+        finally
         {
-            await RunTheoryMethodAsync(instance!, method, testClass);
+            // Run [OneTimeTearDown] after all tests (even if tests failed)
+            if (oneTimeTearDownMethod != null)
+            {
+                try
+                {
+                    await InvokeLifecycleMethodAsync(instance!, oneTimeTearDownMethod, "OneTimeTearDown");
+                }
+                catch (Exception ex)
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($"│  ✗ OneTimeTearDown failed: {ex.Message}");
+                    Console.ResetColor();
+                }
+            }
         }
 
         Console.WriteLine("└─");
         Console.WriteLine();
     }
 
-    private async Task RunTestMethodAsync(object instance, MethodInfo method, string testName)
+    private async Task InvokeLifecycleMethodAsync(object instance, MethodInfo method, string methodType)
     {
-        var stopwatch = Stopwatch.StartNew();
-
         try
         {
             var result = method.Invoke(instance, null);
-
-            // Handle async methods
             if (result is Task task)
             {
                 await task;
             }
+        }
+        catch (TargetInvocationException tie)
+        {
+            throw new Exception($"{methodType} failed: {tie.InnerException?.Message ?? tie.Message}", tie.InnerException ?? tie);
+        }
+    }
 
-            stopwatch.Stop();
+    private async Task RunTestWithLifecycleAsync(object instance, MethodInfo method, string testName,
+        MethodInfo? setUpMethod, MethodInfo? tearDownMethod)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        Exception? testException = null;
 
+        try
+        {
+            // Run [SetUp] before test
+            if (setUpMethod != null)
+            {
+                await InvokeLifecycleMethodAsync(instance, setUpMethod, "SetUp");
+            }
+
+            // Run the test
+            var result = method.Invoke(instance, null);
+            if (result is Task task)
+            {
+                await task;
+            }
+        }
+        catch (TargetInvocationException tie)
+        {
+            testException = tie.InnerException ?? tie;
+        }
+        catch (Exception ex)
+        {
+            testException = ex;
+        }
+        finally
+        {
+            // Run [TearDown] after test (even if test failed)
+            if (tearDownMethod != null)
+            {
+                try
+                {
+                    await InvokeLifecycleMethodAsync(instance, tearDownMethod, "TearDown");
+                }
+                catch (Exception tearDownEx)
+                {
+                    // If test already failed, report teardown failure separately
+                    // If test passed but teardown failed, use teardown exception
+                    if (testException == null)
+                    {
+                        testException = tearDownEx;
+                    }
+                    else
+                    {
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.WriteLine($"│    (TearDown also failed: {tearDownEx.Message})");
+                        Console.ResetColor();
+                    }
+                }
+            }
+        }
+
+        stopwatch.Stop();
+
+        if (testException == null)
+        {
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine($"│  ✓ {testName} ({stopwatch.ElapsedMilliseconds}ms)");
             Console.ResetColor();
             _passed++;
         }
-        catch (TargetInvocationException tie)
+        else
         {
-            stopwatch.Stop();
-            var ex = tie.InnerException ?? tie;
-            RecordFailure(testName, ex, stopwatch.ElapsedMilliseconds);
-        }
-        catch (Exception ex)
-        {
-            stopwatch.Stop();
-            RecordFailure(testName, ex, stopwatch.ElapsedMilliseconds);
+            RecordFailure(testName, testException, stopwatch.ElapsedMilliseconds);
         }
     }
 
@@ -151,7 +238,8 @@ public class SimpleTestRunner
         _failures.Add((testName, ex.Message));
     }
 
-    private async Task RunTheoryMethodAsync(object instance, MethodInfo method, Type testClass)
+    private async Task RunTheoryMethodAsync(object instance, MethodInfo method, Type testClass,
+        MethodInfo? setUpMethod, MethodInfo? tearDownMethod)
     {
         var attr = method.GetCustomAttribute<TheoryAttribute>()!;
         var baseName = attr.Name ?? method.Name;
@@ -200,16 +288,24 @@ public class SimpleTestRunner
             var dataDisplay = FormatTestData(testData);
             var testName = $"{baseName}({dataDisplay})";
 
-            await RunTheoryTestCaseAsync(instance, method, testName, testData);
+            await RunTheoryTestCaseAsync(instance, method, testName, testData, setUpMethod, tearDownMethod);
         }
     }
 
-    private async Task RunTheoryTestCaseAsync(object instance, MethodInfo method, string testName, object?[] args)
+    private async Task RunTheoryTestCaseAsync(object instance, MethodInfo method, string testName, object?[] args,
+        MethodInfo? setUpMethod, MethodInfo? tearDownMethod)
     {
         var stopwatch = Stopwatch.StartNew();
+        Exception? testException = null;
 
         try
         {
+            // Run [SetUp] before test
+            if (setUpMethod != null)
+            {
+                await InvokeLifecycleMethodAsync(instance, setUpMethod, "SetUp");
+            }
+
             // Convert arguments to match parameter types
             var parameters = method.GetParameters();
             var convertedArgs = ConvertArguments(args, parameters);
@@ -221,24 +317,52 @@ public class SimpleTestRunner
             {
                 await task;
             }
+        }
+        catch (TargetInvocationException tie)
+        {
+            testException = tie.InnerException ?? tie;
+        }
+        catch (Exception ex)
+        {
+            testException = ex;
+        }
+        finally
+        {
+            // Run [TearDown] after test (even if test failed)
+            if (tearDownMethod != null)
+            {
+                try
+                {
+                    await InvokeLifecycleMethodAsync(instance, tearDownMethod, "TearDown");
+                }
+                catch (Exception tearDownEx)
+                {
+                    if (testException == null)
+                    {
+                        testException = tearDownEx;
+                    }
+                    else
+                    {
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.WriteLine($"│    (TearDown also failed: {tearDownEx.Message})");
+                        Console.ResetColor();
+                    }
+                }
+            }
+        }
 
-            stopwatch.Stop();
+        stopwatch.Stop();
 
+        if (testException == null)
+        {
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine($"│  ✓ {testName} ({stopwatch.ElapsedMilliseconds}ms)");
             Console.ResetColor();
             _passed++;
         }
-        catch (TargetInvocationException tie)
+        else
         {
-            stopwatch.Stop();
-            var ex = tie.InnerException ?? tie;
-            RecordFailure(testName, ex, stopwatch.ElapsedMilliseconds);
-        }
-        catch (Exception ex)
-        {
-            stopwatch.Stop();
-            RecordFailure(testName, ex, stopwatch.ElapsedMilliseconds);
+            RecordFailure(testName, testException, stopwatch.ElapsedMilliseconds);
         }
     }
 

@@ -60,3 +60,41 @@ public class MemberDataAttribute : Attribute
         MemberName = memberName;
     }
 }
+
+/// <summary>
+/// Marks a method to be called before each test method in the class.
+/// The method can be synchronous (void) or asynchronous (Task).
+/// </summary>
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
+public class SetUpAttribute : Attribute
+{
+}
+
+/// <summary>
+/// Marks a method to be called after each test method in the class.
+/// The method will be called even if the test fails (in a finally block).
+/// The method can be synchronous (void) or asynchronous (Task).
+/// </summary>
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
+public class TearDownAttribute : Attribute
+{
+}
+
+/// <summary>
+/// Marks a method to be called once before any test in the class runs.
+/// The method can be synchronous (void) or asynchronous (Task).
+/// </summary>
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
+public class OneTimeSetUpAttribute : Attribute
+{
+}
+
+/// <summary>
+/// Marks a method to be called once after all tests in the class have run.
+/// The method will be called even if tests fail (in a finally block).
+/// The method can be synchronous (void) or asynchronous (Task).
+/// </summary>
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
+public class OneTimeTearDownAttribute : Attribute
+{
+}
