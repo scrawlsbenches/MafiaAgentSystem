@@ -3,9 +3,8 @@ using AgentRouting.MafiaDemo.Missions;
 using AgentRouting.MafiaDemo.Game;
 using AgentRouting.Core;
 using AgentRouting.Middleware;
-using AgentRouting.MafiaDemo;
 
-namespace AgentRouting.MafiaDemo.Autonomous;
+namespace AgentRouting.MafiaDemo;
 
 class AutonomousPlaythroughDemo
 {

@@ -1,6 +1,5 @@
 using AgentRouting.Core;
 using AgentRouting.MafiaDemo.Game;
-using AgentRouting.MafiaDemo.Autonomous;
 
 namespace AgentRouting.MafiaDemo;
 
@@ -40,11 +39,11 @@ class Program
         var game = new MafiaGameEngine(logger);
         
         // Create autonomous agents
-        var godfather = new AutonomousGodfather("godfather-001", "Don Vito Corleone", logger);
-        var underboss = new AutonomousUnderboss("underboss-001", "Peter Clemenza", logger);
-        var consigliere = new AutonomousConsigliere("consigliere-001", "Tom Hagen", logger);
-        var capo = new AutonomousCapo("capo-001", "Sonny Corleone", logger);
-        var soldier = new AutonomousSoldier("soldier-001", "Luca Brasi", logger);
+        var godfather = new GodfatherAgent("godfather-001", "Don Vito Corleone", logger);
+        var underboss = new UnderbossAgent("underboss-001", "Peter Clemenza", logger);
+        var consigliere = new ConsigliereAgent("consigliere-001", "Tom Hagen", logger);
+        var capo = new CapoAgent("capo-001", "Sonny Corleone", logger);
+        var soldier = new SoldierAgent("soldier-001", "Luca Brasi", logger);
         
         // Register them
         game.RegisterAutonomousAgent(godfather);
