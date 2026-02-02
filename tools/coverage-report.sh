@@ -98,6 +98,11 @@ if [ -n "$DETAIL_CLASS" ]; then
         [ -f "$xml_file" ] || continue
         module=$(basename "$xml_file" .xml)
 
+        # Skip if --module filter is set and doesn't match
+        if [ -n "$FILTER_MODULE" ] && [ "$module" != "$FILTER_MODULE" ]; then
+            continue
+        fi
+
         # Find matching classes (case-insensitive partial match)
         while IFS= read -r class_line; do
             [ -z "$class_line" ] && continue
@@ -437,22 +442,8 @@ get_module_coverage() {
         [ $found -eq 0 ] && echo "  (none)"
         echo ""
 
-        # WELL COVERED (≥80%)
-        echo "WELL COVERED (≥80% - meets target):"
-        found=0
-        while IFS='|' read -r class file rate; do
-            if echo "$class" | grep -qE "$EXCLUDE_PATTERNS|/d__[0-9]+|__c__|DisplayClass"; then
-                continue
-            fi
-            pct=$(echo "$rate * 100" | bc -l 2>/dev/null | cut -d. -f1)
-            pct=${pct:-0}
-            if [ "$pct" -ge 80 ] 2>/dev/null; then
-                clean_class=$(echo "$class" | sed -E 's/<[^>]+>//g' | sed 's/`1//g')
-                printf "  ✓ %-55s  %3d%%\n" "$clean_class" "$pct"
-                ((found++)) || true
-            fi
-        done < "$tmpfile"
-        [ $found -eq 0 ] && echo "  (none)"
+        # WELL COVERED (≥80%) - just show count to reduce noise
+        echo "WELL COVERED (≥80% - meets target):  ✓ $good classes"
         echo ""
 
         rm -f "$tmpfile"
