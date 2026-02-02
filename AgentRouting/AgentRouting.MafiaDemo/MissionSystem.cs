@@ -140,8 +140,6 @@ public class PlayerPersonality
 /// </summary>
 public class MissionGenerator
 {
-    private readonly Random _random = new();
-    
     public Mission GenerateMission(PlayerCharacter player, GameState gameState)
     {
         var missionType = SelectMissionType(player.Rank, gameState);
@@ -188,7 +186,7 @@ public class MissionGenerator
             availableTypes.Add(MissionType.Hit);
         }
         
-        return availableTypes[_random.Next(availableTypes.Count)];
+        return availableTypes[Random.Shared.Next(availableTypes.Count)];
     }
     
     private Mission GenerateCollectionMission(PlayerCharacter player)
@@ -199,8 +197,8 @@ public class MissionGenerator
             "Sal's Bar", "Vinnie's Grocery", "Angelo's Butcher Shop" 
         };
         
-        var business = businesses[_random.Next(businesses.Length)];
-        var amount = _random.Next(300, 800);
+        var business = businesses[Random.Shared.Next(businesses.Length)];
+        var amount = Random.Shared.Next(300, 800);
         
         return new Mission
         {
@@ -209,7 +207,7 @@ public class MissionGenerator
             Type = MissionType.Collection,
             AssignedBy = player.Rank >= PlayerRank.Capo ? "underboss-001" : "capo-001",
             MinimumRank = 0,
-            RiskLevel = _random.Next(1, 4),
+            RiskLevel = Random.Shared.Next(1, 4),
             RespectReward = 3,
             MoneyReward = amount * 0.25m, // Player gets 25% cut
             HeatGenerated = 2,
@@ -231,7 +229,7 @@ public class MissionGenerator
             ("bar owner", "refused protection")
         };
         
-        var (target, reason) = targets[_random.Next(targets.Length)];
+        var (target, reason) = targets[Random.Shared.Next(targets.Length)];
         
         return new Mission
         {
@@ -240,10 +238,10 @@ public class MissionGenerator
             Type = MissionType.Intimidation,
             AssignedBy = "capo-001",
             MinimumRank = 0,
-            RiskLevel = _random.Next(3, 6),
+            RiskLevel = Random.Shared.Next(3, 6),
             RespectReward = 5,
             MoneyReward = 100m,
-            HeatGenerated = _random.Next(3, 7),
+            HeatGenerated = Random.Shared.Next(3, 7),
             SkillRequirements = new Dictionary<string, int>
             {
                 ["Intimidation"] = 15
@@ -266,7 +264,7 @@ public class MissionGenerator
             ("who's been talking to the Feds", "there's an informant somewhere")
         };
         
-        var (subject, goal) = scenarios[_random.Next(scenarios.Length)];
+        var (subject, goal) = scenarios[Random.Shared.Next(scenarios.Length)];
         
         return new Mission
         {
@@ -275,7 +273,7 @@ public class MissionGenerator
             Type = MissionType.Information,
             AssignedBy = player.Rank >= PlayerRank.Soldier ? "underboss-001" : "capo-001",
             MinimumRank = 0,
-            RiskLevel = _random.Next(2, 5),
+            RiskLevel = Random.Shared.Next(2, 5),
             RespectReward = 7,
             MoneyReward = 200m,
             HeatGenerated = 1,
@@ -300,7 +298,7 @@ public class MissionGenerator
             ("business owner", "convince them to accept protection")
         };
         
-        var (party, goal) = scenarios[_random.Next(scenarios.Length)];
+        var (party, goal) = scenarios[Random.Shared.Next(scenarios.Length)];
         
         return new Mission
         {
@@ -309,7 +307,7 @@ public class MissionGenerator
             Type = MissionType.Negotiation,
             AssignedBy = "underboss-001",
             MinimumRank = 1, // Soldier or higher
-            RiskLevel = _random.Next(4, 7),
+            RiskLevel = Random.Shared.Next(4, 7),
             RespectReward = 10,
             MoneyReward = 500m,
             HeatGenerated = 0,
@@ -335,7 +333,7 @@ public class MissionGenerator
             "business owner who killed a made man"
         };
         
-        var target = targets[_random.Next(targets.Length)];
+        var target = targets[Random.Shared.Next(targets.Length)];
         
         return new Mission
         {
@@ -369,7 +367,7 @@ public class MissionGenerator
             ("take over the Brooklyn docks", "increase our smuggling operations")
         };
         
-        var (area, goal) = scenarios[_random.Next(scenarios.Length)];
+        var (area, goal) = scenarios[Random.Shared.Next(scenarios.Length)];
         
         return new Mission
         {
@@ -378,7 +376,7 @@ public class MissionGenerator
             Type = MissionType.Territory,
             AssignedBy = "underboss-001",
             MinimumRank = 2, // Capo or higher
-            RiskLevel = _random.Next(6, 9),
+            RiskLevel = Random.Shared.Next(6, 9),
             RespectReward = 15,
             MoneyReward = 2000m,
             HeatGenerated = 10,
@@ -422,9 +420,8 @@ public class MissionGenerator
 /// </summary>
 public class MissionEvaluator
 {
-    private readonly Random _random = new();
     private readonly RulesEngineCore<MissionContext> _rules;
-    
+
     public MissionEvaluator()
     {
         _rules = new RulesEngineCore<MissionContext>();
@@ -531,7 +528,7 @@ public class MissionEvaluator
         context.SuccessChance = Math.Max(10, Math.Min(95, context.SuccessChance));
         
         // Roll for success
-        var roll = _random.Next(1, 101);
+        var roll = Random.Shared.Next(1, 101);
         context.Success = roll <= context.SuccessChance;
         
         // Apply final bonuses/penalties
@@ -575,7 +572,7 @@ public class MissionEvaluator
                 _ => new[] { "Mission accomplished successfully." }
             };
             
-            return messages[_random.Next(messages.Length)];
+            return messages[Random.Shared.Next(messages.Length)];
         }
         else
         {
@@ -586,7 +583,7 @@ public class MissionEvaluator
                 "You messed up. This will affect your reputation."
             };
             
-            return messages[_random.Next(messages.Length)];
+            return messages[Random.Shared.Next(messages.Length)];
         }
     }
     

@@ -693,7 +693,7 @@ public class GameRulesEngine
             "Attack Weak Player",
             ctx => ctx.ShouldAttack,
             ctx => {
-                var damage = new Random().Next(10000, 25000);
+                var damage = Random.Shared.Next(10000, 25000);
                 ctx.GameState.FamilyWealth -= damage;
                 ctx.Rival.Hostility -= 15;
                 Console.WriteLine($"⚔️  {ctx.Rival.Name} sees weakness and attacks!");

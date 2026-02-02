@@ -126,7 +126,7 @@ public class GodfatherAgent : AutonomousAgent
         // Handle rival families
         if (content.Contains("tattaglia") || content.Contains("barzini") || content.Contains("rival"))
         {
-            var isAggressive = Random.Next(0, 10) < 3;
+            var isAggressive = Random.Shared.Next(0, 10) < 3;
 
             if (isAggressive)
             {
@@ -193,7 +193,7 @@ public class GodfatherAgent : AutonomousAgent
 
         if (content.Contains("opportunity") || content.Contains("deal"))
         {
-            var shouldInvest = Random.Next(0, 10) < 6;
+            var shouldInvest = Random.Shared.Next(0, 10) < 6;
 
             if (shouldInvest)
             {
@@ -592,7 +592,7 @@ public class CapoAgent : AutonomousAgent
         // Handle collections
         if (content.Contains("collect") || content.Contains("pickup"))
         {
-            var amount = Random.Next(5000, 15000);
+            var amount = Random.Shared.Next(5000, 15000);
             _weeklyTake += amount;
 
             return MessageResult.Ok(

@@ -69,7 +69,6 @@ public class PlayerAgent
     private readonly MissionGenerator _missionGenerator;
     private readonly MissionEvaluator _missionEvaluator;
     private readonly RulesEngineCore<PlayerDecisionContext> _decisionRules;
-    private readonly Random _random = new();
     private readonly AgentRouter? _router;
 
     public PlayerCharacter Character => _character;
@@ -95,10 +94,10 @@ public class PlayerAgent
     {
         return new PlayerPersonality
         {
-            Ambition = _random.Next(40, 90),
-            Loyalty = _random.Next(60, 95),
-            Ruthlessness = _random.Next(20, 70),
-            Caution = _random.Next(30, 80)
+            Ambition = Random.Shared.Next(40, 90),
+            Loyalty = Random.Shared.Next(60, 95),
+            Ruthlessness = Random.Shared.Next(20, 70),
+            Caution = Random.Shared.Next(30, 80)
         };
     }
     
