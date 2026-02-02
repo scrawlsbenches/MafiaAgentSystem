@@ -18,6 +18,13 @@
 
 set -e
 
+# Cleanup temp files on exit
+cleanup() {
+    [ -n "$tmpfile" ] && rm -f "$tmpfile"
+    [ -n "$excluded_file" ] && rm -f "$excluded_file"
+}
+trap cleanup EXIT
+
 COVERAGE_DIR="coverage"
 REPORT_FILE="$COVERAGE_DIR/REPORT.txt"
 SUMMARY_ONLY=false
@@ -82,6 +89,9 @@ if [ -n "$DETAIL_CLASS" ]; then
     echo "Search: $DETAIL_CLASS"
     echo "═══════════════════════════════════════════════════════════════════════════════"
     echo ""
+
+    # Escape special regex characters in user input for safe grep
+    DETAIL_CLASS_ESCAPED=$(printf '%s' "$DETAIL_CLASS" | sed 's/[[\.*^$()+?{|\\]/\\&/g')
 
     found_any=false
     for xml_file in "$COVERAGE_DIR"/*.xml; do
@@ -156,7 +166,7 @@ if [ -n "$DETAIL_CLASS" ]; then
 
             echo ""
 
-        done < <(grep -i "class name=\"[^\"]*${DETAIL_CLASS}[^\"]*\"" "$xml_file" 2>/dev/null | grep -v '/d__[0-9]\|__c__\|DisplayClass')
+        done < <(grep -i "class name=\"[^\"]*${DETAIL_CLASS_ESCAPED}[^\"]*\"" "$xml_file" 2>/dev/null | grep -v '/d__[0-9]\|__c__\|DisplayClass')
     done
 
     if ! $found_any; then
@@ -175,6 +185,7 @@ time_ago() {
     local file="$1"
     local now=$(date +%s)
     local file_time=$(stat -c %Y "$file" 2>/dev/null || stat -f %m "$file" 2>/dev/null)
+    [ -z "$file_time" ] && file_time=0
     local diff=$((now - file_time))
 
     if [ $diff -lt 60 ]; then
@@ -272,8 +283,8 @@ get_module_coverage() {
         IFS='|' read -r line_rate branch_rate <<< "$(get_module_coverage "$xml_file")"
 
         if [ -n "$line_rate" ]; then
-            line_pct=$(echo "$line_rate * 100" | bc -l 2>/dev/null | xargs printf "%.1f")
-            branch_pct=$(echo "$branch_rate * 100" | bc -l 2>/dev/null | xargs printf "%.1f")
+            line_pct=$(echo "$line_rate * 100" | bc -l 2>/dev/null | xargs printf "%.1f" 2>/dev/null || echo "0.0")
+            branch_pct=$(echo "$branch_rate * 100" | bc -l 2>/dev/null | xargs printf "%.1f" 2>/dev/null || echo "0.0")
 
             if (( $(echo "$line_rate >= 0.80" | bc -l) )); then
                 status="✓ Good"
@@ -434,7 +445,7 @@ get_module_coverage() {
                 continue
             fi
             pct=$(echo "$rate * 100" | bc -l 2>/dev/null | cut -d. -f1)
-            pct=${pct:-100}
+            pct=${pct:-0}
             if [ "$pct" -ge 80 ] 2>/dev/null; then
                 clean_class=$(echo "$class" | sed -E 's/<[^>]+>//g' | sed 's/`1//g')
                 printf "  ✓ %-55s  %3d%%\n" "$clean_class" "$pct"
