@@ -384,13 +384,14 @@ The mafia hierarchy is a perfect metaphor for enterprise agent communication:
 - **Decision making** = Rules engine (personality traits → actions)
 - **Cross-cutting concerns** = Middleware (logging, timing, validation)
 
-#### Three Play Modes
+#### Play Modes
 
 | Mode | Description | Purpose |
 |------|-------------|---------|
 | **Player Mode** | Interactive gameplay with missions and progression | Test human-agent interaction |
 | **Autonomous Mode** | Self-playing simulation with personality-driven NPCs | Stress-test agent decisions |
 | **AI Career Mode** | AI plays from Associate to Don using rules | Validate rules-driven behavior |
+| **Scripted Scenarios** | 8 pre-built demos (favor requests, territory disputes, hits) | Showcase specific interactions |
 
 #### Game Mechanics
 
@@ -400,16 +401,24 @@ The mafia hierarchy is a perfect metaphor for enterprise agent communication:
 - **Consigliere**: Legal advice, negotiations
 - **Capo**: Territory control, soldier management
 - **Soldier**: Enforcement, collections
+- **Associate**: Entry-level, information gathering, small jobs (player starting rank)
 
 **Personality Traits** (1-10 scale): Ambition, Loyalty, Aggression—these drive autonomous decisions.
 
 **Game State**:
-- **FamilyWealth**: $0 = Game Over
-- **Reputation**: 0-100, below 10 triggers betrayal
-- **HeatLevel**: 0-100, reaching 100 means RICO prosecution
-- **Week**: Turn counter, 52+ weeks with goals met = Victory
+- **FamilyWealth**: Starting $100,000
+- **Reputation**: 0-100, starting at 50
+- **HeatLevel**: 0-100, police attention
+- **Week**: Turn counter
 
-**Territories**: Protection rackets, gambling, smuggling—each generates revenue and heat.
+**Win Condition**: Week ≥ 52 AND Wealth ≥ $1,000,000 AND Reputation ≥ 80
+
+**Loss Conditions**:
+- Wealth ≤ $0 (bankruptcy)
+- Heat = 100 (RICO prosecution)
+- Reputation ≤ 10 (internal betrayal)
+
+**Territories**: Protection, gambling, smuggling, loan sharking—each generates revenue and heat.
 
 **Rival Families**: Hostility levels determine if they attack; war affects all metrics.
 
@@ -420,31 +429,48 @@ The mafia hierarchy is a perfect metaphor for enterprise agent communication:
 3. **Find API Gaps**: Real usage reveals missing features in core libraries
 4. **Prove Extensibility**: Adding new agents/rules shouldn't require modifying existing code (Open/Closed)
 
+#### Rules Engines
+
+The game uses 7 specialized `RulesEngineCore<T>` instances, each managing a different aspect:
+
+| Engine | Context Type | Purpose |
+|--------|--------------|---------|
+| Game Rules | `GameRuleContext` | Victory/defeat conditions, warnings |
+| Agent Rules | `AgentDecisionContext` | Personality-driven agent decisions |
+| Event Rules | `EventContext` | Random event generation |
+| Valuation | `TerritoryValueContext` | Territory economic analysis |
+| Difficulty | `DifficultyContext` | Dynamic difficulty adjustment |
+| Strategy | `RivalStrategyContext` | Rival family AI decisions |
+| Chain Reactions | `ChainReactionContext` | Event cascades and crises |
+
 #### Roadmap
 
-**Phase 1: Core Integration** (Current Focus)
-- [ ] Wire RulesBasedGameEngine to MafiaGameEngine
-- [ ] Replace probability-based agent decisions with rules
-- [ ] Connect agent message handling to routing pipeline
+**Phase 1: Core Integration** (Mostly Complete)
+- [x] Wire RulesBasedGameEngine to MafiaGameEngine (7 rule engines integrated)
+- [x] Connect agent message handling to routing pipeline
+- [ ] Replace remaining probability-based agent decisions with rules (hybrid approach in use)
 
-**Phase 2: Enhanced Gameplay**
-- [ ] More sophisticated event generation rules
+**Phase 2: Enhanced Gameplay** (Current Focus)
+- [x] Event generation rules (implemented in `_eventRules` engine)
 - [ ] Inter-agent relationships and loyalty dynamics
 - [ ] Territory disputes with rival families
 - [ ] Save/load game state
 
 **Phase 3: AI & Automation**
-- [ ] Rules-driven AI autopilot mode
+- [x] Rules-driven AI autopilot mode (AI Career Mode implemented)
 - [ ] Async rule support for I/O-bound decisions
 - [ ] Performance profiling under load
 
-#### Open Questions
+#### Design Decisions (Resolved)
 
-These design questions remain to be resolved:
-- Should `RulesBasedGameEngine` replace or wrap `MafiaGameEngine`?
-- How should personality traits map to rule priorities?
-- What's the right balance of randomness vs. deterministic rules?
-- Should agents communicate directly or always through the router?
+These questions have been answered through implementation:
+
+| Question | Resolution |
+|----------|------------|
+| RulesBasedGameEngine vs MafiaGameEngine? | **Coexist**: GameRulesEngine is used BY MafiaGameEngine |
+| Personality traits → rule priorities? | **Context-based**: Traits feed into context objects; rules have explicit priorities (500-1000) |
+| Randomness vs deterministic rules? | **Hybrid**: Rules evaluate conditions, random selects among valid actions |
+| Direct communication vs router? | **Both**: Agents can forward messages directly OR use router pipeline |
 
 ## Origins
 
