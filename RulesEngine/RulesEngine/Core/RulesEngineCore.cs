@@ -330,15 +330,19 @@ public class RulesEngineCore<T> : IRulesEngine<T>
     /// </summary>
     private IReadOnlyList<IRule<T>> GetSortedRules()
     {
-        if (_sortedRulesCache != null)
-            return _sortedRulesCache;
+        // Capture in local variable to avoid TOCTOU race condition
+        // (another thread could set _sortedRulesCache = null between check and return)
+        var cache = _sortedRulesCache;
+        if (cache != null)
+            return cache;
 
         _lock.EnterWriteLock();
         try
         {
             // Double-check after acquiring write lock
-            if (_sortedRulesCache != null)
-                return _sortedRulesCache;
+            cache = _sortedRulesCache;
+            if (cache != null)
+                return cache;
 
             _sortedRulesCache = _rules.OrderByDescending(r => r.Priority).ToList().AsReadOnly();
             return _sortedRulesCache;
@@ -354,15 +358,18 @@ public class RulesEngineCore<T> : IRulesEngine<T>
     /// </summary>
     private IReadOnlyList<IAsyncRule<T>> GetSortedAsyncRules()
     {
-        if (_sortedAsyncRulesCache != null)
-            return _sortedAsyncRulesCache;
+        // Capture in local variable to avoid TOCTOU race condition
+        var cache = _sortedAsyncRulesCache;
+        if (cache != null)
+            return cache;
 
         _lock.EnterWriteLock();
         try
         {
             // Double-check after acquiring write lock
-            if (_sortedAsyncRulesCache != null)
-                return _sortedAsyncRulesCache;
+            cache = _sortedAsyncRulesCache;
+            if (cache != null)
+                return cache;
 
             _sortedAsyncRulesCache = _asyncRules.OrderByDescending(r => r.Priority).ToList().AsReadOnly();
             return _sortedAsyncRulesCache;
