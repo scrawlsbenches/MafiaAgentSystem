@@ -730,7 +730,7 @@ public class MafiaGameEngine
         }
         catch (Exception ex)
         {
-            _logger.Log($"[GameEngine] Route error for {agent.AgentId}: {ex.Message}");
+            LogEvent("RouteError", $"Route error for {agent.AgentId}: {ex.Message}", agent.AgentId);
             return MessageResult.Fail($"Routing failed: {ex.Message}");
         }
     }
