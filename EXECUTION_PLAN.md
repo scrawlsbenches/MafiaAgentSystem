@@ -45,7 +45,7 @@ See `TASK_LIST.md` for full details.
 | **E** | Enhancement | ✅ **COMPLETE** | 15 | 2026-02-03 |
 | **F** | Polish | ⏳ Pending | 10 | - |
 
-**Test count: 1905 (all passing)**
+**Test count: 1916 (all passing)**
 
 ---
 
@@ -723,6 +723,49 @@ Gate: MafiaDemo gameplay working correctly
    - Generates summary reports
 
 Gate: 1905 tests passing, all enhancements complete
+```
+
+### Bug Fixes & Refactoring Log - 2026-02-03
+```
+Session: GameRulesEngine refactoring and bug report resolution
+
+✅ Refactored GameRulesEngine.cs (~2750 lines → 5 files)
+   - Created Rules/ subfolder
+   - Rules/RuleContexts.cs - 8 context classes
+   - Rules/RuleConfiguration.cs - Support classes
+   - Rules/GameRulesEngine.cs - Core partial class
+   - Rules/GameRulesEngine.Setup.cs - 7 rule setup methods
+   - Rules/GameRulesEngine.Analysis.cs - Analysis/debugging
+
+✅ Fixed Bug #2 (CRITICAL): Case-sensitivity in PlayerAgent.cs
+   - Changed topRule.Name.Contains("REJECT") to topRule.Id.Contains("REJECT")
+   - Updated 4 tests that documented buggy behavior
+
+✅ Fixed Bug #4: Agent routing "[route failed]" display
+   - Created GameEngineAgent class in GameEngine.cs
+   - Registered agent in both MafiaGameEngine constructors
+
+✅ Fixed Bug #1: Console.ReadKey() crashes in non-interactive mode
+   - Added Console.IsInputRedirected checks in Program.cs and AutonomousPlaythrough.cs
+
+✅ Fixed Bug #3: Repeated promotion display every week
+   - Capture rank before ProcessWeekAsync, compare after
+   - Removed flawed GetPreviousRank() method
+
+✅ Fixed Bug #5: Week counter off-by-one
+   - Display character.Week - 1 in PrintFinalSummary
+
+✅ Fixed flaky test: MafiaGameEngine_GameOver_WhenHeatMaxed
+   - Set initial heat to 120 instead of 100 (accounts for heat reduction)
+
+✅ Deleted BUG_REPORT.md (all bugs resolved)
+
+✅ Updated documentation
+   - ARCHITECTURE.md: Updated file map with Rules/ folder
+   - TASK_LIST.md: Fixed stale file references
+   - EXECUTION_PLAN.md: This log entry
+
+Gate: 1916 tests passing (11 new tests from bug fix verification)
 ```
 
 ### Documentation Review Log - 2026-02-03

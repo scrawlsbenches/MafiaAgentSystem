@@ -262,7 +262,7 @@ Previous organization grouped by *category* (thread safety, MafiaDemo, tests), w
 ### Task D-1: Complete Agent Rule Actions :white_check_mark:
 **Previously**: P2-FIX-3
 **Estimated Time**: 3-4 hours
-**File**: `AgentRouting/AgentRouting.MafiaDemo/GameRulesEngine.cs:422-481`
+**File**: `AgentRouting/AgentRouting.MafiaDemo/Rules/GameRulesEngine.Setup.cs`
 
 **Problem**: Agent rule actions have comments describing intent but no implementation.
 
@@ -443,7 +443,7 @@ Completed 2026-02-03. Added 63 new tests (1842 → 1905 total).
 ### G-2: Implement 21 Additional Personality-Driven Rules :white_check_mark:
 **Priority**: CRITICAL
 **Estimated Time**: 4-6 hours
-**File**: `AgentRouting/AgentRouting.MafiaDemo/GameRulesEngine.cs`
+**File**: `AgentRouting/AgentRouting.MafiaDemo/Rules/GameRulesEngine.Setup.cs`
 **Completed**: 2026-02-03
 
 **Problem**: Documentation claimed ~45 personality-driven rules but only 24 existed.
@@ -611,10 +611,10 @@ C (Test Infra) ──► A (Foundation) ──┬──► B (Resources) ──�
 | C | `TestRunner.Framework/`, `TestRunner/` |
 | A | `CommonMiddleware.cs`, `Agent.cs`, `AgentRouter.cs` |
 | B | `GameEngine.cs`, `RulesEngineCore.cs` |
-| D | `GameRulesEngine.cs`, `MafiaAgents.cs`, test files |
+| D | `Rules/GameRulesEngine*.cs`, `MafiaAgents.cs`, test files |
 | E | Various core library files |
 | F | All markdown documentation |
 
 ---
 
-**Last Updated**: 2026-02-03 (Batch F started: F-1b complete, 1905 tests passing)
+**Last Updated**: 2026-02-03 (Bug fixes complete, 1916 tests passing)
