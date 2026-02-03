@@ -349,7 +349,15 @@ public class GameRulesEngine
 
         // Initialize core engines
         _gameRules = new RulesEngineCore<GameRuleContext>();
-        _agentRules = new RulesEngineCore<AgentDecisionContext>();
+
+        // Agent rules use StopOnFirstMatch since only one action matters
+        // TrackPerformance enables metrics collection for debugging
+        _agentRules = new RulesEngineCore<AgentDecisionContext>(new RulesEngineOptions
+        {
+            StopOnFirstMatch = true,
+            TrackPerformance = true
+        });
+
         _eventRules = new RulesEngineCore<EventContext>();
 
         // Initialize advanced engines
@@ -607,13 +615,17 @@ public class GameRulesEngine
         );
 
         // Defensive: Recruit soldiers when rival attack is imminent
-        _agentRules.AddRule(
-            "DEFENSIVE_RECRUIT",
-            "Defensive Recruitment",
-            ctx => ctx.RivalAttackImminent && ctx.NeedsMoreSoldiers && ctx.GameState.FamilyWealth > 10000,
-            ctx => { ctx.RecommendedAction = "recruit"; },
-            priority: 890
-        );
+        // Using RuleBuilder for complex multi-condition rules (clearer than inline)
+        var defensiveRecruit = new RuleBuilder<AgentDecisionContext>()
+            .WithId("DEFENSIVE_RECRUIT")
+            .WithName("Defensive Recruitment")
+            .WithPriority(890)
+            .When(ctx => ctx.RivalAttackImminent)
+            .And(ctx => ctx.NeedsMoreSoldiers)
+            .And(ctx => ctx.GameState.FamilyWealth > 10000)
+            .Then(ctx => ctx.RecommendedAction = "recruit")
+            .Build();
+        _agentRules.RegisterRule(defensiveRecruit);
 
         // =====================================================================
         // PERSONALITY-DRIVEN RULES - Agent character affects decisions
@@ -665,13 +677,18 @@ public class GameRulesEngine
         );
 
         // Ambitious agents recruit when needing more soldiers
-        _agentRules.AddRule(
-            "AMBITIOUS_RECRUIT",
-            "Ambitious Recruitment",
-            ctx => ctx.IsAmbitious && ctx.NeedsMoreSoldiers && !ctx.ShouldConserve && ctx.GameState.FamilyWealth > 50000,
-            ctx => { ctx.RecommendedAction = "recruit"; },
-            priority: 625
-        );
+        // Using RuleBuilder - 4 conditions are clearer with fluent API
+        var ambitiousRecruit = new RuleBuilder<AgentDecisionContext>()
+            .WithId("AMBITIOUS_RECRUIT")
+            .WithName("Ambitious Recruitment")
+            .WithPriority(625)
+            .When(ctx => ctx.IsAmbitious)
+            .And(ctx => ctx.NeedsMoreSoldiers)
+            .And(ctx => !ctx.ShouldConserve)
+            .And(ctx => ctx.GameState.FamilyWealth > 50000)
+            .Then(ctx => ctx.RecommendedAction = "recruit")
+            .Build();
+        _agentRules.RegisterRule(ambitiousRecruit);
 
         // Calculating agents bribe strategically
         _agentRules.AddRule(
@@ -696,13 +713,17 @@ public class GameRulesEngine
         // =====================================================================
 
         // Peaceful times: safe to collect
-        _agentRules.AddRule(
-            "OPPORTUNISTIC_COLLECTION",
-            "Opportunistic Collection",
-            ctx => ctx.RivalsArePeaceful && ctx.HasHeatBudget && ctx.HeatIsFalling,
-            ctx => { ctx.RecommendedAction = "collection"; },
-            priority: 400
-        );
+        // Using RuleBuilder - demonstrates fluent syntax for opportunistic rules
+        var opportunisticCollection = new RuleBuilder<AgentDecisionContext>()
+            .WithId("OPPORTUNISTIC_COLLECTION")
+            .WithName("Opportunistic Collection")
+            .WithPriority(400)
+            .When(ctx => ctx.RivalsArePeaceful)
+            .And(ctx => ctx.HasHeatBudget)
+            .And(ctx => ctx.HeatIsFalling)
+            .Then(ctx => ctx.RecommendedAction = "collection")
+            .Build();
+        _agentRules.RegisterRule(opportunisticCollection);
 
         // Wealthy and stable: expand operations
         _agentRules.AddRule(
@@ -1119,6 +1140,7 @@ public class GameRulesEngine
     /// <summary>
     /// Get agent action using rules. Rules are evaluated in priority order
     /// and the first matching rule sets the RecommendedAction on the context.
+    /// With StopOnFirstMatch enabled, only the highest priority matching rule executes.
     /// </summary>
     public string GetAgentAction(GameAgentData agent)
     {
@@ -1133,19 +1155,10 @@ public class GameRulesEngine
             RecommendedAction = "wait" // Default
         };
 
-        // Evaluate all matching rules - the highest priority matching rule
-        // will set RecommendedAction (subsequent lower priority rules may
-        // also match but their actions still execute, potentially overriding).
-        // Since rules are sorted by priority (high to low), we use Execute
-        // with StopOnFirstMatch semantics to get the highest priority match.
-        var matchedRules = _agentRules.GetMatchingRules(context);
-
-        if (matchedRules.Any())
-        {
-            // Execute only the highest priority matching rule's action
-            var topRule = matchedRules.First();
-            topRule.Execute(context);
-        }
+        // Use the engine's Execute method which:
+        // 1. Respects StopOnFirstMatch option (only first matching rule runs)
+        // 2. Tracks performance metrics for debugging
+        _agentRules.Execute(context);
 
         return context.RecommendedAction;
     }
@@ -1247,5 +1260,50 @@ public class GameRulesEngine
         };
 
         _chainEngine.EvaluateAll(context);
+    }
+
+    // =========================================================================
+    // PERFORMANCE METRICS - For debugging and optimization
+    // =========================================================================
+
+    /// <summary>
+    /// Get performance metrics for agent decision rules
+    /// </summary>
+    public Dictionary<string, RulePerformanceMetrics> GetAgentRuleMetrics()
+    {
+        return _agentRules.GetAllMetrics();
+    }
+
+    /// <summary>
+    /// Get a summary of agent rule performance for display
+    /// </summary>
+    public string GetAgentRulePerformanceSummary()
+    {
+        var metrics = _agentRules.GetAllMetrics();
+        if (metrics.Count == 0)
+            return "No performance data collected yet.";
+
+        var totalExecutions = metrics.Values.Sum(m => m.ExecutionCount);
+        var avgTime = metrics.Values.Where(m => m.ExecutionCount > 0)
+            .Average(m => m.AverageExecutionTime.TotalMicroseconds);
+
+        var topRules = metrics.Values
+            .Where(m => m.ExecutionCount > 0)
+            .OrderByDescending(m => m.ExecutionCount)
+            .Take(5)
+            .ToList();
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("📊 Agent Rule Performance Metrics:");
+        sb.AppendLine($"   Total rule evaluations: {totalExecutions}");
+        sb.AppendLine($"   Average execution time: {avgTime:F2}μs");
+        sb.AppendLine("   Top 5 triggered rules:");
+
+        foreach (var rule in topRules)
+        {
+            sb.AppendLine($"     • {rule.RuleId}: {rule.ExecutionCount}x (avg {rule.AverageExecutionTime.TotalMicroseconds:F1}μs)");
+        }
+
+        return sb.ToString();
     }
 }

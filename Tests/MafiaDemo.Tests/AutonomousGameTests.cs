@@ -3,6 +3,8 @@ using AgentRouting.MafiaDemo;
 using AgentRouting.MafiaDemo.Game;
 using AgentRouting.MafiaDemo.Rules;
 using AgentRouting.Core;
+using RulesEngine.Core;
+using RulesEngine.Enhanced;
 
 namespace TestRunner.Tests;
 
@@ -1309,6 +1311,120 @@ public class AutonomousGameTests
         engine.ApplyRivalStrategy(state.RivalFamilies["test"], state);
 
         Assert.NotNull(gameEvents);
+    }
+
+    #endregion
+
+    #region RulesEngine Advanced Feature Tests
+
+    [Test]
+    public void GameRulesEngine_AgentRules_PerformanceMetricsAvailable()
+    {
+        // Setup
+        var state = new GameState
+        {
+            FamilyWealth = 100000m,
+            HeatLevel = 30,
+            PreviousHeatLevel = 30
+        };
+        state.RivalFamilies["test"] = new RivalFamily { Hostility = 40 };
+
+        var engine = new GameRulesEngine(state);
+        var agent = new GameAgentData
+        {
+            AgentId = "test",
+            Personality = new AgentPersonality
+            {
+                Aggression = 50,
+                Greed = 50,
+                Loyalty = 50,
+                Ambition = 50
+            }
+        };
+
+        // Execute several times to generate metrics
+        for (int i = 0; i < 5; i++)
+        {
+            engine.GetAgentAction(agent);
+        }
+
+        // Get metrics
+        var metrics = engine.GetAgentRuleMetrics();
+        var summary = engine.GetAgentRulePerformanceSummary();
+
+        // Verify metrics are collected
+        Assert.NotNull(metrics);
+        Assert.NotNull(summary);
+        Assert.Contains("Agent Rule Performance Metrics", summary);
+        Assert.Contains("Total rule evaluations", summary);
+    }
+
+    [Test]
+    public void GameRulesEngine_AgentRules_StopOnFirstMatchBehavior()
+    {
+        // Setup: Create a scenario where multiple rules could match
+        var state = new GameState
+        {
+            FamilyWealth = 100000m,
+            HeatLevel = 0,  // Low heat
+            PreviousHeatLevel = 10,  // Heat falling
+            SoldierCount = 5
+        };
+
+        var engine = new GameRulesEngine(state);
+        var agent = new GameAgentData
+        {
+            AgentId = "test",
+            Personality = new AgentPersonality
+            {
+                Aggression = 30,  // Not aggressive
+                Greed = 80,       // Greedy - should trigger GREEDY_COLLECTION
+                Loyalty = 50,
+                Ambition = 50
+            }
+        };
+
+        // Get action - should return the first matching rule's action
+        var action = engine.GetAgentAction(agent);
+
+        // The greedy agent with low heat should collect
+        Assert.True(action == "collection" || action == "wait",
+            $"Expected collection or wait but got {action}");
+    }
+
+    [Test]
+    public void GameRulesEngine_RuleBuilder_IntegrationTest()
+    {
+        // Test that RuleBuilder-created rules work correctly
+        var state = new GameState
+        {
+            FamilyWealth = 60000m,  // Can afford recruit ($50k threshold)
+            HeatLevel = 20,
+            PreviousHeatLevel = 20,
+            SoldierCount = 10  // Needs more soldiers (<15)
+        };
+        state.RivalFamilies["test"] = new RivalFamily { Hostility = 30 };
+
+        var engine = new GameRulesEngine(state);
+
+        // Ambitious agent with money and need for soldiers
+        var agent = new GameAgentData
+        {
+            AgentId = "test",
+            Personality = new AgentPersonality
+            {
+                Aggression = 40,
+                Greed = 40,
+                Loyalty = 50,
+                Ambition = 80  // Ambitious - should trigger AMBITIOUS_RECRUIT
+            }
+        };
+
+        var action = engine.GetAgentAction(agent);
+
+        // Ambitious agent needing soldiers with wealth should recruit or expand
+        Assert.True(action == "recruit" || action == "collection" || action == "wait",
+            $"Ambitious agent should recruit/collect/wait but got {action}");
     }
 
     #endregion

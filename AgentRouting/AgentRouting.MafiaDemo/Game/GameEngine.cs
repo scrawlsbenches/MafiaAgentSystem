@@ -290,6 +290,13 @@ public class MafiaGameEngine
                 if (_state.GameOver)
                 {
                     Console.WriteLine($"\n🎬 GAME OVER: {_state.GameOverReason}");
+
+                    // Display performance metrics at game end
+                    if (_rulesEngine != null)
+                    {
+                        Console.WriteLine();
+                        Console.WriteLine(_rulesEngine.GetAgentRulePerformanceSummary());
+                    }
                     break;
                 }
 
