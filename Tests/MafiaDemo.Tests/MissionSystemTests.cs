@@ -702,7 +702,7 @@ public class MissionSystemTests
             Assert.Equal(5, intimidationMission.RespectReward);
             Assert.Equal(100m, intimidationMission.MoneyReward);
             Assert.True(intimidationMission.SkillRequirements.ContainsKey("Intimidation"));
-            Assert.Equal(15, intimidationMission.SkillRequirements["Intimidation"]);
+            Assert.Equal(8, intimidationMission.SkillRequirements["Intimidation"]);  // Lowered for new players
             Assert.True(intimidationMission.Data.ContainsKey("Target"));
             Assert.True(intimidationMission.Data.ContainsKey("Reason"));
         }
@@ -734,7 +734,7 @@ public class MissionSystemTests
             Assert.Equal(200m, infoMission.MoneyReward);
             Assert.Equal(1, infoMission.HeatGenerated);
             Assert.True(infoMission.SkillRequirements.ContainsKey("StreetSmarts"));
-            Assert.Equal(20, infoMission.SkillRequirements["StreetSmarts"]);
+            Assert.Equal(8, infoMission.SkillRequirements["StreetSmarts"]);  // Lowered for new players
         }
     }
 

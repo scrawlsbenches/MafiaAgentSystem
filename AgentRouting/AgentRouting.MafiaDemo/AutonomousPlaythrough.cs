@@ -367,7 +367,7 @@ class AutonomousPlaythroughDemo
         Console.WriteLine($"  Failed: {stats.FailedMissions}");
         Console.WriteLine($"  Success Rate: {(stats.TotalMissions > 0 ? (stats.SuccessfulMissions * 100.0 / stats.TotalMissions) : 0):F1}%");
         Console.WriteLine($"  Total Money Earned: ${stats.TotalMoneyEarned:N0}");
-        Console.WriteLine($"  Total Respect Gained: +{stats.TotalRespectGained}");
+        Console.WriteLine($"  Total Respect Gained: {(stats.TotalRespectGained >= 0 ? "+" : "")}{stats.TotalRespectGained}");
     }
     
     private static string GetBar(int value, int max)
