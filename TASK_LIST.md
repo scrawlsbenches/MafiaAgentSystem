@@ -1,7 +1,7 @@
 # MafiaAgentSystem Task List
 
 > **Generated**: 2026-01-31
-> **Last Updated**: 2026-02-03 (Batch I: Story System Integration - 14/16 complete, I-6 moved to F)
+> **Last Updated**: 2026-02-03 (Added F-3 runtime bugs from testing)
 > **Approach**: Layered batches to minimize churn
 > **Constraint**: All tasks are 2-4 hours, none exceeding 1 day
 
@@ -1092,10 +1092,11 @@ public class GameWorldBridge
 
 ---
 
-## Batch F: Polish
+## Batch F: Polish (14 tasks total)
 
 > **Prerequisite**: Batches D and E complete
 > **Why last**: Document stable code, not moving targets.
+> **Updated**: Added F-3 runtime bugs discovered during testing (2026-02-03)
 
 ### F-1: Documentation (8 tasks, 17-24 hours)
 
@@ -1174,6 +1175,78 @@ public class GameWorldBridge
 - [ ] Record intel from information responses
 - [ ] Update EntityMind memory of the conversation
 - [ ] Add bargaining outcome handling (money for info)
+
+---
+
+### F-3: Runtime Bugs (Discovered 2026-02-03) (3 tasks, 4-6 hours)
+
+> **Source**: Found during MafiaDemo runtime testing
+
+#### Task F-3a: AI Career Mode Missing Story System Integration
+**Priority**: P1 - HIGH - Major feature gap
+**Estimated Time**: 2-3 hours
+**Files**: `AutonomousPlaythrough.cs`
+**Discovered**: 2026-02-03
+
+**Problem**: AI Career Mode (Option 1) creates raw `GameState` instead of using `MafiaGameEngine`, bypassing the entire Story System:
+- No NPC relationships, no plots, no consequences
+- Missions use legacy generator only
+- Story System integration code (I-2c, I-5b, I-5c) never executes
+
+**Current Code** (line 98):
+```csharp
+var gameState = new GameState(); // Should use MafiaGameEngine!
+```
+
+**Subtasks**:
+- [ ] Replace `new GameState()` with `new MafiaGameEngine(logger)`
+- [ ] Wire PlayerAgent's WorldState, StoryGraph, IntelRegistry properties from engine
+- [ ] Use engine's GenerateMission() instead of PlayerAgent's internal generator
+- [ ] Add test verifying Story System integration in Career Mode
+
+---
+
+#### Task F-3b: Mission Success Rate Too Low for New Players
+**Priority**: P2 - MEDIUM - Balance issue
+**Estimated Time**: 1-2 hours
+**Files**: `MissionSystem.cs`
+**Discovered**: 2026-02-03
+
+**Problem**: New players have only 60% success rate leading to frequent game overs:
+- Base success: 50%
+- Low heat bonus: +10%
+- Skill bonus requires >10 advantage (new players only have +2)
+- -5 respect penalty per failure compounds quickly
+- Player hit game over (0 respect) by week 7 in testing
+
+**Suggestion**: One of:
+- Increase base success to 55-60% for Associates
+- Reduce respect penalty for failures (-3 instead of -5)
+- Lower skill advantage threshold for bonus (>5 instead of >10)
+
+**Subtasks**:
+- [ ] Analyze mission success rates by rank
+- [ ] Implement graduated difficulty (easier for Associates)
+- [ ] Add test verifying reasonable success rate for new players
+
+---
+
+#### Task F-3c: Plot Count Display Misleading
+**Priority**: P3 - LOW - UX improvement
+**Estimated Time**: 0.5-1 hour
+**Files**: `Game/GameEngine.cs`
+**Discovered**: 2026-02-03
+
+**Problem**: Message `"📖 Story System: Active (0 active plots)"` is misleading when plots are Available but not yet Active.
+
+**Current Code** (line 794):
+```csharp
+turnEvents.Add($"📖 Story System: Active ({_storyGraph?.GetActivePlots().Count() ?? 0} active plots)");
+```
+
+**Subtasks**:
+- [ ] Change display to show both Active and Available plot counts
+- [ ] Example: "📖 Story System: Active (0 active, 1 available)"
 
 ---
 
