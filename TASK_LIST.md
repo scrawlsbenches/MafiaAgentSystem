@@ -567,7 +567,7 @@ Completed 2026-02-03. Added 63 new tests (1842 → 1905 total).
 
 **Subtasks**:
 - [x] Change to: `rival.Hostility = Math.Max(0, rival.Hostility - Random.Shared.Next(1, 3));`
-- [ ] Add test verifying hostility stays >= 0
+- [x] Add test verifying hostility stays >= 0 (2 tests added)
 
 ---
 

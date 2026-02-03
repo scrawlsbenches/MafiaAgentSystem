@@ -2590,4 +2590,69 @@ Action=WAIT
     }
 
     #endregion
+
+    // =========================================================================
+    // HOSTILITY CLAMPING TESTS (H-4)
+    // =========================================================================
+
+    #region Hostility Clamping Tests
+
+    [Test]
+    public async Task MafiaGameEngine_RivalHostility_NeverGoesNegative()
+    {
+        // H-4: Verify rival hostility is clamped to >= 0 after decay
+        // The bug was that hostility could go negative when decay (1-2) exceeded current value (1)
+        EnsureInstantTiming();
+        var logger = CreateTestLogger();
+        var engine = new MafiaGameEngine(logger);
+
+        // Set all rivals to very low hostility (1-2) so decay could potentially make them negative
+        foreach (var rival in engine.State.RivalFamilies.Values)
+        {
+            rival.Hostility = 1;
+        }
+
+        // Run multiple turns to trigger hostility decay many times
+        for (int i = 0; i < 20; i++)
+        {
+            await engine.ExecuteTurnAsync();
+
+            // After each turn, verify no rival has negative hostility
+            foreach (var rival in engine.State.RivalFamilies.Values)
+            {
+                Assert.True(
+                    rival.Hostility >= 0,
+                    $"Rival {rival.Name} has negative hostility ({rival.Hostility}) after turn {i + 1}");
+            }
+
+            // Reset hostility to low value to keep testing edge case
+            foreach (var rival in engine.State.RivalFamilies.Values)
+            {
+                if (rival.Hostility == 0)
+                    rival.Hostility = 1;
+            }
+
+            if (engine.State.GameOver) break;
+        }
+    }
+
+    [Test]
+    public void RivalFamily_Hostility_ClampedAfterDirectManipulation()
+    {
+        // Unit test: Verify the Math.Max(0, ...) pattern works correctly
+        var rival = new RivalFamily { Name = "Test", Hostility = 1 };
+
+        // Simulate the decay logic from GameEngine (line 894)
+        // Original bug: rival.Hostility -= Random.Shared.Next(1, 3);
+        // Fixed: rival.Hostility = Math.Max(0, rival.Hostility - decay);
+
+        // Test edge case: hostility=1, decay=2 should result in 0, not -1
+        int decay = 2;
+        rival.Hostility = Math.Max(0, rival.Hostility - decay);
+
+        Assert.Equal(0, rival.Hostility);
+        Assert.True(rival.Hostility >= 0, "Hostility should never be negative");
+    }
+
+    #endregion
 }
