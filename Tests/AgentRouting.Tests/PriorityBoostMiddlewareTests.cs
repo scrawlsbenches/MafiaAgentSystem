@@ -1,6 +1,7 @@
 using TestRunner.Framework;
 using AgentRouting.Core;
 using AgentRouting.Middleware;
+using TestUtilities;
 
 namespace AgentRouting.Tests;
 
@@ -346,9 +347,9 @@ public class PriorityBoostMiddlewareTests
         var pipeline = new MiddlewarePipeline();
         var executionOrder = new List<string>();
 
-        pipeline.Use(new TrackingMiddleware("First", executionOrder));
+        pipeline.Use(new NamedTrackingMiddleware("First", executionOrder));
         pipeline.Use(new PriorityBoostMiddleware("vip-user"));
-        pipeline.Use(new TrackingMiddleware("Last", executionOrder));
+        pipeline.Use(new NamedTrackingMiddleware("Last", executionOrder));
 
         var message = CreateMessage("vip-user", MessagePriority.Normal);
 
@@ -570,29 +571,6 @@ public class PriorityBoostMiddlewareTests
 
     private static readonly MessageDelegate PassthroughHandler =
         (msg, ct) => Task.FromResult(MessageResult.Ok("OK"));
-
-    private class TrackingMiddleware : MiddlewareBase
-    {
-        private readonly string _name;
-        private readonly List<string> _executionOrder;
-
-        public TrackingMiddleware(string name, List<string> executionOrder)
-        {
-            _name = name;
-            _executionOrder = executionOrder;
-        }
-
-        public override async Task<MessageResult> InvokeAsync(
-            AgentMessage message,
-            MessageDelegate next,
-            CancellationToken ct)
-        {
-            _executionOrder.Add($"{_name}-Before");
-            var result = await next(message, ct);
-            _executionOrder.Add($"{_name}-After");
-            return result;
-        }
-    }
 
     #endregion
 }

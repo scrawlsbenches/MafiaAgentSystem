@@ -24,14 +24,15 @@ public class MessageCapturingMiddleware : MiddlewareBase
 }
 
 /// <summary>
-/// Middleware that executes callbacks before and/or after the pipeline.
+/// Middleware that executes simple callbacks before and/or after the pipeline.
+/// Uses Action with no parameters, unlike production CallbackMiddleware which takes Action&lt;AgentMessage&gt;.
 /// </summary>
-public class CallbackMiddleware : MiddlewareBase
+public class SimpleCallbackMiddleware : MiddlewareBase
 {
     private readonly Action? _before;
     private readonly Action? _after;
 
-    public CallbackMiddleware(Action? before = null, Action? after = null)
+    public SimpleCallbackMiddleware(Action? before = null, Action? after = null)
     {
         _before = before;
         _after = after;
@@ -264,14 +265,15 @@ public class MetadataAddingMiddleware : ContextSettingMiddleware
 }
 
 /// <summary>
-/// Middleware that executes an action only when a condition is met.
+/// Middleware that executes a simple action only when a condition is met.
+/// Unlike production ConditionalMiddleware which wraps another middleware.
 /// </summary>
-public class ConditionalMiddleware : MiddlewareBase
+public class ConditionalActionMiddleware : MiddlewareBase
 {
     private readonly Func<AgentMessage, bool> _condition;
     private readonly Action _action;
 
-    public ConditionalMiddleware(Func<AgentMessage, bool> condition, Action action)
+    public ConditionalActionMiddleware(Func<AgentMessage, bool> condition, Action action)
     {
         _condition = condition;
         _action = action;

@@ -2,6 +2,7 @@ using TestRunner.Framework;
 using AgentRouting.Core;
 using AgentRouting.Middleware;
 using AgentRouting.Middleware.Advanced;
+using TestUtilities;
 
 namespace TestRunner.Tests;
 
@@ -505,9 +506,9 @@ public class AgentHealthCheckMiddlewareTests
         var pipeline = new MiddlewarePipeline();
         var executionOrder = new List<string>();
 
-        pipeline.Use(new TrackingMiddleware("Validation", executionOrder));
+        pipeline.Use(new NamedTrackingMiddleware("Validation", executionOrder));
         pipeline.Use(middleware);
-        pipeline.Use(new TrackingMiddleware("Logging", executionOrder));
+        pipeline.Use(new NamedTrackingMiddleware("Logging", executionOrder));
 
         var builtPipeline = pipeline.Build((msg, ct) =>
         {
@@ -896,32 +897,6 @@ public class AgentHealthCheckMiddlewareTests
         }
 
         await Task.CompletedTask;
-    }
-
-    /// <summary>
-    /// Helper middleware for tracking execution order in pipeline tests.
-    /// </summary>
-    private class TrackingMiddleware : MiddlewareBase
-    {
-        private readonly string _name;
-        private readonly List<string> _executionOrder;
-
-        public TrackingMiddleware(string name, List<string> executionOrder)
-        {
-            _name = name;
-            _executionOrder = executionOrder;
-        }
-
-        public override async Task<MessageResult> InvokeAsync(
-            AgentMessage message,
-            MessageDelegate next,
-            CancellationToken ct)
-        {
-            _executionOrder.Add($"{_name}-Before");
-            var result = await next(message, ct);
-            _executionOrder.Add($"{_name}-After");
-            return result;
-        }
     }
 
     #endregion

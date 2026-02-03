@@ -2,36 +2,12 @@ using TestRunner.Framework;
 using AgentRouting.Core;
 using AgentRouting.Agents;
 using AgentRouting.Middleware;
+using TestUtilities;
 
 namespace TestRunner.Tests;
 
 public class AgentRoutingTests
 {
-    private class TestLogger : IAgentLogger
-    {
-        public List<string> Logs { get; } = new();
-
-        public void LogMessageReceived(IAgent agent, AgentMessage message)
-        {
-            Logs.Add($"Received: {agent.Name} - {message.Subject}");
-        }
-
-        public void LogMessageProcessed(IAgent agent, AgentMessage message, MessageResult result)
-        {
-            Logs.Add($"Processed: {agent.Name} - {message.Subject} - {result.Success}");
-        }
-
-        public void LogMessageRouted(AgentMessage message, IAgent? fromAgent, IAgent toAgent)
-        {
-            Logs.Add($"Routed: {message.Subject} to {toAgent.Name}");
-        }
-
-        public void LogError(IAgent agent, AgentMessage message, Exception ex)
-        {
-            Logs.Add($"Error: {agent.Name} - {ex.Message}");
-        }
-    }
-
     [Test]
     public async Task AgentRouter_RoutesToCorrectAgent_BasedOnCategory()
     {
