@@ -1586,14 +1586,16 @@ public class GameRulesEngine
 
     private AgentDecisionContext CreateTestContext(GameState state, bool aggressive, bool greedy, bool calculating = false)
     {
+        // IsCalculating requires: Aggression < 40 && Ambition > 60
+        // So calculating agents need low aggression AND high ambition
         return new AgentDecisionContext
         {
             GameState = state,
             AgentId = "test-agent",
-            Aggression = aggressive ? 80 : 30,
+            Aggression = aggressive ? 80 : (calculating ? 30 : 50),
             Greed = greedy ? 80 : 30,
             Loyalty = 50,
-            Ambition = calculating ? 30 : 60
+            Ambition = calculating ? 70 : 60  // High ambition for calculating agents
         };
     }
 
@@ -1611,28 +1613,10 @@ public class GameRulesEngine
     // DEBUGGABLE RULES - Trace WHY decisions were made
     // =========================================================================
 
-    private bool _debugMode = false;
-    private readonly List<string> _lastDecisionTrace = new();
-
     /// <summary>
-    /// Enable or disable debug mode for decision tracing.
-    /// When enabled, GetAgentAction will record detailed traces.
-    /// </summary>
-    public bool DebugMode
-    {
-        get => _debugMode;
-        set => _debugMode = value;
-    }
-
-    /// <summary>
-    /// Get the trace from the last decision made in debug mode.
-    /// Shows which rules matched/failed and why.
-    /// </summary>
-    public IReadOnlyList<string> LastDecisionTrace => _lastDecisionTrace.AsReadOnly();
-
-    /// <summary>
-    /// Get agent action with optional debug tracing.
-    /// When DebugMode is true, records detailed decision trace.
+    /// Get agent action with detailed debug tracing.
+    /// Returns the recommended action and provides a trace showing
+    /// which rules were evaluated and which one matched.
     /// </summary>
     public string GetAgentActionWithTrace(GameAgentData agent, out List<string> trace)
     {
@@ -1692,7 +1676,6 @@ public class GameRulesEngine
     // ASYNC RULES - Delayed/async event processing
     // =========================================================================
 
-    private readonly RulesEngineCore<AsyncEventContext> _asyncEventEngine = new();
     private readonly List<IAsyncRule<AsyncEventContext>> _asyncRules = new();
 
     /// <summary>
