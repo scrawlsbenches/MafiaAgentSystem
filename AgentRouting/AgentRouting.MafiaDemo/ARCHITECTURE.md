@@ -176,7 +176,7 @@ public class RivalFamily
 
 ## Rules Integration Points
 
-The game uses **8 specialized `RulesEngineCore<T>` instances** with **82 rules currently** (target: ~98 with full personality coverage):
+The game uses **8 specialized `RulesEngineCore<T>` instances** with **105 rules total**:
 
 ### 1. Game Rules (`_gameRules` - `RulesEngineCore<GameRuleContext>`)
 
@@ -192,7 +192,19 @@ engine.AddRule("POLICE_RAID", "Police raid when heat is critical",
 
 ### 2. Agent Rules (`_agentRules` - `RulesEngineCore<AgentDecisionContext>`)
 
-Drive agent decisions with personality-driven rules (**24 currently**, target: 45):
+Drive agent decisions with **47 personality-driven rules** across categories:
+- Emergency rules (4): Highest priority, override everything
+- Phase-based strategic rules (8): Adapt to economic situation
+- Defensive rules (4): React to threats
+- Personality rules (12): Character affects decisions
+- Rival-response rules (4): React to rival family situations
+- Heat-management rules (4): Respond to heat levels
+- Economic-strategy rules (4): Respond to wealth trends
+- Opportunistic rules (3): Take advantage of good situations
+- Composite rules (2): Multi-strategy decisions
+- Default rules (2): Fallback behavior
+
+Example:
 
 ```csharp
 // Example: Aggressive agent attacks when family is threatened
@@ -321,8 +333,8 @@ var investigation = new AsyncRuleBuilder<AsyncEventContext>()
 - [x] AI Autopilot mode using rules (AI Career Mode - Option 1 in Program.cs)
 - [x] Personality effects on decisions (rules check Aggression, Loyalty, Ambition traits)
 
-### In Progress
-- [ ] **Agent personality rules**: Currently 24 rules, target 45 (need +21 more personality-driven rules)
+### Recently Completed (2026-02-03)
+- [x] **Agent personality rules**: 47 rules implemented (exceeds target of 45)
 - [x] **AgentRouter game loop integration**: `RouteAgentActionAsync()` now routes all agent actions through middleware pipeline during `ProcessAutonomousActions()`
 
 ### Enhancement Opportunities
@@ -340,7 +352,7 @@ AgentRouting.MafiaDemo/
 │   └── GameEngine.cs          # MafiaGameEngine, GameState, AutonomousAgent base
 ├── MafiaAgents.cs             # All agent implementations (Godfather, Underboss, etc.)
 ├── PlayerAgent.cs             # Player-controlled agent with decision rules
-├── GameRulesEngine.cs         # Unified rules engine (8 engines, 82 rules)
+├── GameRulesEngine.cs         # Unified rules engine (8 engines, 105 rules)
 ├── MissionSystem.cs           # Mission/quest system with difficulty rules
 ├── GameTimingOptions.cs       # Centralized delay configuration
 ├── AutonomousPlaythrough.cs   # Demo/test scenarios
