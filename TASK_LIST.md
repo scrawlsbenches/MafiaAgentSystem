@@ -58,7 +58,7 @@ Previous organization grouped by *category* (thread safety, MafiaDemo, tests), w
 | **D** | App Fixes | :white_check_mark: **COMPLETE** | 5 tasks | 10-14 |
 | **E** | Enhancement | :white_check_mark: **COMPLETE** | 15 tasks | 35-47 |
 | **G** | Critical Integration | :white_check_mark: **COMPLETE** | 5 tasks | 11-16 |
-| **H** | **Code Review Bug Fixes** | :construction: **11/14 DONE** | 14 tasks | 20-30 |
+| **H** | **Code Review Bug Fixes** | :construction: **12/14 DONE** | 14 tasks | 20-30 |
 | **F** | Polish | :hourglass: Pending | 9 tasks remaining | 18-26 |
 | | | **TOTAL** | **58 tasks** | **114-161** |
 
@@ -503,7 +503,7 @@ Completed 2026-02-03. Added 63 new tests (1842 → 1905 total).
 > **Priority**: HIGH - Bugs found during comprehensive code review
 > **Source**: Code review 2026-02-03 (see MAFIA_DEMO_CODE_REVIEW.md)
 > **Full Report**: `/MAFIA_DEMO_CODE_REVIEW.md`
-> **Progress**: 11 of 14 tasks completed (2026-02-03)
+> **Progress**: 12 of 14 tasks completed (2026-02-03)
 
 ### H-1: Fix Heat Balance (Critical - Game Unwinnable) :white_check_mark:
 **Priority**: CRITICAL
@@ -613,21 +613,27 @@ Completed 2026-02-03. Added 63 new tests (1842 → 1905 total).
 
 ---
 
-### H-8: Fix RivalStrategyContext.ShouldAttack Logic
+### H-8: Clarify RivalStrategyContext.ShouldAttack Logic :white_check_mark:
 **Priority**: MEDIUM
 **Estimated Time**: 1 hour
 **File**: `Rules/RuleContexts.cs:292`
+**Completed**: 2026-02-03
 
-**Problem**: Logic appears inverted - rivals attack when player is NOT distracted:
+**Analysis**: The logic is actually **intentionally correct**:
 ```csharp
 public bool ShouldAttack => RivalIsStronger && PlayerIsWeak && !PlayerIsDistracted;
 ```
 
-Rivals should attack when player IS distracted (focused on law enforcement).
+**Design rationale**: Rivals wait until law enforcement attention is LOW before attacking.
+- When player has high heat (distracted), attacking would draw unwanted police attention to the rival
+- When player heat is low, rivals can strike without law enforcement interference
+- This is consistent with `ShouldWait` which says: wait when `PlayerIsDistracted && !RivalIsAngry`
+
+**Solution**: Added comprehensive XML documentation explaining the strategic reasoning.
 
 **Subtasks**:
-- [ ] Clarify intended behavior with game design
-- [ ] Either fix logic or rename property to reflect actual meaning
+- [x] Analyze intended behavior (current logic is correct)
+- [x] Add XML documentation explaining design rationale
 
 ---
 
