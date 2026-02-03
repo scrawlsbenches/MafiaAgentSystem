@@ -67,6 +67,13 @@ public class GameState
     public bool GameOver { get; set; } = false;
     public string? GameOverReason { get; set; }
 
+    /// <summary>
+    /// Tracks whether any agent has already bribed officials this week.
+    /// Prevents wasteful duplicate bribes - only one bribe per week is effective.
+    /// Reset at the start of each turn in ExecuteTurnAsync.
+    /// </summary>
+    public bool BribedThisWeek { get; set; } = false;
+
     // Computed properties for rules engine compatibility
     public int Day => Week; // Alias for Week
     public int SoldierCount { get; set; } = 5;
@@ -514,6 +521,9 @@ public class MafiaGameEngine
     {
         var turnEvents = new List<string>();
 
+        // Reset weekly coordination flags
+        _state.BribedThisWeek = false;
+
         // Track previous state for trend detection
         _state.PreviousHeatLevel = _state.HeatLevel;
         _state.PreviousWealth = _state.FamilyWealth;
@@ -907,10 +917,16 @@ public class MafiaGameEngine
 
             case "bribe":
                 // Bribe officials to reduce heat
+                // Coordination: Only one bribe per week is effective (prevents wasteful duplicates)
+                if (_state.BribedThisWeek)
+                {
+                    return $"{agent.AgentId} skips bribe - officials already bribed this week";
+                }
                 if (_state.FamilyWealth >= 10000 && _state.HeatLevel > 20)
                 {
                     _state.FamilyWealth -= 10000;
                     _state.HeatLevel -= 15;
+                    _state.BribedThisWeek = true;  // Mark as bribed for this week
                     LogEvent("Bribe", $"{agent.AgentId} bribed officials", agent.AgentId);
                     return $"{agent.AgentId} bribes officials - Cost $10,000, Heat -15";
                 }
@@ -1046,10 +1062,16 @@ public class MafiaGameEngine
 
     private string ExecuteBribe()
     {
+        // Coordination: Only one bribe per week is effective
+        if (_state.BribedThisWeek)
+        {
+            return "⚠️ Officials already bribed this week. Wait until next week.";
+        }
         if (_state.FamilyWealth >= 10000)
         {
             _state.FamilyWealth -= 10000;
             _state.HeatLevel -= 20;
+            _state.BribedThisWeek = true;  // Mark as bribed for this week
             LogEvent("Bribe", "Player bribed officials", "player");
             return "💰 Paid $10,000 in bribes. Heat reduced by 20.";
         }

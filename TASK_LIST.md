@@ -58,7 +58,7 @@ Previous organization grouped by *category* (thread safety, MafiaDemo, tests), w
 | **D** | App Fixes | :white_check_mark: **COMPLETE** | 5 tasks | 10-14 |
 | **E** | Enhancement | :white_check_mark: **COMPLETE** | 15 tasks | 35-47 |
 | **G** | Critical Integration | :white_check_mark: **COMPLETE** | 5 tasks | 11-16 |
-| **H** | **Code Review Bug Fixes** | :construction: **12/14 DONE** | 14 tasks | 20-30 |
+| **H** | **Code Review Bug Fixes** | :construction: **13/14 DONE** | 14 tasks | 20-30 |
 | **F** | Polish | :hourglass: Pending | 9 tasks remaining | 18-26 |
 | | | **TOTAL** | **58 tasks** | **114-161** |
 
@@ -503,7 +503,7 @@ Completed 2026-02-03. Added 63 new tests (1842 → 1905 total).
 > **Priority**: HIGH - Bugs found during comprehensive code review
 > **Source**: Code review 2026-02-03 (see MAFIA_DEMO_CODE_REVIEW.md)
 > **Full Report**: `/MAFIA_DEMO_CODE_REVIEW.md`
-> **Progress**: 12 of 14 tasks completed (2026-02-03)
+> **Progress**: 13 of 14 tasks completed (2026-02-03)
 
 ### H-1: Fix Heat Balance (Critical - Game Unwinnable) :white_check_mark:
 **Priority**: CRITICAL
@@ -650,17 +650,24 @@ public bool ShouldAttack => RivalIsStronger && PlayerIsWeak && !PlayerIsDistract
 
 ---
 
-### H-10: Add Agent Action Coordination
+### H-10: Add Agent Action Coordination :white_check_mark:
 **Priority**: MEDIUM
 **Estimated Time**: 2-3 hours
 **File**: `Game/GameEngine.cs`
+**Completed**: 2026-02-03
 
 **Problem**: Multiple agents can bribe simultaneously, each costing $10,000 but only marginally more effective. No coordination.
 
+**Solution**: Added `BribedThisWeek` flag to `GameState` that:
+- Resets at the start of each turn in `ExecuteTurnAsync()`
+- Checked/set in agent bribe action (returns skip message if already bribed)
+- Checked/set in player bribe action (`ExecuteBribe()`)
+
 **Subtasks**:
-- [ ] Add "already bribed this week" flag to prevent duplicate bribes
-- [ ] OR pool bribe resources across agents
-- [ ] Add test for coordinated agent behavior
+- [x] Add "already bribed this week" flag to prevent duplicate bribes
+- [x] Update agent bribe action to check/set flag
+- [x] Update player bribe action to check/set flag
+- [x] Add tests for coordinated agent behavior (3 tests)
 
 ---
 
@@ -861,4 +868,4 @@ C (Test Infra) ──► A (Foundation) ──┬──► B (Resources) ──�
 
 ---
 
-**Last Updated**: 2026-02-03 (Batch H: 7/14 fixes complete, game now winnable)
+**Last Updated**: 2026-02-03 (Batch H: 13/14 fixes complete)
