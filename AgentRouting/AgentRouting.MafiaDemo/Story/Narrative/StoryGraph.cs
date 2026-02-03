@@ -73,6 +73,41 @@ public class StoryGraph
     public IEnumerable<PlotThread> GetAvailablePlots() =>
         _plotThreads.Values.Where(p => p.State == PlotState.Available);
 
+    public IEnumerable<PlotThread> GetAllPlotThreads() =>
+        _plotThreads.Values;
+
+    /// <summary>
+    /// Start a plot thread - transitions from Available to Active.
+    /// Returns true if the plot was started, false if it was already active or couldn't be started.
+    /// </summary>
+    public bool StartPlotThread(string plotId, int currentWeek)
+    {
+        var plot = GetPlotThread(plotId);
+        if (plot == null || plot.State != PlotState.Available)
+            return false;
+
+        plot.State = PlotState.Active;
+        plot.StartedAtWeek = currentWeek;
+        LogEvent(new StoryEvent
+        {
+            Type = StoryEventType.PlotActivated,
+            SubjectId = plotId,
+            Week = currentWeek
+        });
+        return true;
+    }
+
+    /// <summary>
+    /// Check if a plot has all its missions completed.
+    /// </summary>
+    public bool IsPlotCompleted(string plotId)
+    {
+        var plot = GetPlotThread(plotId);
+        if (plot == null) return false;
+        return plot.State == PlotState.Completed ||
+               plot.CurrentMissionIndex >= plot.MissionNodeIds.Count;
+    }
+
     #endregion
 
     #region Graph Algorithms

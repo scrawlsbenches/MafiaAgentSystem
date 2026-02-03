@@ -1,6 +1,9 @@
 using AgentRouting.Core;
 using AgentRouting.MafiaDemo;
+using AgentRouting.MafiaDemo.Missions;
 using AgentRouting.MafiaDemo.Rules;
+using AgentRouting.MafiaDemo.Story;
+using AgentRouting.MafiaDemo.Story.Integration;
 using System.Collections.Concurrent;
 using System.Text;
 
@@ -245,6 +248,38 @@ public class AgentDecision
 }
 
 /// <summary>
+/// Result of completing a plot mission
+/// </summary>
+public class PlotMissionResult
+{
+    public string NodeId { get; set; } = "";
+    public bool Success { get; set; }
+    public string? PlotThreadId { get; set; }
+    public string? PlotTitle { get; set; }
+    public bool PlotCompleted { get; set; }
+    public bool PlotFailed { get; set; }
+    public int RespectGained { get; set; }
+    public decimal MoneyGained { get; set; }
+}
+
+/// <summary>
+/// Information about an available plot mission
+/// </summary>
+public class PlotMissionInfo
+{
+    public string NodeId { get; set; } = "";
+    public string PlotThreadId { get; set; } = "";
+    public string PlotTitle { get; set; } = "";
+    public string MissionTitle { get; set; } = "";
+    public string MissionDescription { get; set; } = "";
+    public string MissionType { get; set; } = "";
+    public string? LocationId { get; set; }
+    public bool IsFirstMission { get; set; }
+    public float PlotProgress { get; set; }
+    public PlotState PlotState { get; set; }
+}
+
+/// <summary>
 /// Agent that receives and acknowledges game engine messages.
 /// This agent handles messages routed to "game-engine" from autonomous agent actions.
 /// </summary>
@@ -307,27 +342,127 @@ public class MafiaGameEngine
     private CancellationTokenSource? _cts;
     private bool _running = false;
 
+    // Story System integration (initialized in InitializeStorySystem if enabled)
+    private WorldState? _worldState;
+    private StoryGraph? _storyGraph;
+    private IntelRegistry? _intelRegistry;
+    private GameWorldBridge? _worldBridge;
+    private MissionHistory? _missionHistory;
+    private HybridMissionGenerator? _missionGenerator;
+
     public GameState State => _state;
 
-    public MafiaGameEngine(AgentRouter router)
-    {
-        _router = router;
-        _logger = new ConsoleAgentLogger();
-        _state = new GameState();
-        _gameAgents = new Dictionary<string, GameAgentData>();
-        _autonomousAgents = new Dictionary<string, AutonomousAgent>();
-        InitializeGame();
-        _rulesEngine = new GameRulesEngine(_state);
-        _rulesEngine.SetupAsyncEventRules(); // Initialize async event processing
+    /// <summary>
+    /// The Story System's world state. Null if Story System is not enabled.
+    /// </summary>
+    public WorldState? WorldState => _worldState;
 
-        // Register the game engine agent to receive routed messages
-        _router.RegisterAgent(new GameEngineAgent(_logger));
+    /// <summary>
+    /// The Story System's story graph for plot threads and narrative. Null if not enabled.
+    /// </summary>
+    public StoryGraph? StoryGraph => _storyGraph;
+
+    /// <summary>
+    /// The Story System's intel registry. Null if not enabled.
+    /// </summary>
+    public IntelRegistry? IntelRegistry => _intelRegistry;
+
+    /// <summary>
+    /// Whether the Story System is enabled and initialized.
+    /// </summary>
+    public bool StorySystemEnabled => _worldState != null && _worldBridge != null;
+
+    /// <summary>
+    /// The mission history tracking completed missions. Null if Story System not enabled.
+    /// </summary>
+    public MissionHistory? MissionHistory => _missionHistory;
+
+    /// <summary>
+    /// Generate a mission using the hybrid generator (Story + Legacy systems).
+    /// Returns a mission blending narrative-driven and procedural content.
+    /// Falls back to legacy-only generation if Story System is not enabled.
+    /// </summary>
+    public Mission GenerateMission(PlayerCharacter player)
+    {
+        if (_missionGenerator != null)
+        {
+            return _missionGenerator.GenerateMission(player, _state);
+        }
+
+        // Fallback to legacy generator if Story System not enabled
+        var legacyGenerator = new MissionGenerator();
+        return legacyGenerator.GenerateMission(player, _state, _worldState);
     }
 
-    public MafiaGameEngine(IAgentLogger logger)
+    /// <summary>
+    /// Generate multiple mission choices for player selection.
+    /// Returns up to 3 distinct mission options when possible.
+    /// </summary>
+    public List<Mission> GenerateMissionChoices(PlayerCharacter player, int count = 3)
+    {
+        if (_missionGenerator != null)
+        {
+            return _missionGenerator.GenerateMissionChoices(player, _state, count);
+        }
+
+        // Fallback: generate multiple missions using legacy generator
+        var legacyGenerator = new MissionGenerator();
+        var missions = new List<Mission>();
+        var seen = new HashSet<string>();
+
+        for (int attempts = 0; attempts < count * 3 && missions.Count < count; attempts++)
+        {
+            var mission = legacyGenerator.GenerateMission(player, _state, _worldState);
+            var key = $"{mission.Type}:{mission.Title}";
+            if (!seen.Contains(key))
+            {
+                seen.Add(key);
+                missions.Add(mission);
+            }
+        }
+
+        return missions;
+    }
+
+    /// <summary>
+    /// Record a completed mission in the history for repetition tracking.
+    /// Call this after a mission is completed to influence future mission generation.
+    /// </summary>
+    public void RecordMissionCompletion(Mission mission, bool success)
+    {
+        if (_missionHistory == null || _worldState == null)
+            return;
+
+        // Only record successful missions for repetition tracking
+        // (failed missions shouldn't count as "done" for variety purposes)
+        if (success)
+        {
+            _missionHistory.RecordMission(
+                mission.Type.ToString(),
+                mission.LocationId,
+                mission.NPCId,
+                _worldState.CurrentWeek);
+        }
+    }
+
+    public MafiaGameEngine(AgentRouter router) : this(router, new ConsoleAgentLogger(), enableStorySystem: true)
+    {
+    }
+
+    public MafiaGameEngine(IAgentLogger logger) : this(null, logger, enableStorySystem: true)
+    {
+    }
+
+    /// <summary>
+    /// Full constructor with Story System toggle.
+    /// </summary>
+    /// <param name="router">Optional router for agent communication</param>
+    /// <param name="logger">Logger for game events</param>
+    /// <param name="enableStorySystem">Whether to initialize the Story System (WorldState, StoryGraph, etc.)</param>
+    public MafiaGameEngine(AgentRouter? router, IAgentLogger logger, bool enableStorySystem = true)
     {
         _logger = logger;
-        _router = new AgentRouterBuilder().WithLogger(logger).Build();
+        _router = router ?? new AgentRouterBuilder().WithLogger(logger).Build();
         _state = new GameState();
         _gameAgents = new Dictionary<string, GameAgentData>();
         _autonomousAgents = new Dictionary<string, AutonomousAgent>();
@@ -337,6 +472,56 @@ public class MafiaGameEngine
 
         // Register the game engine agent to receive routed messages
         _router.RegisterAgent(new GameEngineAgent(_logger));
+
+        // Initialize Story System if enabled
+        if (enableStorySystem)
+        {
+            InitializeStorySystem();
+        }
+    }
+
+    /// <summary>
+    /// Initialize the Story System components (WorldState, StoryGraph, IntelRegistry).
+    /// Called from constructor when enableStorySystem is true.
+    /// </summary>
+    private void InitializeStorySystem()
+    {
+        try
+        {
+            // Create world state with initial locations, NPCs, and factions
+            _worldState = WorldStateSeeder.CreateInitialWorld();
+
+            // Create story graph with initial plot threads
+            _storyGraph = WorldStateSeeder.CreateInitialGraph(_worldState);
+
+            // Create intel registry for tracking gathered intelligence
+            _intelRegistry = new IntelRegistry();
+
+            // Create mission history for tracking completed missions (repetition tracking)
+            _missionHistory = new MissionHistory();
+
+            // Create and initialize the bridge between GameState and WorldState
+            _worldBridge = new GameWorldBridge();
+            _worldBridge.Initialize(_state, _worldState);
+
+            // Initial sync from GameState to WorldState
+            _worldBridge.SyncToWorldState(_state, _worldState);
+
+            // Create hybrid mission generator combining Story + Legacy systems
+            _missionGenerator = new HybridMissionGenerator(
+                _worldState,
+                _storyGraph,
+                _intelRegistry,
+                _missionHistory);
+
+            LogEvent("StorySystem", "Story System initialized with world state, story graph, intel registry, and hybrid mission generator", "system");
+        }
+        catch (Exception ex)
+        {
+            // Log but don't fail - Story System is optional enhancement
+            LogEvent("StorySystemError", $"Failed to initialize Story System: {ex.Message}", "system");
+            // Fields remain null, StorySystemEnabled will return false
+        }
     }
 
     /// <summary>
@@ -563,16 +748,240 @@ public class MafiaGameEngine
         // 6. Update game state
         UpdateGameState();
 
-        // 7. Check win/loss conditions
+        // 7. Sync Story System with game state changes
+        SyncStorySystem();
+
+        // 8. Check win/loss conditions
         CheckGameOver();
 
         turnEvents.Add($"\n💰 Family Wealth: ${_state.FamilyWealth:N0}");
         turnEvents.Add($"⭐ Reputation: {_state.Reputation}/100");
         turnEvents.Add($"🚨 Heat Level: {_state.HeatLevel}/100");
+        if (StorySystemEnabled)
+        {
+            turnEvents.Add($"📖 Story System: Active ({_storyGraph?.GetActivePlots().Count() ?? 0} active plots)");
+        }
 
         _state.Week++;
 
         return turnEvents;
+    }
+
+    /// <summary>
+    /// Synchronize the Story System with current game state.
+    /// Call this after game state modifications.
+    /// </summary>
+    private void SyncStorySystem()
+    {
+        if (!StorySystemEnabled || _worldBridge == null || _worldState == null)
+            return;
+
+        // Sync game state changes to world state
+        _worldBridge.SyncToWorldState(_state, _worldState);
+
+        // Update plot thread states based on world state conditions
+        UpdatePlotThreads();
+    }
+
+    /// <summary>
+    /// Update plot thread states based on current world state.
+    /// Activates dormant plots when their conditions are met.
+    /// </summary>
+    private void UpdatePlotThreads()
+    {
+        if (_storyGraph == null || _worldState == null)
+            return;
+
+        foreach (var plot in _storyGraph.GetAllPlotThreads())
+        {
+            if (plot.State == PlotState.Dormant && plot.ActivationCondition != null)
+            {
+                try
+                {
+                    if (plot.ActivationCondition(_worldState))
+                    {
+                        plot.State = PlotState.Available;
+                        plot.ActivatedAtWeek = _worldState.CurrentWeek;
+                        LogEvent("PlotActivated", $"Plot thread '{plot.Title}' is now available!", "story-system");
+                    }
+                }
+                catch
+                {
+                    // Activation condition threw - ignore and leave dormant
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Start a plot thread when the player begins its first mission.
+    /// Transitions the plot from Available to Active.
+    /// </summary>
+    /// <param name="plotId">The plot thread ID to start</param>
+    /// <returns>True if the plot was started successfully</returns>
+    public bool StartPlotThread(string plotId)
+    {
+        if (_storyGraph == null || _worldState == null)
+            return false;
+
+        var plot = _storyGraph.GetPlotThread(plotId);
+        if (plot == null || plot.State != PlotState.Available)
+            return false;
+
+        var started = _storyGraph.StartPlotThread(plotId, _worldState.CurrentWeek);
+        if (started)
+        {
+            LogEvent("PlotStarted", $"Plot thread '{plot.Title}' has begun!", "story-system");
+        }
+        return started;
+    }
+
+    /// <summary>
+    /// Complete a plot mission. Handles plot thread progression and rewards.
+    /// </summary>
+    /// <param name="nodeId">The story node ID of the completed mission</param>
+    /// <param name="success">Whether the mission was successful</param>
+    /// <returns>A summary of the completion results</returns>
+    public PlotMissionResult CompletePlotMission(string nodeId, bool success)
+    {
+        var result = new PlotMissionResult { NodeId = nodeId, Success = success };
+
+        if (_storyGraph == null || _worldState == null)
+            return result;
+
+        var node = _storyGraph.GetNode(nodeId);
+        if (node == null || node.PlotThreadId == null)
+            return result;
+
+        var plot = _storyGraph.GetPlotThread(node.PlotThreadId);
+        if (plot == null)
+            return result;
+
+        result.PlotThreadId = plot.Id;
+        result.PlotTitle = plot.Title;
+
+        // If this is the first mission and plot is Available, activate it
+        if (plot.State == PlotState.Available && plot.CurrentMissionNodeId == nodeId)
+        {
+            StartPlotThread(plot.Id);
+        }
+
+        // Store previous state to detect completion
+        var wasCompleted = plot.State == PlotState.Completed;
+
+        // Complete the node in the story graph
+        _storyGraph.CompleteNode(nodeId, _worldState, success);
+
+        // Check if this completion finished the plot
+        if (!wasCompleted && plot.State == PlotState.Completed)
+        {
+            result.PlotCompleted = true;
+            ApplyPlotRewards(plot, result);
+        }
+        else if (!success && plot.State == PlotState.Failed)
+        {
+            result.PlotFailed = true;
+            LogEvent("PlotFailed", $"Plot thread '{plot.Title}' has failed!", "story-system");
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Apply plot completion rewards to the game state.
+    /// </summary>
+    private void ApplyPlotRewards(PlotThread plot, PlotMissionResult result)
+    {
+        // Apply respect reward
+        if (plot.RespectReward > 0)
+        {
+            _state.Reputation = Math.Min(100, _state.Reputation + plot.RespectReward);
+            result.RespectGained = plot.RespectReward;
+        }
+
+        // Apply money reward
+        if (plot.MoneyReward > 0)
+        {
+            _state.FamilyWealth += plot.MoneyReward;
+            result.MoneyGained = plot.MoneyReward;
+        }
+
+        // Call the OnCompleted callback if set
+        if (plot.OnCompleted != null && _worldState != null)
+        {
+            try
+            {
+                plot.OnCompleted(_worldState);
+            }
+            catch
+            {
+                // Callback threw - log but continue
+                LogEvent("PlotCallbackError", $"Plot '{plot.Title}' OnCompleted callback threw an exception", "story-system");
+            }
+        }
+
+        // Log the completion
+        LogEvent("PlotCompleted",
+            $"Plot thread '{plot.Title}' completed! Rewards: +{plot.RespectReward} Reputation, +${plot.MoneyReward:N0}",
+            "story-system");
+    }
+
+    /// <summary>
+    /// Get all available plot missions for the current game state.
+    /// Returns missions from both Available and Active plot threads.
+    /// </summary>
+    public IEnumerable<PlotMissionInfo> GetAvailablePlotMissions()
+    {
+        if (_storyGraph == null || _worldState == null)
+            yield break;
+
+        // Get missions from Available plots (first mission to start the plot)
+        foreach (var plot in _storyGraph.GetAvailablePlots())
+        {
+            var node = plot.CurrentMissionNodeId != null
+                ? _storyGraph.GetNode(plot.CurrentMissionNodeId)
+                : null;
+            if (node != null && node.IsUnlocked && !node.IsCompleted)
+            {
+                yield return new PlotMissionInfo
+                {
+                    NodeId = node.Id,
+                    PlotThreadId = plot.Id,
+                    PlotTitle = plot.Title,
+                    MissionTitle = node.Title,
+                    MissionDescription = node.Description,
+                    MissionType = node.Metadata.GetValueOrDefault("MissionType")?.ToString() ?? "Information",
+                    LocationId = node.LocationId,
+                    IsFirstMission = true,
+                    PlotProgress = plot.Progress,
+                    PlotState = plot.State
+                };
+            }
+        }
+
+        // Get missions from Active plots
+        foreach (var plot in _storyGraph.GetActivePlots())
+        {
+            var node = plot.CurrentMissionNodeId != null
+                ? _storyGraph.GetNode(plot.CurrentMissionNodeId)
+                : null;
+            if (node != null && node.IsUnlocked && !node.IsCompleted)
+            {
+                yield return new PlotMissionInfo
+                {
+                    NodeId = node.Id,
+                    PlotThreadId = plot.Id,
+                    PlotTitle = plot.Title,
+                    MissionTitle = node.Title,
+                    MissionDescription = node.Description,
+                    MissionType = node.Metadata.GetValueOrDefault("MissionType")?.ToString() ?? "Information",
+                    LocationId = node.LocationId,
+                    IsFirstMission = false,
+                    PlotProgress = plot.Progress,
+                    PlotState = plot.State
+                };
+            }
+        }
     }
 
     private async Task<List<string>> ProcessWeeklyCollections()

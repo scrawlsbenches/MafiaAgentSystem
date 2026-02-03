@@ -1,4 +1,5 @@
 using AgentRouting.MafiaDemo.Game;
+using AgentRouting.MafiaDemo.Story;
 using RulesEngine.Core;
 
 namespace AgentRouting.MafiaDemo.Missions;
@@ -47,6 +48,19 @@ public class Mission
     
     // Mission-specific data
     public Dictionary<string, object> Data { get; set; } = new();
+
+    // Story System Integration - optional NPC and Location references
+    /// <summary>
+    /// Optional ID of the NPC involved in this mission (from WorldState).
+    /// When set, mission outcomes affect NPC relationships.
+    /// </summary>
+    public string? NPCId { get; set; }
+
+    /// <summary>
+    /// Optional ID of the location where this mission takes place (from WorldState).
+    /// When set, mission outcomes may affect location state.
+    /// </summary>
+    public string? LocationId { get; set; }
 }
 
 public enum MissionStatus
@@ -140,20 +154,32 @@ public class PlayerPersonality
 /// </summary>
 public class MissionGenerator
 {
+    /// <summary>
+    /// Generate a mission without WorldState integration (backwards compatible).
+    /// </summary>
     public Mission GenerateMission(PlayerCharacter player, GameState gameState)
     {
+        return GenerateMission(player, gameState, null);
+    }
+
+    /// <summary>
+    /// Generate a mission with optional WorldState integration.
+    /// When WorldState is provided, missions are linked to NPCs and locations.
+    /// </summary>
+    public Mission GenerateMission(PlayerCharacter player, GameState gameState, WorldState? worldState)
+    {
         var missionType = SelectMissionType(player.Rank, gameState);
-        
+
         return missionType switch
         {
-            MissionType.Collection => GenerateCollectionMission(player),
-            MissionType.Intimidation => GenerateIntimidationMission(player),
-            MissionType.Information => GenerateInformationMission(player),
-            MissionType.Negotiation => GenerateNegotiationMission(player),
+            MissionType.Collection => GenerateCollectionMission(player, worldState),
+            MissionType.Intimidation => GenerateIntimidationMission(player, worldState),
+            MissionType.Information => GenerateInformationMission(player, worldState),
+            MissionType.Negotiation => GenerateNegotiationMission(player, worldState),
             MissionType.Hit => GenerateHitMission(player),
-            MissionType.Territory => GenerateTerritoryMission(player),
+            MissionType.Territory => GenerateTerritoryMission(player, worldState),
             MissionType.Recruitment => GenerateRecruitmentMission(player),
-            _ => GenerateCollectionMission(player)
+            _ => GenerateCollectionMission(player, worldState)
         };
     }
     
@@ -189,18 +215,43 @@ public class MissionGenerator
         return availableTypes[Random.Shared.Next(availableTypes.Count)];
     }
     
-    private Mission GenerateCollectionMission(PlayerCharacter player)
+    private Mission GenerateCollectionMission(PlayerCharacter player, WorldState? worldState = null)
     {
+        // Try to use NPC from WorldState if available
+        NPC? targetNpc = null;
+        Location? location = null;
+
+        if (worldState != null)
+        {
+            // Find business owners for collection
+            var businessOwners = worldState.NPCs.Values
+                .Where(n => n.Role is "restaurant_owner" or "baker" or "bar_owner" or "shopkeeper" or "butcher"
+                         && n.Status == NPCStatus.Active)
+                .ToList();
+
+            if (businessOwners.Count > 0)
+            {
+                targetNpc = businessOwners[Random.Shared.Next(businessOwners.Count)];
+                location = worldState.GetLocation(targetNpc.LocationId);
+            }
+        }
+
+        // Fallback to static data if no NPC available
         var businesses = new[]
         {
             "Tony's Restaurant", "Luigi's Bakery", "Marino's Deli",
             "Sal's Bar", "Vinnie's Grocery", "Angelo's Butcher Shop"
         };
 
-        var business = businesses[Random.Shared.Next(businesses.Length)];
-        var amount = Random.Shared.Next(400, 1000);
+        var business = targetNpc != null && location != null
+            ? location.Name
+            : businesses[Random.Shared.Next(businesses.Length)];
 
-        return new Mission
+        var amount = location != null
+            ? (int)location.WeeklyValue
+            : Random.Shared.Next(400, 1000);
+
+        var mission = new Mission
         {
             Title = $"Collect from {business}",
             Description = $"Go collect the weekly payment from {business}. They owe ${amount}.",
@@ -215,26 +266,93 @@ public class MissionGenerator
             {
                 ["BusinessName"] = business,
                 ["AmountOwed"] = amount
-            }
+            },
+            NPCId = targetNpc?.Id,
+            LocationId = location?.Id
         };
+
+        // Apply NPC relationship modifiers to difficulty
+        if (targetNpc != null)
+        {
+            ApplyNPCEffects(mission, targetNpc);
+        }
+
+        return mission;
+    }
+
+    /// <summary>
+    /// Apply NPC relationship effects to mission parameters.
+    /// Hostile NPCs make missions harder, allied NPCs make them easier.
+    /// </summary>
+    private void ApplyNPCEffects(Mission mission, NPC npc)
+    {
+        // Hostile NPCs (Relationship < -50) make missions harder (+10 difficulty via RiskLevel)
+        if (npc.Relationship < Thresholds.Hostile)
+        {
+            mission.RiskLevel = Math.Min(10, mission.RiskLevel + 2); // +2 risk ~ +10 difficulty
+            mission.Data["NPCHostile"] = true;
+        }
+        // Allied NPCs (Relationship > 50) make missions easier (-10 difficulty via RiskLevel)
+        else if (npc.Relationship > Thresholds.Friend)
+        {
+            mission.RiskLevel = Math.Max(1, mission.RiskLevel - 2); // -2 risk ~ -10 difficulty
+            mission.Data["NPCAllied"] = true;
+        }
+
+        // Intimidated NPCs (previously intimidated with low relationship) have +20% collection yields
+        if (mission.Type == MissionType.Collection &&
+            npc.Relationship < Thresholds.Enemy &&
+            npc.InteractionHistory.Any(h => h.Contains("intimidated")))
+        {
+            mission.MoneyReward *= 1.20m;
+            mission.Data["IntimidatedBonus"] = true;
+        }
     }
     
-    private Mission GenerateIntimidationMission(PlayerCharacter player)
+    private Mission GenerateIntimidationMission(PlayerCharacter player, WorldState? worldState = null)
     {
-        var targets = new[]
+        // Try to use NPC from WorldState if available
+        NPC? targetNpc = null;
+        Location? location = null;
+
+        if (worldState != null)
+        {
+            // Find NPCs suitable for intimidation (various roles)
+            var targets = worldState.NPCs.Values
+                .Where(n => n.Status == NPCStatus.Active && n.CanBeIntimidated)
+                .ToList();
+
+            if (targets.Count > 0)
+            {
+                targetNpc = targets[Random.Shared.Next(targets.Count)];
+                location = worldState.GetLocation(targetNpc.LocationId);
+            }
+        }
+
+        // Fallback to static data
+        var staticTargets = new[]
         {
             ("shopkeeper", "been late with payments"),
             ("dock worker", "been talking to the cops"),
             ("rival associate", "disrespected the family"),
             ("bar owner", "refused protection")
         };
-        
-        var (target, reason) = targets[Random.Shared.Next(targets.Length)];
-        
-        return new Mission
+
+        string target, reason;
+        if (targetNpc != null)
         {
-            Title = $"Send a message to the {target}",
-            Description = $"The {target} has {reason}. Make sure they understand this can't continue.",
+            target = targetNpc.DisplayName;
+            reason = targetNpc.Relationship < 0 ? "been causing problems" : "needs a reminder of who's in charge";
+        }
+        else
+        {
+            (target, reason) = staticTargets[Random.Shared.Next(staticTargets.Length)];
+        }
+
+        var mission = new Mission
+        {
+            Title = $"Send a message to {target}",
+            Description = $"{target} has {reason}. Make sure they understand this can't continue.",
             Type = MissionType.Intimidation,
             AssignedBy = "capo-001",
             MinimumRank = 0,
@@ -250,12 +368,41 @@ public class MissionGenerator
             {
                 ["Target"] = target,
                 ["Reason"] = reason
-            }
+            },
+            NPCId = targetNpc?.Id,
+            LocationId = location?.Id
         };
+
+        // Apply NPC relationship modifiers
+        if (targetNpc != null)
+        {
+            ApplyNPCEffects(mission, targetNpc);
+        }
+
+        return mission;
     }
     
-    private Mission GenerateInformationMission(PlayerCharacter player)
+    private Mission GenerateInformationMission(PlayerCharacter player, WorldState? worldState = null)
     {
+        // Try to use NPC from WorldState as information source
+        NPC? sourceNpc = null;
+        Location? location = null;
+
+        if (worldState != null)
+        {
+            // Informants or allied NPCs can be information sources
+            var sources = worldState.NPCs.Values
+                .Where(n => n.Status == NPCStatus.Active &&
+                           (n.Role == "informant" || n.Relationship > 0))
+                .ToList();
+
+            if (sources.Count > 0)
+            {
+                sourceNpc = sources[Random.Shared.Next(sources.Count)];
+                location = worldState.GetLocation(sourceNpc.LocationId);
+            }
+        }
+
         var scenarios = new[]
         {
             ("who's stealing from the docks", "find the thief and report back"),
@@ -263,10 +410,10 @@ public class MissionGenerator
             ("where the Tattaglias are hiding their money", "we might need this information later"),
             ("who's been talking to the Feds", "there's an informant somewhere")
         };
-        
+
         var (subject, goal) = scenarios[Random.Shared.Next(scenarios.Length)];
-        
-        return new Mission
+
+        var mission = new Mission
         {
             Title = $"Find out {subject}",
             Description = $"Keep your ears open and {goal}.",
@@ -284,12 +431,41 @@ public class MissionGenerator
             Data = new Dictionary<string, object>
             {
                 ["Subject"] = subject
-            }
+            },
+            NPCId = sourceNpc?.Id,
+            LocationId = location?.Id
         };
+
+        // Allied NPCs make gathering information easier
+        if (sourceNpc != null)
+        {
+            ApplyNPCEffects(mission, sourceNpc);
+        }
+
+        return mission;
     }
     
-    private Mission GenerateNegotiationMission(PlayerCharacter player)
+    private Mission GenerateNegotiationMission(PlayerCharacter player, WorldState? worldState = null)
     {
+        // Try to use NPC from WorldState for negotiation
+        NPC? targetNpc = null;
+        Location? location = null;
+
+        if (worldState != null)
+        {
+            // Business owners or neutral/friendly NPCs for negotiation
+            var targets = worldState.NPCs.Values
+                .Where(n => n.Status == NPCStatus.Active &&
+                           n.Relationship > Thresholds.Enemy) // Not deeply hostile
+                .ToList();
+
+            if (targets.Count > 0)
+            {
+                targetNpc = targets[Random.Shared.Next(targets.Count)];
+                location = worldState.GetLocation(targetNpc.LocationId);
+            }
+        }
+
         var scenarios = new[]
         {
             ("Tattaglia family", "negotiate a truce"),
@@ -297,12 +473,21 @@ public class MissionGenerator
             ("city councilman", "arrange a meeting with the Don"),
             ("business owner", "convince them to accept protection")
         };
-        
-        var (party, goal) = scenarios[Random.Shared.Next(scenarios.Length)];
-        
-        return new Mission
+
+        string party, goal;
+        if (targetNpc != null)
         {
-            Title = $"Negotiate with the {party}",
+            party = targetNpc.DisplayName;
+            goal = "reach a mutually beneficial arrangement";
+        }
+        else
+        {
+            (party, goal) = scenarios[Random.Shared.Next(scenarios.Length)];
+        }
+
+        var mission = new Mission
+        {
+            Title = $"Negotiate with {party}",
             Description = $"We need someone diplomatic to {goal}.",
             Type = MissionType.Negotiation,
             AssignedBy = "underboss-001",
@@ -319,8 +504,18 @@ public class MissionGenerator
             {
                 ["Party"] = party,
                 ["Goal"] = goal
-            }
+            },
+            NPCId = targetNpc?.Id,
+            LocationId = location?.Id
         };
+
+        // Apply NPC relationship modifiers
+        if (targetNpc != null)
+        {
+            ApplyNPCEffects(mission, targetNpc);
+        }
+
+        return mission;
     }
     
     private Mission GenerateHitMission(PlayerCharacter player)
@@ -358,17 +553,43 @@ public class MissionGenerator
         };
     }
     
-    private Mission GenerateTerritoryMission(PlayerCharacter player)
+    private Mission GenerateTerritoryMission(PlayerCharacter player, WorldState? worldState = null)
     {
+        Location? targetLocation = null;
+
+        if (worldState != null)
+        {
+            // Find contested or neutral locations for territory missions
+            var locations = worldState.Locations.Values
+                .Where(l => l.State == LocationState.Contested || l.State == LocationState.Neutral)
+                .ToList();
+
+            if (locations.Count > 0)
+            {
+                targetLocation = locations[Random.Shared.Next(locations.Count)];
+            }
+        }
+
         var scenarios = new[]
         {
             ("expand into the Bronx gambling scene", "set up new operations"),
             ("defend Little Italy from Tattaglia incursion", "show them it's our territory"),
             ("take over the Brooklyn docks", "increase our smuggling operations")
         };
-        
-        var (area, goal) = scenarios[Random.Shared.Next(scenarios.Length)];
-        
+
+        string area, goal;
+        if (targetLocation != null)
+        {
+            area = $"the {targetLocation.Name} area";
+            goal = targetLocation.State == LocationState.Contested
+                ? "establish control"
+                : "expand our influence";
+        }
+        else
+        {
+            (area, goal) = scenarios[Random.Shared.Next(scenarios.Length)];
+        }
+
         return new Mission
         {
             Title = $"Territory: {area}",
@@ -389,7 +610,8 @@ public class MissionGenerator
             {
                 ["Area"] = area,
                 ["Goal"] = goal
-            }
+            },
+            LocationId = targetLocation?.Id
         };
     }
     
@@ -632,4 +854,111 @@ public class MissionResult
     public int HeatGained { get; set; }
     public string Message { get; set; } = "";
     public Dictionary<string, int> SkillGains { get; set; } = new();
+}
+
+/// <summary>
+/// Handles applying mission consequences to the world state.
+/// Updates NPC relationships based on mission outcomes.
+/// </summary>
+public static class MissionConsequenceHandler
+{
+    /// <summary>
+    /// Relationship change values per mission type.
+    /// Positive values improve relationship, negative values worsen it.
+    /// </summary>
+    private static readonly Dictionary<MissionType, (int Success, int Failure)> RelationshipChanges = new()
+    {
+        // Collection: -5 (resentment for taking money)
+        [MissionType.Collection] = (-5, -3),
+
+        // Intimidation success: -20 (fear), failure: -10 (contempt)
+        [MissionType.Intimidation] = (-20, -10),
+
+        // Negotiation: +15 (respect through diplomacy)
+        [MissionType.Negotiation] = (15, 5),
+
+        // Information: +5 (trust if paid for info)
+        [MissionType.Information] = (5, 0),
+
+        // Other mission types with default changes
+        [MissionType.Hit] = (-30, -15),
+        [MissionType.Territory] = (0, -5),
+        [MissionType.Recruitment] = (10, 0)
+    };
+
+    /// <summary>
+    /// Apply mission consequences to the world state.
+    /// Updates NPC relationships and records interaction history.
+    /// </summary>
+    /// <param name="mission">The completed mission</param>
+    /// <param name="result">The mission result</param>
+    /// <param name="worldState">The world state to update</param>
+    /// <returns>A description of the consequences applied, or null if no NPC was affected</returns>
+    public static string? ApplyMissionConsequences(Mission mission, MissionResult result, WorldState? worldState)
+    {
+        if (worldState == null || string.IsNullOrEmpty(mission.NPCId))
+        {
+            return null;
+        }
+
+        var npc = worldState.GetNPC(mission.NPCId);
+        if (npc == null)
+        {
+            return null;
+        }
+
+        // Get relationship change for this mission type
+        var (successChange, failureChange) = RelationshipChanges.GetValueOrDefault(
+            mission.Type,
+            (0, 0) // Default: no change
+        );
+
+        var relationshipChange = result.Success ? successChange : failureChange;
+
+        // Apply the relationship change
+        var oldRelationship = npc.Relationship;
+        npc.Relationship = Math.Clamp(npc.Relationship + relationshipChange, -100, 100);
+
+        // Update NPC interaction history
+        npc.LastInteractionWeek = worldState.CurrentWeek;
+        npc.TotalInteractions++;
+        npc.LastMissionId = mission.Id;
+
+        // Record what happened in the interaction history
+        var historyEntry = result.Success
+            ? $"Week {worldState.CurrentWeek}: {mission.Type} mission completed successfully"
+            : $"Week {worldState.CurrentWeek}: {mission.Type} mission failed";
+
+        // Special history entries for intimidation
+        if (mission.Type == MissionType.Intimidation && result.Success)
+        {
+            historyEntry = $"Week {worldState.CurrentWeek}: intimidated by player";
+        }
+
+        npc.InteractionHistory.Add(historyEntry);
+
+        // Update NPC status based on new relationship
+        UpdateNPCStatus(npc);
+
+        // Build consequence description
+        var direction = relationshipChange > 0 ? "improved" : (relationshipChange < 0 ? "worsened" : "unchanged");
+        return $"{npc.Name}'s relationship {direction} ({oldRelationship} -> {npc.Relationship})";
+    }
+
+    /// <summary>
+    /// Update NPC status based on their current relationship level.
+    /// </summary>
+    private static void UpdateNPCStatus(NPC npc)
+    {
+        // Very hostile NPCs become hostile in status
+        if (npc.Relationship < Thresholds.DeepEnemy && npc.Status == NPCStatus.Active)
+        {
+            npc.Status = NPCStatus.Hostile;
+        }
+        // Hostile NPCs can calm down if relationship improves
+        else if (npc.Relationship > Thresholds.Hostile && npc.Status == NPCStatus.Hostile)
+        {
+            npc.Status = NPCStatus.Active;
+        }
+    }
 }

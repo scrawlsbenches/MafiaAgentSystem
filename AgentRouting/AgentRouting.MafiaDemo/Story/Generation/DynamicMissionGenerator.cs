@@ -101,6 +101,7 @@ public class DynamicMissionGenerator
 
     private IEnumerable<MissionCandidate> GetPlotMissions()
     {
+        // Get missions from Active plots
         foreach (var plot in _graph.GetActivePlots())
         {
             if (plot.CurrentMissionNodeId != null)
@@ -119,6 +120,30 @@ public class DynamicMissionGenerator
                         NPCId = node.NPCId,
                         PlotThreadId = plot.Id,
                         Priority = plot.Priority + 20  // Plot missions get bonus
+                    };
+                }
+            }
+        }
+
+        // Also get first missions from Available plots (not yet started)
+        foreach (var plot in _graph.GetAvailablePlots())
+        {
+            if (plot.CurrentMissionNodeId != null)
+            {
+                var node = _graph.GetNode(plot.CurrentMissionNodeId);
+                if (node != null && node.IsUnlocked && !node.IsCompleted)
+                {
+                    yield return new MissionCandidate
+                    {
+                        Source = MissionSource.PlotThread,
+                        NodeId = node.Id,
+                        MissionType = node.Metadata.GetValueOrDefault("MissionType")?.ToString() ?? "Information",
+                        Title = $"[{plot.Title}] {node.Title}",
+                        Description = $"{node.Description} (Start this plot thread!)",
+                        LocationId = node.LocationId,
+                        NPCId = node.NPCId,
+                        PlotThreadId = plot.Id,
+                        Priority = plot.Priority + 10  // Available plots get smaller bonus than active
                     };
                 }
             }
