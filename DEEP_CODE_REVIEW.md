@@ -17,7 +17,7 @@ The MafiaAgentSystem is a well-architected codebase with two complementary syste
 - Thread-safe rule engine implementation with proper locking
 - Comprehensive middleware pipeline supporting cross-cutting concerns
 - Zero external dependencies (custom test framework, no NuGet)
-- Good test coverage (184+ tests) with concurrency tests
+- Good test coverage (~1905 tests) with concurrency tests
 - **Recent fixes** (Batches A-D): CircuitBreaker state machine, CachingMiddleware request coalescing, AgentBase atomic slot acquisition, AgentRouter pipeline caching, agent rule actions, game economy balancing
 
 ### New Features (Discovered in Review)
@@ -563,22 +563,24 @@ The following documentation updates are recommended based on this review:
 
 ### CLAUDE.md Updates
 
-| Section | Update Needed |
-|---------|---------------|
-| Coverage Stats | Update date from 2026-02-02 to current; verify actual coverage numbers |
-| RulesEngine API | Add documentation for `RuleBuilder<T>`, `CompositeRuleBuilder<T>`, `ImmutableRulesEngine<T>` |
-| RulesEngineOptions | Document `StopOnFirstMatch` option and behavior |
-| File Locations | Add `RuleBuilder.cs`, mention `ImmutableRulesEngine<T>` at end of `RulesEngineCore.cs` |
-| Test Count | Update from "39 tests" to "184+ tests" |
+| Section | Update Needed | Status |
+|---------|---------------|--------|
+| Coverage Stats | Updated to include test count (~1905 tests) | ✅ Done |
+| File Locations | Added IResults.cs, IMiddlewareTypes.cs, ServiceExtensions.cs | ✅ Done |
+| Key Interfaces | Added IRuleResult, IRulesEngineResult, ITraceSpan, etc. | ✅ Done |
+| Test Project Structure | Added TestUtilities project | ✅ Done |
+| RulesEngine API | Already documented in existing content | ✅ OK |
+| RulesEngineOptions | Already documented in existing content | ✅ OK |
 
 ### README.md Updates
 
-| Section | Update Needed |
-|---------|---------------|
-| Class Diagrams | Add `ImmutableRulesEngine<T>`, `RuleBuilder<T>` to diagrams |
-| MafiaDemo Scale | Update to "8 rule engine instances with ~98 rules" |
-| Roadmap | Update phase status (Phase 1/2/3 should reflect actual completion) |
-| Key Features | Add StopOnFirstMatch, RuleBuilder, metrics persistence |
+| Section | Update Needed | Status |
+|---------|---------------|--------|
+| Test Count | Updated to ~1905 tests | ✅ Done |
+| Batch Status | Updated Batch E to Complete, F to Current | ✅ Done |
+| Remaining Work | Updated to reflect completed E tasks | ✅ Done |
+| Class Diagrams | Already includes ImmutableRulesEngine<T> | ✅ OK |
+| MafiaDemo Scale | Already shows "8 rule engine instances with ~98 rules" | ✅ OK |
 
 ### MafiaDemo Documentation
 

@@ -143,7 +143,7 @@ dotnet exec tools/coverage/coverlet/tools/net6.0/any/coverlet.console.dll \
 | LCOV | `-f lcov` | IDE integration, line highlighting |
 | JSON | `-f json` | Programmatic analysis |
 
-### Current Coverage (as of 2026-02-02)
+### Current Coverage (as of 2026-02-02, ~1905 tests)
 
 | Module | Line | Branch | Method |
 |--------|------|--------|--------|
@@ -158,13 +158,14 @@ The TestRunner is decoupled from the code under test:
 ```
 Tests/
 ├── TestRunner/              # Test host (loads assemblies at runtime)
-├── TestRunner.Framework/    # Shared framework (Assert, [Test], [Theory])
+├── TestRunner.Framework/    # Shared framework (Assert, [Test], [Theory], lifecycle)
+├── TestUtilities/           # Shared test helpers (TestClocks, TestAgents, etc.)
 ├── RulesEngine.Tests/       # Tests for RulesEngine
 ├── AgentRouting.Tests/      # Tests for AgentRouting
 └── MafiaDemo.Tests/         # Tests for MafiaDemo
 ```
 
-Each test project references only `TestRunner.Framework` and its target assembly.
+Each test project references `TestRunner.Framework`, `TestUtilities`, and its target assembly.
 
 ## Architecture
 
@@ -221,13 +222,15 @@ RulesEngine/
 ├── IRulesEngine<T>       # Main engine contract
 ├── IRule<T>              # Sync rule contract
 ├── IAsyncRule<T>         # Async rule contract (for I/O operations)
+├── IRulesEngineResult    # Aggregated execution results (in IResults.cs)
+├── IRuleResult           # Individual rule result (in IResults.cs)
+├── IRuleExecutionResult<T> # Detailed result with exception (in IResults.cs)
 ├── RulesEngineCore<T>    # Thread-safe implementation
 ├── ImmutableRulesEngine<T> # Lock-free immutable alternative
 ├── RuleBuilder<T>        # Fluent sync rule builder
 ├── AsyncRuleBuilder<T>   # Fluent async rule builder
 ├── CompositeRuleBuilder<T> # Combine existing rules
-├── RuleValidationException # Thrown on invalid rule registration
-└── RuleExecutionResult<T>  # Detailed execution result with exception info
+└── RuleValidationException # Thrown on invalid rule registration
 
 AgentRouting/
 ├── IAgent             # Agent contract
@@ -237,6 +240,12 @@ AgentRouting/
 ├── IStateStore        # State persistence abstraction
 ├── ISystemClock       # Testable time abstraction
 ├── IServiceContainer  # Dependency injection contract
+├── ITraceSpan         # Distributed tracing (in IMiddlewareTypes.cs)
+├── IMiddlewareContext # Middleware data sharing (in IMiddlewareTypes.cs)
+├── IMetricsSnapshot   # Metrics reporting (in IMiddlewareTypes.cs)
+├── IAnalyticsReport   # Analytics reporting (in IMiddlewareTypes.cs)
+├── IWorkflowDefinition # Workflow orchestration (in IMiddlewareTypes.cs)
+├── IWorkflowStage     # Workflow stages (in IMiddlewareTypes.cs)
 ├── AgentRouter        # Depends on IAgent abstraction
 └── MiddlewarePipeline # Composes IAgentMiddleware
 ```
@@ -245,6 +254,7 @@ AgentRouting/
 
 - **Rules Core**: `RulesEngine/RulesEngine/Core/`
   - `IRulesEngine.cs`, `IRule.cs` - Core interfaces
+  - `IResults.cs` - Result interfaces (`IRuleResult`, `IRulesEngineResult`, `IRuleExecutionResult<T>`)
   - `RulesEngineCore.cs` - Main engine (includes `ImmutableRulesEngine<T>` at end)
   - `Rule.cs` - Sync rule implementation
   - `AsyncRule.cs` - Async rule implementation
@@ -254,11 +264,21 @@ AgentRouting/
 - **Rules Enhanced**: `RulesEngine/RulesEngine/Enhanced/`
   - `RuleValidation.cs` - Rule validator, analyzer, debuggable rules
 - **Agents**: `AgentRouting/AgentRouting/Core/`
+  - `Agent.cs` - `IAgent`, `AgentBase` with atomic slot acquisition
+  - `AgentRouter.cs` - Message routing with middleware pipeline
+  - `AgentRouterBuilder.cs` - Fluent router configuration
 - **Middleware**: `AgentRouting/AgentRouting/Middleware/`
+  - `CommonMiddleware.cs` - Core middleware (Logging, Validation, RateLimit, Caching, CircuitBreaker)
+  - `AdvancedMiddleware.cs` - Advanced middleware (Tracing, A/B Testing, Workflow, etc.)
+  - `MiddlewareInfrastructure.cs` - `IAgentMiddleware`, `MiddlewarePipeline`, `MiddlewareContext`
+  - `IMiddlewareTypes.cs` - Extracted interfaces (`ITraceSpan`, `IMiddlewareContext`, `IMetricsSnapshot`, etc.)
 - **Configuration**: `AgentRouting/AgentRouting/Configuration/` (defaults)
 - **Infrastructure**: `AgentRouting/AgentRouting/Infrastructure/` (SystemClock, StateStore)
-- **Dependency Injection**: `AgentRouting/AgentRouting/DependencyInjection/` (ServiceContainer)
-- **Test Framework**: `Tests/TestRunner.Framework/` (Assert, attributes, TestBase)
+- **Dependency Injection**: `AgentRouting/AgentRouting/DependencyInjection/`
+  - `ServiceContainer.cs` - Custom IoC container
+  - `ServiceExtensions.cs` - Registration extensions (`AddAgentRouting`, `AddMiddleware<T>`, etc.)
+- **Test Framework**: `Tests/TestRunner.Framework/` (Assert, attributes, TestBase, lifecycle)
+- **Test Utilities**: `Tests/TestUtilities/` (TestClocks, TestAgents, TestMiddleware, etc.)
 - **Test Runner**: `Tests/TestRunner/` (runtime assembly loading)
 - **RulesEngine Tests**: `Tests/RulesEngine.Tests/`
 - **AgentRouting Tests**: `Tests/AgentRouting.Tests/`
