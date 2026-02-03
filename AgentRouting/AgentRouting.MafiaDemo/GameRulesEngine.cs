@@ -62,7 +62,9 @@ public class AgentDecisionContext
     /// </summary>
     public string RecommendedAction { get; set; } = "wait";
 
-    // Helper properties
+    // =========================================================================
+    // PERSONALITY TRAITS
+    // =========================================================================
     public bool IsAggressive => Aggression > 70;
     public bool IsGreedy => Greed > 70;
     public bool IsAmbitious => Ambition > 70;
@@ -70,14 +72,108 @@ public class AgentDecisionContext
     public bool IsHotHeaded => Aggression > 80 && Loyalty < 60;
     public bool IsCalculating => Aggression < 40 && Ambition > 60;
     public bool IsFamilyFirst => Loyalty > 90 && Greed < 50;
+    public bool IsCautious => Aggression < 30 && Loyalty > 70;
 
-    // Contextual
+    // =========================================================================
+    // BASIC CONTEXTUAL PROPERTIES
+    // =========================================================================
     public bool FamilyNeedsMoney => GameState.FamilyWealth < 100000;
     public bool FamilyUnderThreat => GameState.HeatLevel > 60 ||
                                      GameState.RivalFamilies.Values.Any(r => r.Hostility > 80);
     public bool CanTakeRisks => GameState.FamilyWealth > 150000 && GameState.HeatLevel < 50;
     public bool NeedsMoreSoldiers => GameState.SoldierCount < 15;
     public bool CanAffordBribe => GameState.FamilyWealth > 50000 && GameState.HeatLevel > 40;
+
+    // =========================================================================
+    // STRATEGIC PROPERTIES - Phase-based decision making
+    // =========================================================================
+
+    /// <summary>Current economic phase of the game</summary>
+    public GamePhase Phase => GameState.CurrentPhase;
+
+    /// <summary>In survival mode - prioritize income and safety</summary>
+    public bool InSurvivalMode => Phase == GamePhase.Survival;
+
+    /// <summary>In accumulation mode - build resources carefully</summary>
+    public bool InAccumulationMode => Phase == GamePhase.Accumulation;
+
+    /// <summary>In growth mode - can afford to expand</summary>
+    public bool InGrowthMode => Phase == GamePhase.Growth;
+
+    /// <summary>In dominance mode - can dominate rivals</summary>
+    public bool InDominanceMode => Phase == GamePhase.Dominance;
+
+    // =========================================================================
+    // HEAT MANAGEMENT STRATEGIES
+    // =========================================================================
+
+    /// <summary>Heat is at dangerous levels (above 70)</summary>
+    public bool HeatIsDangerous => GameState.HeatLevel > 70;
+
+    /// <summary>Heat is critical (above 85) - need emergency measures</summary>
+    public bool HeatIsCritical => GameState.HeatLevel > 85;
+
+    /// <summary>Heat has been rising recently</summary>
+    public bool HeatIsRising => GameState.HeatIsRising;
+
+    /// <summary>Heat has been falling recently</summary>
+    public bool HeatIsFalling => GameState.HeatIsFalling;
+
+    /// <summary>Safe to take heat-generating actions</summary>
+    public bool HasHeatBudget => GameState.HeatLevel < 40;
+
+    /// <summary>Must take action to reduce heat</summary>
+    public bool NeedsHeatReduction => GameState.HeatLevel > 50 && GameState.HeatIsRising;
+
+    // =========================================================================
+    // RIVAL ASSESSMENT
+    // =========================================================================
+
+    /// <summary>There's a weak rival that can be attacked</summary>
+    public bool RivalIsWeak => GameState.WeakestRival?.Strength < 40;
+
+    /// <summary>A rival is threatening (high hostility and strong)</summary>
+    public bool RivalIsThreatening => GameState.MostHostileRival != null &&
+                                      GameState.MostHostileRival.Hostility > 70 &&
+                                      GameState.MostHostileRival.Strength > 60;
+
+    /// <summary>A rival is about to attack (very high hostility)</summary>
+    public bool RivalAttackImminent => GameState.MostHostileRival?.Hostility > 85;
+
+    /// <summary>All rivals are relatively peaceful</summary>
+    public bool RivalsArePeaceful => !GameState.RivalFamilies.Values.Any(r => r.Hostility > 50);
+
+    // =========================================================================
+    // ECONOMIC STRATEGIES
+    // =========================================================================
+
+    /// <summary>Should conserve resources (shrinking wealth or low funds)</summary>
+    public bool ShouldConserve => GameState.WealthIsShrinking || InSurvivalMode;
+
+    /// <summary>Can afford expensive operations</summary>
+    public bool CanAffordExpensive => GameState.FamilyWealth > 200000 && !ShouldConserve;
+
+    /// <summary>Good conditions for expansion (growing wealth, low heat)</summary>
+    public bool GoodTimeToExpand => GameState.WealthIsGrowing && HasHeatBudget && !RivalIsThreatening;
+
+    /// <summary>Expected value: Is it worth taking an action that generates heat?</summary>
+    public bool HeatRiskWorthIt => CanTakeRisks && (InGrowthMode || InDominanceMode);
+
+    // =========================================================================
+    // STRATEGIC COMBINATIONS
+    // =========================================================================
+
+    /// <summary>Perfect storm: strong position, weak rival, capacity to strike</summary>
+    public bool OpportunisticStrike => InDominanceMode && RivalIsWeak && HasHeatBudget;
+
+    /// <summary>Emergency: must reduce heat immediately or face game over</summary>
+    public bool EmergencyLayLow => HeatIsCritical || (HeatIsDangerous && HeatIsRising);
+
+    /// <summary>Defensive posture: under threat, need to protect family</summary>
+    public bool DefensivePosture => (RivalIsThreatening || HeatIsDangerous) && !InDominanceMode;
+
+    /// <summary>Aggressive expansion opportunity</summary>
+    public bool AggressiveOpportunity => GoodTimeToExpand && IsAmbitious && InGrowthMode;
 }
 
 /// <summary>
@@ -421,81 +517,213 @@ public class GameRulesEngine
     }
 
     // =========================================================================
-    // AGENT RULES - AI decision-making
+    // AGENT RULES - AI decision-making with strategic awareness
     // =========================================================================
 
     private void SetupAgentRules()
     {
-        // Loyal agents protect family when heat is high (highest priority)
+        // =====================================================================
+        // EMERGENCY RULES - Highest priority, override everything
+        // =====================================================================
+
+        // CRITICAL: Emergency lay low when heat is about to cause game over
+        _agentRules.AddRule(
+            "EMERGENCY_LAYLOW",
+            "Emergency Heat Reduction",
+            ctx => ctx.EmergencyLayLow,
+            ctx => { ctx.RecommendedAction = "laylow"; },
+            priority: 1000
+        );
+
+        // CRITICAL: Emergency bribe when we can afford it and heat is critical
+        _agentRules.AddRule(
+            "EMERGENCY_BRIBE",
+            "Emergency Bribery",
+            ctx => ctx.HeatIsCritical && ctx.GameState.FamilyWealth > 15000,
+            ctx => { ctx.RecommendedAction = "bribe"; },
+            priority: 995
+        );
+
+        // =====================================================================
+        // PHASE-BASED STRATEGIC RULES - Adapt to economic situation
+        // =====================================================================
+
+        // Survival mode: Focus on safe income generation
+        _agentRules.AddRule(
+            "SURVIVAL_COLLECTION",
+            "Survival Mode Collection",
+            ctx => ctx.InSurvivalMode && !ctx.HeatIsDangerous,
+            ctx => { ctx.RecommendedAction = "collection"; },
+            priority: 980
+        );
+
+        // Survival mode: Lay low if heat is building
+        _agentRules.AddRule(
+            "SURVIVAL_LAYLOW",
+            "Survival Mode Safety",
+            ctx => ctx.InSurvivalMode && ctx.NeedsHeatReduction,
+            ctx => { ctx.RecommendedAction = "laylow"; },
+            priority: 985
+        );
+
+        // Dominance mode: Opportunistic strikes against weak rivals
+        _agentRules.AddRule(
+            "DOMINANCE_STRIKE",
+            "Dominance Opportunistic Strike",
+            ctx => ctx.OpportunisticStrike && ctx.IsAggressive,
+            ctx => { ctx.RecommendedAction = "intimidate"; },
+            priority: 920
+        );
+
+        // Growth mode: Aggressive expansion when conditions are right
+        _agentRules.AddRule(
+            "GROWTH_EXPAND",
+            "Growth Phase Expansion",
+            ctx => ctx.AggressiveOpportunity,
+            ctx => { ctx.RecommendedAction = "expand"; },
+            priority: 910
+        );
+
+        // =====================================================================
+        // DEFENSIVE RULES - React to threats
+        // =====================================================================
+
+        // Defensive: Lay low when under threat and not dominant
+        _agentRules.AddRule(
+            "DEFENSIVE_LAYLOW",
+            "Defensive Posture",
+            ctx => ctx.DefensivePosture && ctx.IsCautious,
+            ctx => { ctx.RecommendedAction = "laylow"; },
+            priority: 900
+        );
+
+        // Defensive: Bribe to reduce heat when affordable
+        _agentRules.AddRule(
+            "DEFENSIVE_BRIBE",
+            "Defensive Bribery",
+            ctx => ctx.NeedsHeatReduction && ctx.CanAffordBribe,
+            ctx => { ctx.RecommendedAction = "bribe"; },
+            priority: 895
+        );
+
+        // Defensive: Recruit soldiers when rival attack is imminent
+        _agentRules.AddRule(
+            "DEFENSIVE_RECRUIT",
+            "Defensive Recruitment",
+            ctx => ctx.RivalAttackImminent && ctx.NeedsMoreSoldiers && ctx.GameState.FamilyWealth > 10000,
+            ctx => { ctx.RecommendedAction = "recruit"; },
+            priority: 890
+        );
+
+        // =====================================================================
+        // PERSONALITY-DRIVEN RULES - Agent character affects decisions
+        // =====================================================================
+
+        // Loyal agents protect family when heat is high
         _agentRules.AddRule(
             "LOYAL_PROTECT",
             "Family Protection",
-            ctx => ctx.IsFamilyFirst && ctx.GameState.HeatLevel > 60,
+            ctx => ctx.IsFamilyFirst && ctx.HeatIsDangerous,
             ctx => { ctx.RecommendedAction = "laylow"; },
-            priority: 950
+            priority: 850
         );
 
         // Greedy agents prioritize money when family needs it
         _agentRules.AddRule(
             "GREEDY_COLLECTION",
             "Greedy Agent Collection",
-            ctx => ctx.IsGreedy && ctx.FamilyNeedsMoney,
+            ctx => ctx.IsGreedy && ctx.FamilyNeedsMoney && !ctx.HeatIsDangerous,
             ctx => { ctx.RecommendedAction = "collection"; },
-            priority: 900
+            priority: 800
         );
 
-        // Aggressive agents retaliate when family is threatened
+        // Aggressive agents retaliate when family is threatened (but not at critical heat)
         _agentRules.AddRule(
             "AGGRESSIVE_RETALIATE",
             "Aggressive Retaliation",
-            ctx => ctx.IsAggressive && ctx.FamilyUnderThreat,
+            ctx => ctx.IsAggressive && ctx.FamilyUnderThreat && !ctx.HeatIsCritical,
             ctx => { ctx.RecommendedAction = "intimidate"; },
-            priority: 850
+            priority: 750
         );
 
         // Hot-headed agents act impulsively when they can take risks
         _agentRules.AddRule(
             "HOTHEADED_VIOLENCE",
             "Hot-headed Violence",
-            ctx => ctx.IsHotHeaded && ctx.CanTakeRisks,
+            ctx => ctx.IsHotHeaded && ctx.HeatRiskWorthIt,
             ctx => { ctx.RecommendedAction = "intimidate"; },
-            priority: 800
+            priority: 700
         );
 
-        // Ambitious agents expand when financially able
+        // Ambitious agents expand when in growth mode
         _agentRules.AddRule(
             "AMBITIOUS_EXPAND",
             "Ambitious Expansion",
-            ctx => ctx.IsAmbitious && ctx.GameState.FamilyWealth > 100000,
+            ctx => ctx.IsAmbitious && ctx.GoodTimeToExpand && ctx.GameState.FamilyWealth > 100000,
             ctx => { ctx.RecommendedAction = "expand"; },
-            priority: 750
+            priority: 650
         );
 
         // Ambitious agents recruit when needing more soldiers
         _agentRules.AddRule(
             "AMBITIOUS_RECRUIT",
             "Ambitious Recruitment",
-            ctx => ctx.IsAmbitious && ctx.NeedsMoreSoldiers && ctx.GameState.FamilyWealth > 50000,
+            ctx => ctx.IsAmbitious && ctx.NeedsMoreSoldiers && !ctx.ShouldConserve && ctx.GameState.FamilyWealth > 50000,
             ctx => { ctx.RecommendedAction = "recruit"; },
-            priority: 725
+            priority: 625
         );
 
-        // Calculating agents bribe officials when heat is high
+        // Calculating agents bribe strategically
         _agentRules.AddRule(
             "CALCULATING_BRIBE",
             "Strategic Bribe",
-            ctx => ctx.IsCalculating && ctx.CanAffordBribe,
+            ctx => ctx.IsCalculating && ctx.CanAffordBribe && ctx.HeatIsRising,
             ctx => { ctx.RecommendedAction = "bribe"; },
-            priority: 700
+            priority: 600
         );
 
-        // Calculating agents make strategic collections on schedule
+        // Calculating agents make strategic collections when rivals are peaceful
         _agentRules.AddRule(
             "CALCULATING_STRATEGY",
             "Strategic Planning",
-            ctx => ctx.IsCalculating && ctx.GameState.Week % 3 == 0,
+            ctx => ctx.IsCalculating && ctx.RivalsArePeaceful && ctx.HasHeatBudget,
             ctx => { ctx.RecommendedAction = "collection"; },
-            priority: 650
+            priority: 550
+        );
+
+        // =====================================================================
+        // OPPORTUNISTIC RULES - Take advantage of good situations
+        // =====================================================================
+
+        // Peaceful times: safe to collect
+        _agentRules.AddRule(
+            "OPPORTUNISTIC_COLLECTION",
+            "Opportunistic Collection",
+            ctx => ctx.RivalsArePeaceful && ctx.HasHeatBudget && ctx.HeatIsFalling,
+            ctx => { ctx.RecommendedAction = "collection"; },
+            priority: 400
+        );
+
+        // Wealthy and stable: expand operations
+        _agentRules.AddRule(
+            "OPPORTUNISTIC_EXPAND",
+            "Opportunistic Expansion",
+            ctx => ctx.CanAffordExpensive && ctx.HasHeatBudget && !ctx.RivalIsThreatening,
+            ctx => { ctx.RecommendedAction = "expand"; },
+            priority: 350
+        );
+
+        // =====================================================================
+        // DEFAULT RULES - Fallback behavior
+        // =====================================================================
+
+        // Accumulation phase default: focus on collection
+        _agentRules.AddRule(
+            "DEFAULT_ACCUMULATION",
+            "Default Accumulation",
+            ctx => ctx.InAccumulationMode && !ctx.HeatIsDangerous,
+            ctx => { ctx.RecommendedAction = "collection"; },
+            priority: 100
         );
 
         // Default: cautious wait

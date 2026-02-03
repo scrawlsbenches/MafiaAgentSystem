@@ -7,6 +7,21 @@ using System.Text;
 namespace AgentRouting.MafiaDemo.Game;
 
 /// <summary>
+/// Economic game phases - determines strategic priorities
+/// </summary>
+public enum GamePhase
+{
+    /// <summary>Wealth below 50k - focus on survival and income</summary>
+    Survival,
+    /// <summary>Wealth 50k-150k - build up resources safely</summary>
+    Accumulation,
+    /// <summary>Wealth 150k-400k - expand operations</summary>
+    Growth,
+    /// <summary>Wealth over 400k - dominate rivals</summary>
+    Dominance
+}
+
+/// <summary>
 /// Game state tracking resources, territories, and family status
 /// </summary>
 public class GameState
@@ -30,6 +45,33 @@ public class GameState
     public int SoldierCount { get; set; } = 5;
     public decimal TotalRevenue => Territories.Values.Sum(t => t.WeeklyRevenue);
     public int TerritoryCount => Territories.Count;
+
+    // Trend tracking for strategic decisions
+    public int PreviousHeatLevel { get; set; } = 0;
+    public decimal PreviousWealth { get; set; } = 100000m;
+
+    // Computed strategic properties
+    public GamePhase CurrentPhase => FamilyWealth switch
+    {
+        < 50000m => GamePhase.Survival,
+        < 150000m => GamePhase.Accumulation,
+        < 400000m => GamePhase.Growth,
+        _ => GamePhase.Dominance
+    };
+
+    public bool HeatIsRising => HeatLevel > PreviousHeatLevel + 5;
+    public bool HeatIsFalling => HeatLevel < PreviousHeatLevel - 5;
+    public bool WealthIsGrowing => FamilyWealth > PreviousWealth * 1.05m;
+    public bool WealthIsShrinking => FamilyWealth < PreviousWealth * 0.95m;
+
+    // Find the most threatening rival
+    public RivalFamily? MostHostileRival => RivalFamilies.Values
+        .OrderByDescending(r => r.Hostility)
+        .FirstOrDefault();
+
+    public RivalFamily? WeakestRival => RivalFamilies.Values
+        .OrderBy(r => r.Strength)
+        .FirstOrDefault();
 }
 
 /// <summary>
@@ -350,8 +392,13 @@ public class MafiaGameEngine
     {
         var turnEvents = new List<string>();
 
+        // Track previous state for trend detection
+        _state.PreviousHeatLevel = _state.HeatLevel;
+        _state.PreviousWealth = _state.FamilyWealth;
+
         turnEvents.Add($"\n╔══════════════════════════════════════════════════════════════╗");
         turnEvents.Add($"║  📅 WEEK {_state.Week} - Corleone Family Operations          ║");
+        turnEvents.Add($"║  📊 Phase: {_state.CurrentPhase,-15}                         ║");
         turnEvents.Add($"╚══════════════════════════════════════════════════════════════╝\n");
 
         // 1. Weekly collections
