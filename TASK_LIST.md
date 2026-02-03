@@ -1,7 +1,7 @@
 # MafiaAgentSystem Task List
 
 > **Generated**: 2026-01-31
-> **Last Updated**: 2026-02-03 (Batch I: NEW - Dynamic Story System)
+> **Last Updated**: 2026-02-03 (Batch I: Story System Integration)
 > **Approach**: Layered batches to minimize churn
 > **Constraint**: All tasks are 2-4 hours, none exceeding 1 day
 
@@ -23,8 +23,8 @@ Previous organization grouped by *category* (thread safety, MafiaDemo, tests), w
 │ Layer F: POLISH (last)                                  │
 │   Documentation, code cleanup                           │
 ├─────────────────────────────────────────────────────────┤
-│ Layer I: DYNAMIC STORY SYSTEM            🆕 NEW        │
-│   Story graph, world state, agent intel, consequences   │
+│ Layer I: STORY SYSTEM INTEGRATION        🔄 IN PROGRESS │
+│   GameState↔WorldState sync, NPC relationships, plots   │
 ├─────────────────────────────────────────────────────────┤
 │ Layer H: CODE REVIEW BUG FIXES          ✅ COMPLETE    │
 │   Heat balance, event timing, null safety, defeat logic │
@@ -62,7 +62,7 @@ Previous organization grouped by *category* (thread safety, MafiaDemo, tests), w
 | **E** | Enhancement | :white_check_mark: **COMPLETE** | 15 tasks | 35-47 |
 | **G** | Critical Integration | :white_check_mark: **COMPLETE** | 5 tasks | 11-16 |
 | **H** | Code Review Bug Fixes | :white_check_mark: **COMPLETE** | 14 tasks | 20-30 |
-| **I** | **Dynamic Story System** | :hourglass: **NEW** | 12 tasks | 28-40 |
+| **I** | **Story System Integration** | :hourglass: **IN PROGRESS** | 18 tasks | 36-52 |
 | **F** | Polish | :hourglass: Pending | 9 tasks remaining | 18-26 |
 | | | **TOTAL** | **70 tasks** | **142-201** |
 
@@ -760,503 +760,368 @@ Updated `AgentDecisionContext` in RuleContexts.cs to use these safe helpers.
 
 ---
 
-## Batch I: Dynamic Story System
+## Batch I: Story System Integration
 
 > **Prerequisite**: Batch H complete (stable game mechanics)
-> **Why now**: Transforms static missions into emergent narrative through world state, agent intelligence, and consequence chains.
+> **Status**: Story System IMPLEMENTED, now needs INTEGRATION with MafiaDemo game
+> **Design Review**: See `AgentRouting.MafiaDemo/Story/GAME_REVIEW.md`
 
 ### Overview
 
-The current mission system picks randomly from static templates, causing repetitive gameplay. This batch introduces a **Story Graph** that tracks world state, enabling:
+The Story System has been fully implemented in `AgentRouting.MafiaDemo/Story/` with:
 
-- **Dynamic missions** constrained by location/NPC state
-- **Compounding narratives** where actions have lasting consequences
-- **Agent intelligence sharing** through the existing AgentRouter
-- **Backtracking** to locations with changed context
+- **World State Layer**: Location, NPC, Faction, WorldState
+- **Narrative Layer**: StoryNode, StoryGraph, StoryEvent, PlotThread
+- **Intelligence Layer**: Intel, IntelRegistry
+- **Agent Layer**: Persona, Memory, EntityMind
+- **Communication Layer**: AgentQuestion, AgentResponse, ConversationContext
+- **Rules Layer**: 5 rule setup files (Conversation, Evolution, Triggers, Memory, Consequences)
+- **Engine Layer**: RulesBasedConversationEngine, DynamicMissionGenerator
+- **Seeding Layer**: WorldStateSeeder
 
-### Architecture
+**This batch focuses on INTEGRATING these systems with the existing MafiaDemo game.**
+
+### Architecture (Integration Points)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         STORY GRAPH                             │
+│                    EXISTING MAFIA DEMO                          │
 ├─────────────────────────────────────────────────────────────────┤
-│  WORLD STATE                                                    │
-│  ├─ Locations: state, owner, heat, history                     │
-│  ├─ NPCs: relationship, status, lastInteraction                │
-│  └─ Factions: hostility, territory, resources                  │
-│                                                                 │
-│  CONSEQUENCE ENGINE (RulesEngine)                               │
-│  ├─ Mission outcomes → world state changes                     │
-│  ├─ Unlock/lock future mission availability                    │
-│  └─ Trigger agent communications                               │
-│                                                                 │
-│  AGENT INTELLIGENCE (AgentRouter)                               │
-│  ├─ Agents share intel about locations/NPCs                    │
-│  ├─ Information flows up/down hierarchy                        │
-│  └─ Constrains mission generation                              │
-│                                                                 │
-│  DYNAMIC MISSION GENERATOR                                      │
-│  ├─ Queries world state for available missions                 │
-│  ├─ Weights by player history and relationships                │
-│  └─ Creates contextual, non-repetitive content                 │
+│  GameState (Territory, RivalFamily, Heat, Reputation)           │
+│  MissionSystem (MissionGenerator, MissionEvaluator)             │
+│  PlayerAgent (PlayerDecisionContext, DecisionRules)             │
+│  GameEngine (Turn processing, victory/defeat conditions)        │
+└────────────────────────────┬────────────────────────────────────┘
+                             │ INTEGRATION
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      STORY SYSTEM                               │
+├─────────────────────────────────────────────────────────────────┤
+│  WorldState (Location, NPC, Faction)                            │
+│  StoryGraph (PlotThread, StoryNode, StoryEdge)                  │
+│  IntelRegistry (Intel gathering & tracking)                     │
+│  EntityMind (Persona, Memory, Conversation)                     │
+│  DynamicMissionGenerator (Context-aware missions)               │
+│  ConsequenceRules (Mission outcome effects)                     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-### I-1: World State Model (3 tasks, 6-8 hours)
+### I-1: Implementation Complete (Reference) :white_check_mark:
 
-#### Task I-1a: Location State Tracking
+The following components are ALREADY IMPLEMENTED in `Story/`:
+
+| Component | Files | Status |
+|-----------|-------|--------|
+| World State | `World/Location.cs`, `World/NPC.cs`, `World/Faction.cs`, `World/WorldState.cs` | ✅ Complete |
+| Story Graph | `Narrative/StoryNode.cs`, `Narrative/StoryGraph.cs`, `Narrative/StoryEvent.cs` | ✅ Complete |
+| Intel System | `Intelligence/Intel.cs`, `Intelligence/IntelRegistry.cs` | ✅ Complete |
+| Agent Mind | `Agents/Persona.cs`, `Agents/Memory.cs`, `Agents/EntityMind.cs` | ✅ Complete |
+| Communication | `Communication/AgentQuestion.cs`, `Communication/AgentResponse.cs`, `Communication/ConversationContext.cs` | ✅ Complete |
+| Rules | `Rules/ConversationRulesSetup.cs`, `Rules/EvolutionRules.cs`, `Rules/StoryTriggerRules.cs`, `Rules/MemoryRelevanceRules.cs`, `Rules/ConsequenceRules.cs` | ✅ Complete |
+| Engine | `Engine/RulesBasedConversationEngine.cs` | ✅ Complete |
+| Generation | `Generation/DynamicMissionGenerator.cs`, `Generation/MissionHistory.cs` | ✅ Complete |
+| Seeding | `Seeding/WorldStateSeeder.cs` | ✅ Complete |
+| Core | `Core/Enums.cs`, `Core/Thresholds.cs` | ✅ Complete |
+
+---
+
+### I-2: Foundation Integration (P0) (3 tasks, 6-9 hours)
+
+#### Task I-2a: GameState ↔ WorldState Bridge
+**Priority**: P0 - Foundation for all integration
 **Estimated Time**: 2-3 hours
-**Files**: `AgentRouting.MafiaDemo/Story/WorldState.cs` (new)
+**Files**: `Game/GameEngine.cs`, new `Game/GameWorldBridge.cs`
 
-**Problem**: Locations are just strings in mission templates with no memory.
+**Problem**: GameState and WorldState track overlapping concepts (Territory/Location, RivalFamily/Faction) with no synchronization.
 
 **Implementation**:
 ```csharp
-public class Location
+public class GameWorldBridge
 {
-    public string Id { get; set; }
-    public string Name { get; set; }
-    public LocationState State { get; set; } = LocationState.Neutral;
-    public string? Owner { get; set; }  // "player", "rival-x", null
-    public int LocalHeat { get; set; }  // Police attention at this location
-    public List<string> History { get; set; } = new();  // Event IDs
-    public Dictionary<string, int> NPCsPresent { get; set; } = new();
+    public void SyncToWorldState(GameState game, WorldState world);
+    public void SyncFromWorldState(WorldState world, GameState game);
 }
-
-public enum LocationState { Friendly, Neutral, Hostile, Contested, Destroyed }
 ```
 
 **Subtasks**:
-- [ ] Create Location model with state tracking
-- [ ] Create LocationRegistry with CRUD operations
-- [ ] Seed initial locations from existing mission templates
-- [ ] Add location state change events
+- [ ] Create GameWorldBridge class
+- [ ] Implement Territory → Location sync (heat, state)
+- [ ] Implement RivalFamily → Faction sync (hostility, resources)
+- [ ] Add bridge initialization in GameEngine.StartGameAsync()
+- [ ] Add sync call in ExecuteTurnAsync() after game state changes
 
 ---
 
-#### Task I-1b: NPC Relationship System
+#### Task I-2b: WorldState Initialization
+**Priority**: P0 - Required before other integrations
 **Estimated Time**: 2-3 hours
-**Files**: `AgentRouting.MafiaDemo/Story/NPCSystem.cs` (new)
+**Files**: `Game/GameEngine.cs`
 
-**Problem**: Mission targets are anonymous ("the shopkeeper") with no persistence.
-
-**Implementation**:
-```csharp
-public class NPC
-{
-    public string Id { get; set; }
-    public string Name { get; set; }
-    public string Role { get; set; }  // "shopkeeper", "informant", "rival"
-    public string LocationId { get; set; }
-    public int RelationshipToPlayer { get; set; }  // -100 to +100
-    public NPCStatus Status { get; set; } = NPCStatus.Active;
-    public string? LastMissionId { get; set; }
-    public List<string> KnownByAgents { get; set; } = new();
-}
-
-public enum NPCStatus { Active, Intimidated, Allied, Hostile, Dead, Fled, Imprisoned }
-```
+**Problem**: WorldState, StoryGraph, IntelRegistry are not initialized in GameEngine.
 
 **Subtasks**:
-- [ ] Create NPC model with relationship tracking
-- [ ] Create NPCRegistry with lookup by location/role
-- [ ] Generate NPCs dynamically with persistent names
-- [ ] Track NPC status changes from mission outcomes
+- [ ] Add WorldState, StoryGraph, IntelRegistry fields to GameEngine
+- [ ] Call WorldStateSeeder.CreateInitialWorld() in constructor
+- [ ] Add StoryGraph initialization with seed plot threads
+- [ ] Add CurrentWeek synchronization between GameState and WorldState
 
 ---
 
-#### Task I-1c: Faction Territory Tracking
-**Estimated Time**: 2 hours
-**Files**: `AgentRouting.MafiaDemo/Story/FactionSystem.cs` (new)
-
-**Problem**: Rival families exist but don't have persistent territory claims.
-
-**Implementation**:
-```csharp
-public class Faction
-{
-    public string Id { get; set; }
-    public string Name { get; set; }
-    public int HostilityToPlayer { get; set; }
-    public List<string> ControlledLocations { get; set; } = new();
-    public int Resources { get; set; }
-    public List<string> KnownNPCs { get; set; } = new();  // NPCs loyal to this faction
-}
-```
-
-**Subtasks**:
-- [ ] Create Faction model extending existing RivalFamily
-- [ ] Track territory claims per faction
-- [ ] Link NPCs to factions
-- [ ] Add faction-based mission constraints
-
----
-
-### I-2: Story Graph & Consequences (3 tasks, 7-10 hours)
-
-#### Task I-2a: Story Graph Data Structure
+#### Task I-2c: Week Counter Consolidation
+**Priority**: P0 - Prevents dual-tracking bugs
 **Estimated Time**: 2-3 hours
-**Files**: `AgentRouting.MafiaDemo/Story/StoryGraph.cs` (new)
+**Files**: `Game/GameEngine.cs`, `Game/GameState.cs`, `Story/World/WorldState.cs`
 
-**Problem**: No way to track causal relationships between events.
-
-**Implementation**:
-```csharp
-public class StoryGraph
-{
-    public Dictionary<string, StoryNode> Nodes { get; } = new();
-    public List<StoryEdge> Edges { get; } = new();
-
-    public void RecordEvent(StoryEvent evt);
-    public IEnumerable<StoryNode> GetUnlockedNodes(WorldState state);
-    public IEnumerable<string> GetAvailablePlots();
-}
-
-public class StoryNode
-{
-    public string Id { get; set; }
-    public StoryNodeType Type { get; set; }  // Event, Mission, Consequence
-    public Func<WorldState, bool> UnlockCondition { get; set; }
-    public List<string> Prerequisites { get; set; } = new();
-}
-
-public class StoryEdge
-{
-    public string FromNodeId { get; set; }
-    public string ToNodeId { get; set; }
-    public EdgeType Type { get; set; }  // Unlocks, Blocks, Triggers
-}
-```
+**Problem**: Both GameState.Week and WorldState.CurrentWeek track weeks independently.
 
 **Subtasks**:
-- [ ] Implement StoryGraph with node/edge management
-- [ ] Add unlock condition evaluation
-- [ ] Create graph traversal for available missions
-- [ ] Add plot thread tracking
+- [ ] Make WorldState.CurrentWeek the single source of truth
+- [ ] Update GameState.Week to delegate to WorldState
+- [ ] Add test verifying week consistency across turns
+- [ ] Update all week references to use WorldState.CurrentWeek
 
 ---
 
-#### Task I-2b: Consequence Engine Rules
-**Estimated Time**: 3-4 hours
-**Files**: `AgentRouting.MafiaDemo/Story/ConsequenceRules.cs` (new)
+### I-3: NPC & Relationship Integration (P1) (3 tasks, 6-9 hours)
 
-**Problem**: Mission outcomes don't affect future gameplay.
-
-**Implementation**: Use existing RulesEngine to define consequence rules:
-```csharp
-// Example consequences
-engine.AddRule("INTIMIDATION_SUCCESS_RELATIONSHIP",
-    ctx => ctx.MissionType == MissionType.Intimidation && ctx.Success,
-    ctx => {
-        ctx.TargetNPC.Status = NPCStatus.Intimidated;
-        ctx.TargetNPC.RelationshipToPlayer -= 20;
-        ctx.Location.State = LocationState.Friendly;
-    });
-
-engine.AddRule("INTIMIDATION_FAIL_RETALIATION",
-    ctx => ctx.MissionType == MissionType.Intimidation && !ctx.Success,
-    ctx => {
-        ctx.TargetNPC.Status = NPCStatus.Hostile;
-        ctx.StoryGraph.UnlockNode("retaliation-" + ctx.TargetNPC.Id);
-    });
-```
-
-**Subtasks**:
-- [ ] Create ConsequenceContext for rule evaluation
-- [ ] Define 15-20 consequence rules for each mission type
-- [ ] Wire consequences to fire after mission completion
-- [ ] Add consequence logging for story recap
-
----
-
-#### Task I-2c: Plot Thread System
+#### Task I-3a: Mission Target NPC References
+**Priority**: P1 - Enables relationship tracking
 **Estimated Time**: 2-3 hours
-**Files**: `AgentRouting.MafiaDemo/Story/PlotThreads.cs` (new)
+**Files**: `MissionSystem.cs`, `Mission.cs` (if exists)
 
-**Problem**: No multi-mission story arcs.
-
-**Implementation**:
-```csharp
-public class PlotThread
-{
-    public string Id { get; set; }
-    public string Title { get; set; }  // "The Tattaglia Expansion"
-    public PlotState State { get; set; } = PlotState.Available;
-    public List<string> RequiredMissionIds { get; set; } = new();
-    public List<string> CompletedMissionIds { get; set; } = new();
-    public int Priority { get; set; }
-    public Func<WorldState, bool> ActivationCondition { get; set; }
-}
-
-public enum PlotState { Available, Active, Completed, Failed, Abandoned }
-```
+**Problem**: Mission targets are anonymous strings with no persistence.
 
 **Subtasks**:
-- [ ] Create PlotThread model
-- [ ] Define 5-8 initial plot threads (revenge, expansion, betrayal, etc.)
-- [ ] Wire plot activation to world state changes
-- [ ] Add plot-specific mission generation
+- [ ] Add NPCId and LocationId properties to Mission class
+- [ ] Update MissionGenerator to assign NPC/Location from WorldState
+- [ ] Add NPC name formatting in mission descriptions
+- [ ] Maintain backward compatibility with missions without NPCs
 
 ---
 
-### I-3: Agent Intelligence System (3 tasks, 8-12 hours)
-
-#### Task I-3a: Intel Message Types
+#### Task I-3b: Relationship Updates on Mission Completion
+**Priority**: P1 - Makes actions have consequences
 **Estimated Time**: 2-3 hours
-**Files**: `AgentRouting.MafiaDemo/Story/IntelSystem.cs` (new)
+**Files**: `PlayerAgent.cs` or `MissionEvaluator`
 
-**Problem**: Agents don't share information about the world.
+**Problem**: Mission outcomes don't affect NPC relationships.
 
 **Implementation**:
 ```csharp
-public class IntelMessage : AgentMessage
+public void ApplyMissionConsequences(Mission mission, bool success)
 {
-    public IntelType Type { get; set; }
-    public string SubjectId { get; set; }  // Location or NPC ID
-    public Dictionary<string, object> IntelData { get; set; } = new();
-    public int Reliability { get; set; }  // 0-100
-    public DateTime Timestamp { get; set; }
-}
-
-public enum IntelType
-{
-    LocationStatus,    // "Tony's is being watched"
-    NPCMovement,       // "Informant fled to Brooklyn"
-    FactionActivity,   // "Tattaglias moving on the docks"
-    ThreatWarning,     // "Feds planning raid"
-    Opportunity        // "Rival capo is vulnerable"
-}
-```
-
-**Subtasks**:
-- [ ] Create IntelMessage extending AgentMessage
-- [ ] Add intel categories matching world state
-- [ ] Create IntelRegistry for storing received intel
-- [ ] Wire intel to mission constraint system
-
----
-
-#### Task I-3b: Agent Intel Generation
-**Estimated Time**: 3-4 hours
-**Files**: `AgentRouting.MafiaDemo/Autonomous/*.cs` (modify)
-
-**Problem**: Autonomous agents don't proactively share information.
-
-**Implementation**: Modify existing agents to generate intel:
-```csharp
-// In SoldierAgent
-public override async Task<AgentMessage?> GenerateIntelAsync(WorldState state)
-{
-    // Soldiers notice street-level changes
-    var hotLocations = state.Locations
-        .Where(l => l.LocalHeat > 50)
-        .ToList();
-
-    if (hotLocations.Any())
+    var npc = _worldState.GetNPC(mission.NPCId);
+    if (npc != null)
     {
-        return new IntelMessage
-        {
-            Type = IntelType.LocationStatus,
-            SubjectId = hotLocations.First().Id,
-            IntelData = new { Heat = hotLocations.First().LocalHeat },
-            Category = "Intelligence"
-        };
-    }
-    return null;
-}
-```
-
-**Subtasks**:
-- [ ] Add GenerateIntelAsync to AutonomousAgent base
-- [ ] Implement intel generation for each agent type (role-appropriate)
-- [ ] Add intel generation to turn processing
-- [ ] Route intel through AgentRouter hierarchy
-
----
-
-#### Task I-3c: Intel-Driven Constraints
-**Estimated Time**: 3-4 hours
-**Files**: `AgentRouting.MafiaDemo/Story/MissionConstraints.cs` (new)
-
-**Problem**: Mission availability doesn't reflect agent knowledge.
-
-**Implementation**:
-```csharp
-public class MissionConstraintEngine
-{
-    private readonly IntelRegistry _intel;
-    private readonly WorldState _world;
-
-    public bool IsMissionAvailable(Mission mission, PlayerCharacter player)
-    {
-        // Check if location is accessible
-        var location = _world.GetLocation(mission.LocationId);
-        if (location.State == LocationState.Hostile && !player.HasCombatSkill)
-            return false;
-
-        // Check if we have intel suggesting danger
-        var recentIntel = _intel.GetRecent(mission.LocationId, TimeSpan.FromWeeks(2));
-        if (recentIntel.Any(i => i.Type == IntelType.ThreatWarning))
-            return false;  // Or mark as high-risk
-
-        return true;
+        var change = CalculateRelationshipChange(mission.Type, success);
+        npc.Relationship = Math.Clamp(npc.Relationship + change, -100, 100);
+        npc.LastInteractionWeek = _worldState.CurrentWeek;
     }
 }
 ```
 
 **Subtasks**:
-- [ ] Create MissionConstraintEngine
-- [ ] Define constraint rules based on intel types
-- [ ] Integrate with MissionGenerator
-- [ ] Add "why unavailable" explanations for player
+- [ ] Add ApplyMissionConsequences method
+- [ ] Define relationship change rules per mission type
+- [ ] Update NPC status based on repeated interactions
+- [ ] Call after mission execution in PlayerAgent
 
 ---
 
-### I-4: Dynamic Mission Generator (3 tasks, 7-10 hours)
-
-#### Task I-4a: Context-Aware Mission Generation
-**Estimated Time**: 3-4 hours
-**Files**: `AgentRouting.MafiaDemo/MissionSystem.cs` (modify)
-
-**Problem**: Missions are randomly selected from static templates.
-
-**Implementation**:
-```csharp
-public class DynamicMissionGenerator
-{
-    public Mission GenerateMission(PlayerCharacter player, WorldState world, StoryGraph graph)
-    {
-        // Get available locations (not hostile, not recently visited)
-        var availableLocations = world.Locations
-            .Where(l => l.State != LocationState.Hostile)
-            .Where(l => !player.RecentLocations.Contains(l.Id))
-            .ToList();
-
-        // Get NPCs needing attention (relationship changed, status changed)
-        var relevantNPCs = world.NPCs
-            .Where(n => n.LastMissionId != null)
-            .Where(n => ShouldRevisit(n, player))
-            .ToList();
-
-        // Check active plot threads for priority missions
-        var plotMissions = graph.GetActivePlots()
-            .SelectMany(p => p.GetNextMissions(world))
-            .ToList();
-
-        // Weight and select
-        return SelectBestMission(availableLocations, relevantNPCs, plotMissions, player);
-    }
-}
-```
-
-**Subtasks**:
-- [ ] Refactor MissionGenerator to use WorldState
-- [ ] Add location-based mission filtering
-- [ ] Add NPC-based mission generation
-- [ ] Integrate plot thread missions
-
----
-
-#### Task I-4b: Mission Variety Expansion
+#### Task I-3c: NPC Status Effects on Missions
+**Priority**: P1 - Makes relationships meaningful
 **Estimated Time**: 2-3 hours
-**Files**: `AgentRouting.MafiaDemo/Story/MissionTemplates.cs` (new)
+**Files**: `MissionEvaluator`, `MissionGenerator`
 
-**Problem**: Only 4-6 templates per mission type causes repetition.
-
-**Implementation**: Expand templates with dynamic elements:
-```csharp
-public class MissionTemplateEngine
-{
-    public Mission GenerateFromTemplate(MissionTemplate template, Location loc, NPC npc)
-    {
-        return new Mission
-        {
-            Title = template.TitleFormat
-                .Replace("{npc}", npc.Name)
-                .Replace("{location}", loc.Name),
-            Description = template.DescriptionFormat
-                .Replace("{reason}", GetContextualReason(npc, loc)),
-            // ... dynamic risk/reward based on state
-        };
-    }
-}
-```
+**Problem**: NPC status (Intimidated, Allied, Hostile) has no gameplay effect.
 
 **Subtasks**:
-- [ ] Create parameterized mission templates
-- [ ] Add 10+ templates per mission type
-- [ ] Generate contextual descriptions from world state
-- [ ] Add unique missions for plot threads
+- [ ] Add NPC status check in MissionGenerator (hostile NPCs → harder missions)
+- [ ] Add relationship bonus/penalty to success rolls
+- [ ] Allied NPCs provide intel bonuses
+- [ ] Intimidated NPCs have higher collection yields
 
 ---
 
-#### Task I-4c: Anti-Repetition System
+### I-4: Plot Thread Integration (P1) (3 tasks, 7-10 hours)
+
+#### Task I-4a: Plot Thread State Machine
+**Priority**: P1 - Enables story arcs
 **Estimated Time**: 2-3 hours
-**Files**: `AgentRouting.MafiaDemo/Story/MissionHistory.cs` (new)
+**Files**: `Game/GameEngine.cs`
 
-**Problem**: Same mission can appear multiple weeks in a row.
-
-**Implementation**:
-```csharp
-public class MissionHistoryTracker
-{
-    private readonly Queue<string> _recentMissionTypes = new(capacity: 5);
-    private readonly Dictionary<string, int> _locationVisits = new();
-    private readonly Dictionary<string, int> _npcInteractions = new();
-
-    public float GetRepetitionPenalty(Mission candidate)
-    {
-        float penalty = 0;
-
-        // Penalize recently used mission types
-        if (_recentMissionTypes.Contains(candidate.Type.ToString()))
-            penalty += 0.3f;
-
-        // Penalize recently visited locations
-        if (_locationVisits.TryGetValue(candidate.LocationId, out var visits))
-            penalty += 0.1f * visits;
-
-        return penalty;
-    }
-}
-```
+**Problem**: PlotThread state (Dormant, Available, Active, Completed, Failed) is never updated.
 
 **Subtasks**:
-- [ ] Track recent mission types, locations, NPCs
-- [ ] Calculate repetition penalties
-- [ ] Weight mission selection by freshness
-- [ ] Ensure minimum variety guarantees
+- [ ] Add UpdatePlotThreads() call in ExecuteTurnAsync()
+- [ ] Evaluate PlotThread.ActivationCondition against WorldState
+- [ ] Transition Dormant → Available when condition met
+- [ ] Log plot thread state changes as events
 
 ---
 
-### I-5: Integration & Testing (2 tasks, 4-6 hours)
-
-#### Task I-5a: Wire Systems Together
+#### Task I-4b: Plot Mission Priority
+**Priority**: P1 - Ensures plot progression
 **Estimated Time**: 2-3 hours
-**Files**: `AgentRouting.MafiaDemo/Game/GameEngine.cs` (modify)
+**Files**: `MissionGenerator` or `DynamicMissionGenerator`
+
+**Problem**: Active plot threads should surface their missions with higher priority.
 
 **Subtasks**:
-- [ ] Initialize WorldState at game start
-- [ ] Initialize StoryGraph with seed nodes
-- [ ] Hook consequence engine to mission completion
-- [ ] Add intel processing to turn loop
-- [ ] Replace old MissionGenerator with DynamicMissionGenerator
+- [ ] Query StoryGraph for active plot missions
+- [ ] Weight plot missions higher than random missions
+- [ ] Add plot thread title prefix to mission titles
+- [ ] Track plot mission completion in PlotThread
 
 ---
 
-#### Task I-5b: Story System Tests
+#### Task I-4c: Plot Completion Rewards
+**Priority**: P1 - Motivates plot engagement
 **Estimated Time**: 2-3 hours
-**Files**: `Tests/MafiaDemo.Tests/StorySystemTests.cs` (new)
+**Files**: `Game/GameEngine.cs`, `Story/Narrative/StoryGraph.cs`
+
+**Problem**: Completing plot threads should provide rewards and trigger OnCompleted callbacks.
 
 **Subtasks**:
-- [ ] Test Location state transitions
-- [ ] Test NPC relationship changes from missions
-- [ ] Test consequence rule firing
-- [ ] Test intel routing through agents
-- [ ] Test mission variety over 52-week simulation
-- [ ] Test plot thread activation and completion
+- [ ] Check for plot completion when mission completes
+- [ ] Apply PlotThread.RespectReward and MoneyReward
+- [ ] Call PlotThread.OnCompleted callback
+- [ ] Add achievement/event log entry for plot completion
+
+---
+
+### I-5: Mission System Integration (P2) (3 tasks, 6-9 hours)
+
+#### Task I-5a: Integrate DynamicMissionGenerator
+**Priority**: P2 - Adds mission variety
+**Estimated Time**: 2-3 hours
+**Files**: `MissionSystem.cs`, `PlayerAgent.cs`
+
+**Problem**: Existing MissionGenerator uses static templates; DynamicMissionGenerator is not wired in.
+
+**Subtasks**:
+- [ ] Add DynamicMissionGenerator field to MissionGenerator or PlayerAgent
+- [ ] Convert MissionCandidate to Mission in adapter method
+- [ ] Use DynamicMissionGenerator when WorldState is available
+- [ ] Fall back to legacy generator for backward compatibility
+
+---
+
+#### Task I-5b: Apply ConsequenceRules After Missions
+**Priority**: P2 - Adds cascading effects
+**Estimated Time**: 2-3 hours
+**Files**: `MissionEvaluator` or `PlayerAgent.ExecuteMissionAsync()`
+
+**Problem**: ConsequenceRulesSetup defines rules but they're never applied.
+
+**Subtasks**:
+- [ ] Create ConsequenceContext from mission result
+- [ ] Call consequence rules engine after mission execution
+- [ ] Apply world state changes from consequences
+- [ ] Log applied consequences for story recap
+
+---
+
+#### Task I-5c: Intel Recording for Information Missions
+**Priority**: P2 - Leverages intel system
+**Estimated Time**: 2-3 hours
+**Files**: `MissionEvaluator`, `IntelRegistry`
+
+**Problem**: Information missions don't actually produce intel.
+
+**Subtasks**:
+- [ ] Create Intel object from successful Information mission
+- [ ] Add Intel to IntelRegistry
+- [ ] Define intel type based on mission context
+- [ ] Check intel triggers for plot/mission unlocks
+
+---
+
+### I-6: Conversation System (P3) (2 tasks, 4-6 hours)
+
+#### Task I-6a: Basic NPC Conversation Command
+**Priority**: P3 - Adds NPC dialogue
+**Estimated Time**: 2-3 hours
+**Files**: `Game/GameEngine.cs`
+
+**Problem**: No way to talk to NPCs in the game.
+
+**Subtasks**:
+- [ ] Add "talk <npc-name>" command to game engine
+- [ ] Look up NPC by name in WorldState
+- [ ] Create basic AgentQuestion (WhatDoYouKnow, WhereIs)
+- [ ] Format AgentResponse for display
+
+---
+
+#### Task I-6b: Conversation Results Integration
+**Priority**: P3 - Makes conversations meaningful
+**Estimated Time**: 2-3 hours
+**Files**: `Game/GameEngine.cs`
+
+**Problem**: Conversation responses should affect gameplay.
+
+**Subtasks**:
+- [ ] Update relationship based on ResponseDecision.RelationshipModifier
+- [ ] Record intel from information responses
+- [ ] Update EntityMind memory of the conversation
+- [ ] Add bargaining outcome handling (money for info)
+
+---
+
+### I-7: Integration Testing (4 tasks, 8-12 hours)
+
+#### Task I-7a: GameState ↔ WorldState Sync Tests
+**Priority**: HIGH
+**Estimated Time**: 2-3 hours
+**Files**: `Tests/MafiaDemo.Tests/StoryIntegrationTests.cs` (new)
+
+**Subtasks**:
+- [ ] Test Territory changes sync to Location
+- [ ] Test RivalFamily changes sync to Faction
+- [ ] Test week counter consistency
+- [ ] Test heat level synchronization
+
+---
+
+#### Task I-7b: NPC Relationship Tests
+**Priority**: HIGH
+**Estimated Time**: 2-3 hours
+**Files**: `Tests/MafiaDemo.Tests/StoryIntegrationTests.cs`
+
+**Subtasks**:
+- [ ] Test relationship changes from mission outcomes
+- [ ] Test NPC status transitions
+- [ ] Test relationship effects on mission difficulty
+- [ ] Test allied NPC benefits
+
+---
+
+#### Task I-7c: Plot Thread Progression Tests
+**Priority**: HIGH
+**Estimated Time**: 2-3 hours
+**Files**: `Tests/MafiaDemo.Tests/StoryIntegrationTests.cs`
+
+**Subtasks**:
+- [ ] Test plot activation from world state
+- [ ] Test plot mission surfacing
+- [ ] Test plot completion rewards
+- [ ] Test plot failure conditions
+
+---
+
+#### Task I-7d: Full Integration Simulation
+**Priority**: HIGH
+**Estimated Time**: 2-3 hours
+**Files**: `Tests/MafiaDemo.Tests/StoryIntegrationTests.cs`
+
+**Subtasks**:
+- [ ] Run 52-week simulation with Story System
+- [ ] Verify mission variety improvement
+- [ ] Verify NPC relationships evolve over time
+- [ ] Verify at least one plot thread completes
 
 ---
 
@@ -1357,7 +1222,7 @@ C (Test Infra) ──► A (Foundation) ──┬──► B (Resources) ──�
 | 5 | E | Enhancement | 15 | 35-47 | DI, interfaces, more tests |
 | 6 | G | Integration | 5 | 11-16 | AgentRouter, 47 personality rules |
 | 7 | H | Code Review | 14 | 20-30 | Bug fixes from code review |
-| 8 | **I** | **Story System** | **12** | **28-40** | **Dynamic narrative, agent intel** |
+| 8 | **I** | **Story Integration** | **18** | **36-52** | **GameState↔WorldState, NPCs, plots** |
 | 9 | F | Polish | 10 | 20-28 | Clean docs, stable release |
 
 ### Critical Files by Batch
@@ -1376,4 +1241,4 @@ C (Test Infra) ──► A (Foundation) ──┬──► B (Resources) ──�
 
 ---
 
-**Last Updated**: 2026-02-03 (Batch I: NEW - Dynamic Story System with 12 tasks)
+**Last Updated**: 2026-02-03 (Batch I: Story System Integration - 18 tasks for integrating implemented Story System with MafiaDemo)
