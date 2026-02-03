@@ -7,6 +7,21 @@ using System.Text;
 namespace AgentRouting.MafiaDemo.Game;
 
 /// <summary>
+/// Economic game phases - determines strategic priorities
+/// </summary>
+public enum GamePhase
+{
+    /// <summary>Wealth below 50k - focus on survival and income</summary>
+    Survival,
+    /// <summary>Wealth 50k-150k - build up resources safely</summary>
+    Accumulation,
+    /// <summary>Wealth 150k-400k - expand operations</summary>
+    Growth,
+    /// <summary>Wealth over 400k - dominate rivals</summary>
+    Dominance
+}
+
+/// <summary>
 /// Game state tracking resources, territories, and family status
 /// </summary>
 public class GameState
@@ -30,6 +45,33 @@ public class GameState
     public int SoldierCount { get; set; } = 5;
     public decimal TotalRevenue => Territories.Values.Sum(t => t.WeeklyRevenue);
     public int TerritoryCount => Territories.Count;
+
+    // Trend tracking for strategic decisions
+    public int PreviousHeatLevel { get; set; } = 0;
+    public decimal PreviousWealth { get; set; } = 100000m;
+
+    // Computed strategic properties
+    public GamePhase CurrentPhase => FamilyWealth switch
+    {
+        < 50000m => GamePhase.Survival,
+        < 150000m => GamePhase.Accumulation,
+        < 400000m => GamePhase.Growth,
+        _ => GamePhase.Dominance
+    };
+
+    public bool HeatIsRising => HeatLevel > PreviousHeatLevel + 5;
+    public bool HeatIsFalling => HeatLevel < PreviousHeatLevel - 5;
+    public bool WealthIsGrowing => FamilyWealth > PreviousWealth * 1.05m;
+    public bool WealthIsShrinking => FamilyWealth < PreviousWealth * 0.95m;
+
+    // Find the most threatening rival
+    public RivalFamily? MostHostileRival => RivalFamilies.Values
+        .OrderByDescending(r => r.Hostility)
+        .FirstOrDefault();
+
+    public RivalFamily? WeakestRival => RivalFamilies.Values
+        .OrderBy(r => r.Strength)
+        .FirstOrDefault();
 }
 
 /// <summary>
@@ -180,6 +222,7 @@ public class MafiaGameEngine
         _autonomousAgents = new Dictionary<string, AutonomousAgent>();
         InitializeGame();
         _rulesEngine = new GameRulesEngine(_state);
+        _rulesEngine.SetupAsyncEventRules(); // Initialize async event processing
     }
 
     public MafiaGameEngine(IAgentLogger logger)
@@ -191,6 +234,7 @@ public class MafiaGameEngine
         _autonomousAgents = new Dictionary<string, AutonomousAgent>();
         InitializeGame();
         _rulesEngine = new GameRulesEngine(_state);
+        _rulesEngine.SetupAsyncEventRules(); // Initialize async event processing
     }
 
     /// <summary>
@@ -248,6 +292,13 @@ public class MafiaGameEngine
                 if (_state.GameOver)
                 {
                     Console.WriteLine($"\n🎬 GAME OVER: {_state.GameOverReason}");
+
+                    // Display performance metrics at game end
+                    if (_rulesEngine != null)
+                    {
+                        Console.WriteLine();
+                        Console.WriteLine(_rulesEngine.GetAgentRulePerformanceSummary());
+                    }
                     break;
                 }
 
@@ -350,8 +401,13 @@ public class MafiaGameEngine
     {
         var turnEvents = new List<string>();
 
+        // Track previous state for trend detection
+        _state.PreviousHeatLevel = _state.HeatLevel;
+        _state.PreviousWealth = _state.FamilyWealth;
+
         turnEvents.Add($"\n╔══════════════════════════════════════════════════════════════╗");
         turnEvents.Add($"║  📅 WEEK {_state.Week} - Corleone Family Operations          ║");
+        turnEvents.Add($"║  📊 Phase: {_state.CurrentPhase,-15}                         ║");
         turnEvents.Add($"╚══════════════════════════════════════════════════════════════╝\n");
 
         // 1. Weekly collections
@@ -361,6 +417,10 @@ public class MafiaGameEngine
         // 2. Random events
         var randomEvents = ProcessRandomEvents();
         turnEvents.AddRange(randomEvents);
+
+        // 2.5. Async events (triggered by game conditions)
+        var asyncEvents = await ProcessAsyncEventsAsync();
+        turnEvents.AddRange(asyncEvents);
 
         // 3. Autonomous agent actions
         var agentActions = await ProcessAutonomousActions();
@@ -496,6 +556,60 @@ public class MafiaGameEngine
         return events;
     }
 
+    /// <summary>
+    /// Process async events based on current game conditions.
+    /// Uses AsyncRule engine for time-sensitive events like police investigations,
+    /// informant intel gathering, and business deal negotiations.
+    /// </summary>
+    private async Task<List<string>> ProcessAsyncEventsAsync()
+    {
+        var events = new List<string>();
+
+        if (_rulesEngine == null)
+            return events;
+
+        // Determine which async events to trigger based on game state
+        var triggeredEvents = new List<string>();
+
+        // High heat triggers police activity
+        if (_state.HeatLevel > 50 && Random.Shared.Next(100) < 30)
+        {
+            triggeredEvents.Add("PoliceActivity");
+        }
+
+        // Wealthy family can gather intel
+        if (_state.FamilyWealth > 50000 && Random.Shared.Next(100) < 20)
+        {
+            triggeredEvents.Add("GatherIntel");
+        }
+
+        // Good reputation enables business opportunities
+        if (_state.Reputation > 40 && _state.Week % 4 == 0)
+        {
+            triggeredEvents.Add("BusinessOpportunity");
+        }
+
+        // Process triggered events
+        foreach (var trigger in triggeredEvents)
+        {
+            var result = await _rulesEngine.ProcessAsyncEventAsync(trigger, delayMs: 50);
+
+            if (result != "No matching async event handler")
+            {
+                events.Add($"⏳ {result}");
+            }
+        }
+
+        if (events.Any())
+        {
+            events.Insert(0, "───────────────────────────");
+            events.Insert(0, "⏰ ONGOING OPERATIONS");
+            events.Add("");
+        }
+
+        return events;
+    }
+
     private async Task<List<string>> ProcessAutonomousActions()
     {
         var events = new List<string>();
@@ -593,6 +707,34 @@ public class MafiaGameEngine
                     return $"{agent.AgentId} expands operations - Reputation +5";
                 }
                 break;
+
+            case "recruit":
+                // Recruitment costs money but adds soldiers
+                if (_state.FamilyWealth >= 5000)
+                {
+                    _state.FamilyWealth -= 5000;
+                    _state.SoldierCount += 1;
+                    _state.Reputation += 2;
+                    LogEvent("Recruit", $"{agent.AgentId} recruited new soldier", agent.AgentId);
+                    return $"{agent.AgentId} recruits a new soldier - Cost $5,000, Soldiers: {_state.SoldierCount}";
+                }
+                break;
+
+            case "bribe":
+                // Bribe officials to reduce heat
+                if (_state.FamilyWealth >= 10000 && _state.HeatLevel > 20)
+                {
+                    _state.FamilyWealth -= 10000;
+                    _state.HeatLevel -= 15;
+                    LogEvent("Bribe", $"{agent.AgentId} bribed officials", agent.AgentId);
+                    return $"{agent.AgentId} bribes officials - Cost $10,000, Heat -15";
+                }
+                break;
+
+            case "laylow":
+                // Laying low reduces heat slightly but no other action
+                _state.HeatLevel = Math.Max(0, _state.HeatLevel - 5);
+                return $"{agent.AgentId} lays low - Heat -5";
         }
 
         return null;
@@ -632,10 +774,10 @@ public class MafiaGameEngine
 
     private void UpdateGameState()
     {
-        // Heat naturally decreases
+        // Heat naturally decreases (balanced: 5/week allows recovery from hit in ~5 weeks)
         if (_state.HeatLevel > 0)
         {
-            _state.HeatLevel -= 2;
+            _state.HeatLevel -= 5;
         }
 
         _state.HeatLevel = Math.Max(0, Math.Min(100, _state.HeatLevel));

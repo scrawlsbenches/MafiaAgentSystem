@@ -372,45 +372,45 @@ public class PlayerAgentTests
     #region PlayerDecisionContext - ReadyForPromotion Tests
 
     [Test]
-    public void PlayerDecisionContext_ReadyForPromotion_Associate_TrueWhenRespectOver40()
+    public void PlayerDecisionContext_ReadyForPromotion_Associate_TrueWhenRespectOver35()
     {
-        var player = CreateTestPlayer(respect: 45, rank: PlayerRank.Associate);
+        var player = CreateTestPlayer(respect: 40, rank: PlayerRank.Associate);
         var context = CreateContext(player);
 
         Assert.True(context.ReadyForPromotion);
     }
 
     [Test]
-    public void PlayerDecisionContext_ReadyForPromotion_Associate_FalseWhenRespectAtOrBelow40()
+    public void PlayerDecisionContext_ReadyForPromotion_Associate_FalseWhenRespectAtOrBelow35()
     {
-        var player = CreateTestPlayer(respect: 40, rank: PlayerRank.Associate);
+        var player = CreateTestPlayer(respect: 35, rank: PlayerRank.Associate);
         var context = CreateContext(player);
 
         Assert.False(context.ReadyForPromotion);
     }
 
     [Test]
-    public void PlayerDecisionContext_ReadyForPromotion_Soldier_TrueWhenRespectOver70()
+    public void PlayerDecisionContext_ReadyForPromotion_Soldier_TrueWhenRespectOver60()
     {
-        var player = CreateTestPlayer(respect: 75, rank: PlayerRank.Soldier);
+        var player = CreateTestPlayer(respect: 65, rank: PlayerRank.Soldier);
         var context = CreateContext(player);
 
         Assert.True(context.ReadyForPromotion);
     }
 
     [Test]
-    public void PlayerDecisionContext_ReadyForPromotion_Capo_TrueWhenRespectOver85()
+    public void PlayerDecisionContext_ReadyForPromotion_Capo_TrueWhenRespectOver80()
     {
-        var player = CreateTestPlayer(respect: 90, rank: PlayerRank.Capo);
+        var player = CreateTestPlayer(respect: 85, rank: PlayerRank.Capo);
         var context = CreateContext(player);
 
         Assert.True(context.ReadyForPromotion);
     }
 
     [Test]
-    public void PlayerDecisionContext_ReadyForPromotion_Underboss_TrueWhenRespectOver95()
+    public void PlayerDecisionContext_ReadyForPromotion_Underboss_TrueWhenRespectOver90()
     {
-        var player = CreateTestPlayer(respect: 98, rank: PlayerRank.Underboss);
+        var player = CreateTestPlayer(respect: 95, rank: PlayerRank.Underboss);
         var context = CreateContext(player);
 
         Assert.True(context.ReadyForPromotion);

@@ -992,14 +992,14 @@ public class PlayerAgentCoverageTests
     #region Theory Tests - Parameterized
 
     [Theory]
-    [InlineData(PlayerRank.Associate, 40, false)]  // At threshold, not above
-    [InlineData(PlayerRank.Associate, 41, true)]   // Above threshold
-    [InlineData(PlayerRank.Soldier, 70, false)]    // At threshold, not above
-    [InlineData(PlayerRank.Soldier, 71, true)]     // Above threshold
-    [InlineData(PlayerRank.Capo, 85, false)]       // At threshold, not above
-    [InlineData(PlayerRank.Capo, 86, true)]        // Above threshold
-    [InlineData(PlayerRank.Underboss, 95, false)]  // At threshold, not above
-    [InlineData(PlayerRank.Underboss, 96, true)]   // Above threshold
+    [InlineData(PlayerRank.Associate, 34, false)]  // Below threshold (35)
+    [InlineData(PlayerRank.Associate, 36, true)]   // Above threshold (35)
+    [InlineData(PlayerRank.Soldier, 59, false)]    // Below threshold (60)
+    [InlineData(PlayerRank.Soldier, 61, true)]     // Above threshold (60)
+    [InlineData(PlayerRank.Capo, 79, false)]       // Below threshold (80)
+    [InlineData(PlayerRank.Capo, 81, true)]        // Above threshold (80)
+    [InlineData(PlayerRank.Underboss, 89, false)]  // Below threshold (90)
+    [InlineData(PlayerRank.Underboss, 91, true)]   // Above threshold (90)
     [InlineData(PlayerRank.Don, 100, false)]       // Don can't be promoted
     public void PlayerDecisionContext_ReadyForPromotion_BasedOnRankAndRespect(
         PlayerRank rank, int respect, bool expectedReady)
