@@ -75,6 +75,7 @@ public class PlotThread
     // Activation
     public Func<WorldState, bool>? ActivationCondition { get; set; }
     public int? ActivatedAtWeek { get; set; }
+    public int? StartedAtWeek { get; set; }
 
     // Mission sequence
     public List<string> MissionNodeIds { get; set; } = new();

@@ -246,6 +246,38 @@ public class AgentDecision
 }
 
 /// <summary>
+/// Result of completing a plot mission
+/// </summary>
+public class PlotMissionResult
+{
+    public string NodeId { get; set; } = "";
+    public bool Success { get; set; }
+    public string? PlotThreadId { get; set; }
+    public string? PlotTitle { get; set; }
+    public bool PlotCompleted { get; set; }
+    public bool PlotFailed { get; set; }
+    public int RespectGained { get; set; }
+    public decimal MoneyGained { get; set; }
+}
+
+/// <summary>
+/// Information about an available plot mission
+/// </summary>
+public class PlotMissionInfo
+{
+    public string NodeId { get; set; } = "";
+    public string PlotThreadId { get; set; } = "";
+    public string PlotTitle { get; set; } = "";
+    public string MissionTitle { get; set; } = "";
+    public string MissionDescription { get; set; } = "";
+    public string MissionType { get; set; } = "";
+    public string? LocationId { get; set; }
+    public bool IsFirstMission { get; set; }
+    public float PlotProgress { get; set; }
+    public PlotState PlotState { get; set; }
+}
+
+/// <summary>
 /// Agent that receives and acknowledges game engine messages.
 /// This agent handles messages routed to "game-engine" from autonomous agent actions.
 /// </summary>
@@ -690,6 +722,177 @@ public class MafiaGameEngine
                 {
                     // Activation condition threw - ignore and leave dormant
                 }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Start a plot thread when the player begins its first mission.
+    /// Transitions the plot from Available to Active.
+    /// </summary>
+    /// <param name="plotId">The plot thread ID to start</param>
+    /// <returns>True if the plot was started successfully</returns>
+    public bool StartPlotThread(string plotId)
+    {
+        if (_storyGraph == null || _worldState == null)
+            return false;
+
+        var plot = _storyGraph.GetPlotThread(plotId);
+        if (plot == null || plot.State != PlotState.Available)
+            return false;
+
+        var started = _storyGraph.StartPlotThread(plotId, _worldState.CurrentWeek);
+        if (started)
+        {
+            LogEvent("PlotStarted", $"Plot thread '{plot.Title}' has begun!", "story-system");
+        }
+        return started;
+    }
+
+    /// <summary>
+    /// Complete a plot mission. Handles plot thread progression and rewards.
+    /// </summary>
+    /// <param name="nodeId">The story node ID of the completed mission</param>
+    /// <param name="success">Whether the mission was successful</param>
+    /// <returns>A summary of the completion results</returns>
+    public PlotMissionResult CompletePlotMission(string nodeId, bool success)
+    {
+        var result = new PlotMissionResult { NodeId = nodeId, Success = success };
+
+        if (_storyGraph == null || _worldState == null)
+            return result;
+
+        var node = _storyGraph.GetNode(nodeId);
+        if (node == null || node.PlotThreadId == null)
+            return result;
+
+        var plot = _storyGraph.GetPlotThread(node.PlotThreadId);
+        if (plot == null)
+            return result;
+
+        result.PlotThreadId = plot.Id;
+        result.PlotTitle = plot.Title;
+
+        // If this is the first mission and plot is Available, activate it
+        if (plot.State == PlotState.Available && plot.CurrentMissionNodeId == nodeId)
+        {
+            StartPlotThread(plot.Id);
+        }
+
+        // Store previous state to detect completion
+        var wasCompleted = plot.State == PlotState.Completed;
+
+        // Complete the node in the story graph
+        _storyGraph.CompleteNode(nodeId, _worldState, success);
+
+        // Check if this completion finished the plot
+        if (!wasCompleted && plot.State == PlotState.Completed)
+        {
+            result.PlotCompleted = true;
+            ApplyPlotRewards(plot, result);
+        }
+        else if (!success && plot.State == PlotState.Failed)
+        {
+            result.PlotFailed = true;
+            LogEvent("PlotFailed", $"Plot thread '{plot.Title}' has failed!", "story-system");
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Apply plot completion rewards to the game state.
+    /// </summary>
+    private void ApplyPlotRewards(PlotThread plot, PlotMissionResult result)
+    {
+        // Apply respect reward
+        if (plot.RespectReward > 0)
+        {
+            _state.Reputation = Math.Min(100, _state.Reputation + plot.RespectReward);
+            result.RespectGained = plot.RespectReward;
+        }
+
+        // Apply money reward
+        if (plot.MoneyReward > 0)
+        {
+            _state.FamilyWealth += plot.MoneyReward;
+            result.MoneyGained = plot.MoneyReward;
+        }
+
+        // Call the OnCompleted callback if set
+        if (plot.OnCompleted != null && _worldState != null)
+        {
+            try
+            {
+                plot.OnCompleted(_worldState);
+            }
+            catch
+            {
+                // Callback threw - log but continue
+                LogEvent("PlotCallbackError", $"Plot '{plot.Title}' OnCompleted callback threw an exception", "story-system");
+            }
+        }
+
+        // Log the completion
+        LogEvent("PlotCompleted",
+            $"Plot thread '{plot.Title}' completed! Rewards: +{plot.RespectReward} Reputation, +${plot.MoneyReward:N0}",
+            "story-system");
+    }
+
+    /// <summary>
+    /// Get all available plot missions for the current game state.
+    /// Returns missions from both Available and Active plot threads.
+    /// </summary>
+    public IEnumerable<PlotMissionInfo> GetAvailablePlotMissions()
+    {
+        if (_storyGraph == null || _worldState == null)
+            yield break;
+
+        // Get missions from Available plots (first mission to start the plot)
+        foreach (var plot in _storyGraph.GetAvailablePlots())
+        {
+            var node = plot.CurrentMissionNodeId != null
+                ? _storyGraph.GetNode(plot.CurrentMissionNodeId)
+                : null;
+            if (node != null && node.IsUnlocked && !node.IsCompleted)
+            {
+                yield return new PlotMissionInfo
+                {
+                    NodeId = node.Id,
+                    PlotThreadId = plot.Id,
+                    PlotTitle = plot.Title,
+                    MissionTitle = node.Title,
+                    MissionDescription = node.Description,
+                    MissionType = node.Metadata.GetValueOrDefault("MissionType")?.ToString() ?? "Information",
+                    LocationId = node.LocationId,
+                    IsFirstMission = true,
+                    PlotProgress = plot.Progress,
+                    PlotState = plot.State
+                };
+            }
+        }
+
+        // Get missions from Active plots
+        foreach (var plot in _storyGraph.GetActivePlots())
+        {
+            var node = plot.CurrentMissionNodeId != null
+                ? _storyGraph.GetNode(plot.CurrentMissionNodeId)
+                : null;
+            if (node != null && node.IsUnlocked && !node.IsCompleted)
+            {
+                yield return new PlotMissionInfo
+                {
+                    NodeId = node.Id,
+                    PlotThreadId = plot.Id,
+                    PlotTitle = plot.Title,
+                    MissionTitle = node.Title,
+                    MissionDescription = node.Description,
+                    MissionType = node.Metadata.GetValueOrDefault("MissionType")?.ToString() ?? "Information",
+                    LocationId = node.LocationId,
+                    IsFirstMission = false,
+                    PlotProgress = plot.Progress,
+                    PlotState = plot.State
+                };
             }
         }
     }
