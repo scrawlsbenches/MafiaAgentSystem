@@ -829,7 +829,7 @@ The following components are ALREADY IMPLEMENTED in `Story/`:
 
 ### I-2: Foundation Integration (P0) (3 tasks, 6-9 hours)
 
-#### Task I-2a: GameState ↔ WorldState Bridge
+#### Task I-2a: GameState ↔ WorldState Bridge :white_check_mark: COMPLETE
 **Priority**: P0 - Foundation for all integration
 **Estimated Time**: 2-3 hours
 **Files**: `Game/GameEngine.cs`, new `Game/GameWorldBridge.cs`
@@ -846,15 +846,15 @@ public class GameWorldBridge
 ```
 
 **Subtasks**:
-- [ ] Create GameWorldBridge class
-- [ ] Implement Territory → Location sync (heat, state)
-- [ ] Implement RivalFamily → Faction sync (hostility, resources)
-- [ ] Add bridge initialization in GameEngine.StartGameAsync()
-- [ ] Add sync call in ExecuteTurnAsync() after game state changes
+- [x] Create GameWorldBridge class
+- [x] Implement Territory → Location sync (heat, state)
+- [x] Implement RivalFamily → Faction sync (hostility, resources)
+- [x] Add bridge initialization in GameEngine constructor
+- [x] Add sync call in ExecuteTurnAsync() after game state changes
 
 ---
 
-#### Task I-2b: WorldState Initialization
+#### Task I-2b: WorldState Initialization :white_check_mark: COMPLETE
 **Priority**: P0 - Required before other integrations
 **Estimated Time**: 2-3 hours
 **Files**: `Game/GameEngine.cs`
@@ -862,10 +862,10 @@ public class GameWorldBridge
 **Problem**: WorldState, StoryGraph, IntelRegistry are not initialized in GameEngine.
 
 **Subtasks**:
-- [ ] Add WorldState, StoryGraph, IntelRegistry fields to GameEngine
-- [ ] Call WorldStateSeeder.CreateInitialWorld() in constructor
-- [ ] Add StoryGraph initialization with seed plot threads
-- [ ] Add CurrentWeek synchronization between GameState and WorldState
+- [x] Add WorldState, StoryGraph, IntelRegistry fields to GameEngine
+- [x] Call WorldStateSeeder.CreateInitialWorld() in constructor
+- [x] Add StoryGraph initialization with seed plot threads
+- [x] Add CurrentWeek synchronization between GameState and WorldState
 
 ---
 
