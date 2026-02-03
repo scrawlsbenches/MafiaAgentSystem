@@ -1,7 +1,7 @@
 # MafiaAgentSystem Task List
 
 > **Generated**: 2026-01-31
-> **Last Updated**: 2026-02-03 (Batch E: COMPLETE)
+> **Last Updated**: 2026-02-03 (Batch G: NEW - Forensic Audit Findings)
 > **Approach**: Layered batches to minimize churn
 > **Constraint**: All tasks are 2-4 hours, none exceeding 1 day
 
@@ -23,19 +23,22 @@ Previous organization grouped by *category* (thread safety, MafiaDemo, tests), w
 │ Layer F: POLISH (last)                                  │
 │   Documentation, code cleanup                           │
 ├─────────────────────────────────────────────────────────┤
-│ Layer E: ENHANCEMENT                                    │
+│ Layer G: CRITICAL INTEGRATION (NEW)          ◄── NEXT   │
+│   AgentRouter integration, 21 personality rules         │
+├─────────────────────────────────────────────────────────┤
+│ Layer E: ENHANCEMENT                   ✅ COMPLETE      │
 │   DI extensions, interface extraction, new tests        │
 ├─────────────────────────────────────────────────────────┤
-│ Layer D: APPLICATION FIXES                              │
+│ Layer D: APPLICATION FIXES             ✅ COMPLETE      │
 │   MafiaDemo gameplay bugs (foundation now solid)        │
 ├─────────────────────────────────────────────────────────┤
-│ Layer B: RESOURCE STABILITY                             │
+│ Layer B: RESOURCE STABILITY            ✅ COMPLETE      │
 │   Memory leaks, unbounded growth, TOCTOU                │
 ├─────────────────────────────────────────────────────────┤
-│ Layer A: FOUNDATION                                     │
+│ Layer A: FOUNDATION                    ✅ COMPLETE      │
 │   Thread safety in core libraries                       │
 ├─────────────────────────────────────────────────────────┤
-│ Layer C: TEST INFRASTRUCTURE (first)                    │
+│ Layer C: TEST INFRASTRUCTURE           ✅ COMPLETE      │
 │   Setup/Teardown, state isolation - enables all testing │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -51,8 +54,9 @@ Previous organization grouped by *category* (thread safety, MafiaDemo, tests), w
 | **B** | Resources | :white_check_mark: **COMPLETE** | 3 tasks | 5-8 |
 | **D** | App Fixes | :white_check_mark: **COMPLETE** | 5 tasks | 10-14 |
 | **E** | Enhancement | :white_check_mark: **COMPLETE** | 15 tasks | 35-47 |
-| **F** | Polish | :hourglass: In Progress | 9 tasks remaining | 18-26 |
-| | | **TOTAL** | **39 tasks** | **83-115** |
+| **G** | **Critical Integration** | :construction: **NEW** | 5 tasks | 11-16 |
+| **F** | Polish | :hourglass: Pending | 9 tasks remaining | 18-26 |
+| | | **TOTAL** | **44 tasks** | **94-131** |
 
 ### Completed (Reference)
 - [x] **Batch E: Enhancement** (2026-02-03) **COMPLETE**
@@ -408,6 +412,112 @@ Completed 2026-02-03. Added 63 new tests (1842 → 1905 total).
 - [x] **E-3e**: Add Performance Benchmarks (7 new benchmarks)
 - [x] **E-3f**: Add Integration Tests for Agent Routing (11 new tests)
 - [x] **E-3g**: Add Test Coverage Analysis (CoverageValidationTests.cs - 6 tests)
+
+---
+
+## Batch G: Critical Integration (NEW - Audit Findings)
+
+> **Prerequisite**: None (independent of F)
+> **Priority**: CRITICAL - Required before documentation can be accurate
+> **Source**: Forensic audit 2026-02-03
+
+### G-1: AgentRouter Full Integration :construction:
+**Priority**: CRITICAL
+**Estimated Time**: 3-4 hours
+**File**: `AgentRouting/AgentRouting.MafiaDemo/Game/GameEngine.cs`
+
+**Problem**: AgentRouter exists in GameEngine but `RouteMessageAsync()` is never called during `ExecuteTurnAsync()`. Messages are processed directly without going through the middleware pipeline.
+
+**Current State**:
+- AgentRouter instantiated in constructor
+- Routing rules set up in `SetupRoutingRules()`
+- But `_router.RouteMessageAsync()` never called in game loop
+
+**Subtasks**:
+- [ ] Create `AgentMessage` instances for agent decisions
+- [ ] Route messages through `_router.RouteMessageAsync()` in `ProcessAutonomousActions()`
+- [ ] Verify middleware pipeline executes (logging, validation)
+- [ ] Add tests verifying messages flow through router
+- [ ] Update documentation to confirm integration
+
+---
+
+### G-2: Implement 21 Additional Personality-Driven Rules :construction:
+**Priority**: CRITICAL
+**Estimated Time**: 4-6 hours
+**File**: `AgentRouting/AgentRouting.MafiaDemo/GameRulesEngine.cs`
+
+**Problem**: Documentation claims ~45 personality-driven rules but only 24 exist. Need 21 more to meet specification.
+
+**Current Rules (24)**:
+- Emergency rules (2): EMERGENCY_LAYLOW, EMERGENCY_BRIBE
+- Survival rules (2): SURVIVAL_COLLECTION, SURVIVAL_LAYLOW
+- Phase rules (3): DOMINANCE_STRIKE, GROWTH_EXPAND, DEFENSIVE_*
+- Personality rules (8): LOYAL_PROTECT, GREEDY_COLLECTION, AGGRESSIVE_*, etc.
+- Composite rules (2): COMPOSITE_INTIMIDATE, COMPOSITE_SAFE_COLLECT
+- Default rules (2): DEFAULT_ACCUMULATION, DEFAULT_WAIT
+
+**New Rules Needed (21)**:
+- [ ] 5 more personality combinations (CAUTIOUS_*, FAMILY_FIRST_*, HOT_HEADED_*)
+- [ ] 4 phase-personality hybrids (e.g., SURVIVAL_AGGRESSIVE, GROWTH_CAUTIOUS)
+- [ ] 4 rival-response rules (RIVAL_WEAK_*, RIVAL_THREATENING_*)
+- [ ] 4 heat-management rules (HEAT_RISING_*, HEAT_CRITICAL_*)
+- [ ] 4 economic-strategy rules (WEALTH_GROWING_*, WEALTH_SHRINKING_*)
+
+**Subtasks**:
+- [ ] Add 5 CAUTIOUS/FAMILY_FIRST/HOT_HEADED personality rules
+- [ ] Add 4 phase-personality hybrid rules
+- [ ] Add 4 rival assessment rules
+- [ ] Add 4 heat management rules
+- [ ] Add 4 economic strategy rules
+- [ ] Update rule count in documentation (82 → 103 total)
+- [ ] Add tests for new rules
+
+---
+
+### G-3: Replace Console.WriteLine in Middleware with IAgentLogger
+**Priority**: HIGH
+**Estimated Time**: 2-3 hours
+**Files**: `CommonMiddleware.cs`, `AdvancedMiddleware.cs`
+
+**Problem**: 23+ instances of `Console.WriteLine` in production middleware code. Should use `IAgentLogger` abstraction.
+
+**Subtasks**:
+- [ ] Add `IAgentLogger` parameter to middleware constructors that log
+- [ ] Replace all `Console.WriteLine` with `_logger.Log()`
+- [ ] Update tests to verify logging behavior
+- [ ] Ensure backwards compatibility with default logger
+
+---
+
+### G-4: Fix Stale File References in Documentation
+**Priority**: HIGH
+**Estimated Time**: 1-2 hours
+**Files**: Multiple markdown files
+
+**Problem**: Several documents reference non-existent files:
+- `RulesBasedEngine.cs` (actual: `GameRulesEngine.cs`)
+- `AutonomousAgents.cs` (actual: agents in `MafiaAgents.cs`)
+- `AdvancedRulesEngine.cs` (does not exist)
+
+**Files to Update**:
+- [ ] `docs/archive/MafiaDemo-CODE_REVIEW.md`
+- [ ] `RULES_ENGINE_SUMMARY.md`
+- [ ] `RULES_ENGINE_DEEP_DIVE.md`
+
+---
+
+### G-5: Correct Rule Count Claims Across Documentation
+**Priority**: HIGH
+**Estimated Time**: 1 hour
+**Files**: README.md, CLAUDE.md, DEEP_CODE_REVIEW.md
+
+**Problem**: Multiple files claim "~45 personality rules" and "~98 total rules" but actual counts are 24 and 82.
+
+**After G-2 completes** (45 agent rules, ~103 total):
+- [ ] Update README.md:448
+- [ ] Update CLAUDE.md:317
+- [ ] Update DEEP_CODE_REVIEW.md:95
 
 ---
 

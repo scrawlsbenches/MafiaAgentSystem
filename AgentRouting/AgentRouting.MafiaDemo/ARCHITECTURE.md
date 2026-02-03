@@ -10,7 +10,7 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │                        MafiaGameEngine                          │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
-│  │  GameState   │  │ AgentRouter  │  │ RulesBasedGameEngine │  │
+│  │  GameState   │  │ AgentRouter  │  │   GameRulesEngine    │  │
 │  │  - Wealth    │  │  - Routing   │  │  - GameRules         │  │
 │  │  - Heat      │  │  - Middleware│  │  - AgentRules        │  │
 │  │  - Reputation│  │              │  │  - EventRules        │  │
@@ -176,7 +176,7 @@ public class RivalFamily
 
 ## Rules Integration Points
 
-The game uses **8 specialized `RulesEngineCore<T>` instances** with ~98 total rules:
+The game uses **8 specialized `RulesEngineCore<T>` instances** with **82 rules currently** (target: ~98 with full personality coverage):
 
 ### 1. Game Rules (`_gameRules` - `RulesEngineCore<GameRuleContext>`)
 
@@ -192,7 +192,7 @@ engine.AddRule("POLICE_RAID", "Police raid when heat is critical",
 
 ### 2. Agent Rules (`_agentRules` - `RulesEngineCore<AgentDecisionContext>`)
 
-Drive agent decisions with ~45 personality-driven rules:
+Drive agent decisions with personality-driven rules (**24 currently**, target: 45):
 
 ```csharp
 // Example: Aggressive agent attacks when family is threatened
@@ -313,16 +313,17 @@ var investigation = new AsyncRuleBuilder<AsyncEventContext>()
 - [x] GameState tracking
 - [x] Territory and rival systems
 - [x] Player command interface
-- [x] Message routing setup
-- [x] RulesBasedGameEngine scaffolding
-- [x] Context classes (GameRuleContext, AgentDecisionContext, EventContext)
-- [x] Wire RulesBasedGameEngine to MafiaGameEngine (`GetAgentAction()` called in turn loop)
-- [x] Replace hardcoded agent decisions with rules (~45 personality-driven rules)
-- [x] Sophisticated event generation rules (7+ event rules with probability)
-- [x] Connect agent message handling to routing pipeline (AgentRouter in GameEngine)
+- [x] GameRulesEngine with 8 rule engines
+- [x] Context classes (GameRuleContext, AgentDecisionContext, EventContext, etc.)
+- [x] Wire GameRulesEngine to MafiaGameEngine (`GetAgentAction()` called in turn loop)
+- [x] Sophisticated event generation rules (7 event rules with probability)
 - [x] Async rule support for I/O-bound decisions (3 async rules: police investigation, informant network, business deals)
 - [x] AI Autopilot mode using rules (AI Career Mode - Option 1 in Program.cs)
 - [x] Personality effects on decisions (rules check Aggression, Loyalty, Ambition traits)
+
+### In Progress
+- [ ] **Agent personality rules**: Currently 24 rules, target 45 (need +21 more personality-driven rules)
+- [ ] **AgentRouter game loop integration**: Router exists in GameEngine but `RouteMessageAsync()` not called during `ExecuteTurnAsync()` - messages processed directly
 
 ### Enhancement Opportunities
 - [ ] Save/load game state persistence
@@ -337,16 +338,15 @@ var investigation = new AsyncRuleBuilder<AsyncEventContext>()
 AgentRouting.MafiaDemo/
 ├── Game/
 │   └── GameEngine.cs          # MafiaGameEngine, GameState, AutonomousAgent base
-├── AutonomousAgents.cs        # Godfather, Underboss, Consigliere, Capo, Soldier
-├── MafiaAgents.cs             # Basic agent implementations
-├── PlayerAgent.cs             # Player-controlled agent
-├── RulesBasedEngine.cs        # RulesEngine integration (needs wiring)
-├── AdvancedRulesEngine.cs     # Additional rules and contexts
-├── MissionSystem.cs           # Mission/quest system
+├── MafiaAgents.cs             # All agent implementations (Godfather, Underboss, etc.)
+├── PlayerAgent.cs             # Player-controlled agent with decision rules
+├── GameRulesEngine.cs         # Unified rules engine (8 engines, 82 rules)
+├── MissionSystem.cs           # Mission/quest system with difficulty rules
 ├── GameTimingOptions.cs       # Centralized delay configuration
 ├── AutonomousPlaythrough.cs   # Demo/test scenarios
 ├── Program.cs                 # Entry point and command loop
-└── ARCHITECTURE.md            # This document
+├── ARCHITECTURE.md            # This document
+└── *.md                       # Additional documentation files
 ```
 
 ---
