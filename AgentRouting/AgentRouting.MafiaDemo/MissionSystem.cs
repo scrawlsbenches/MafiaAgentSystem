@@ -244,7 +244,7 @@ public class MissionGenerator
             HeatGenerated = Random.Shared.Next(3, 7),
             SkillRequirements = new Dictionary<string, int>
             {
-                ["Intimidation"] = 15
+                ["Intimidation"] = 8  // Lowered from 15 so new players can attempt
             },
             Data = new Dictionary<string, object>
             {
@@ -279,7 +279,7 @@ public class MissionGenerator
             HeatGenerated = 1,
             SkillRequirements = new Dictionary<string, int>
             {
-                ["StreetSmarts"] = 20
+                ["StreetSmarts"] = 8  // Lowered from 20 so new players can attempt
             },
             Data = new Dictionary<string, object>
             {

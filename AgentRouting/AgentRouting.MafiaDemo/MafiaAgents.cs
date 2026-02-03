@@ -241,7 +241,8 @@ public class UnderbossAgent : AutonomousAgent
             "DailyOperations",
             "CrewManagement",
             "Revenue",
-            "Enforcement"
+            "Enforcement",
+            "Collection"  // For routing collection reports
         });
 
         Capabilities.Skills.AddRange(new[]
@@ -401,7 +402,8 @@ public class ConsigliereAgent : AutonomousAgent
             "Legal",
             "Strategy",
             "Negotiations",
-            "Counseling"
+            "Counseling",
+            "HeatManagement"  // For routing heat-related decisions (bribes, laylow)
         });
 
         Capabilities.Skills.AddRange(new[]
@@ -525,7 +527,10 @@ public class CapoAgent : AutonomousAgent
             "ProtectionRacket",
             "LoanSharking",
             "Gambling",
-            "CrewLeadership"
+            "CrewLeadership",
+            "AgentAction",   // For routing agent action requests
+            "Collection",    // For routing collection missions
+            "Intimidation"   // For routing intimidation missions
         });
 
         Capabilities.Skills.AddRange(new[]
@@ -681,7 +686,8 @@ public class SoldierAgent : AutonomousAgent
             "Enforcement",
             "Collections",
             "Intimidation",
-            "Hits"
+            "Hits",
+            "Information"  // For routing information-gathering missions
         });
 
         Capabilities.Skills.AddRange(new[]

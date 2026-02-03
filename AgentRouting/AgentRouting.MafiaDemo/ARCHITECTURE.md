@@ -349,16 +349,21 @@ var investigation = new AsyncRuleBuilder<AsyncEventContext>()
 ```
 AgentRouting.MafiaDemo/
 ├── Game/
-│   └── GameEngine.cs          # MafiaGameEngine, GameState, AutonomousAgent base
-├── MafiaAgents.cs             # All agent implementations (Godfather, Underboss, etc.)
-├── PlayerAgent.cs             # Player-controlled agent with decision rules
-├── GameRulesEngine.cs         # Unified rules engine (8 engines, 105 rules)
-├── MissionSystem.cs           # Mission/quest system with difficulty rules
-├── GameTimingOptions.cs       # Centralized delay configuration
-├── AutonomousPlaythrough.cs   # Demo/test scenarios
-├── Program.cs                 # Entry point and command loop
-├── ARCHITECTURE.md            # This document
-└── *.md                       # Additional documentation files
+│   └── GameEngine.cs              # MafiaGameEngine, GameState, AutonomousAgent base
+├── Rules/
+│   ├── RuleContexts.cs            # 8 context classes for rule evaluation
+│   ├── RuleConfiguration.cs       # Support classes (AgentRuleDefinition, etc.)
+│   ├── GameRulesEngine.cs         # Core partial class: constructor, public API
+│   ├── GameRulesEngine.Setup.cs   # 7 rule setup methods
+│   └── GameRulesEngine.Analysis.cs # Analysis, debugging, validation
+├── MafiaAgents.cs                 # All agent implementations (Godfather, etc.)
+├── PlayerAgent.cs                 # Player-controlled agent with decision rules
+├── MissionSystem.cs               # Mission/quest system with difficulty rules
+├── GameTimingOptions.cs           # Centralized delay configuration
+├── AutonomousPlaythrough.cs       # Demo/test scenarios
+├── Program.cs                     # Entry point and command loop
+├── ARCHITECTURE.md                # This document
+└── *.md                           # Additional documentation files
 ```
 
 ---

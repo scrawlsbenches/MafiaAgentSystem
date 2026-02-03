@@ -182,6 +182,39 @@ public class AgentDecision
 }
 
 /// <summary>
+/// Agent that receives and acknowledges game engine messages.
+/// This agent handles messages routed to "game-engine" from autonomous agent actions.
+/// </summary>
+public class GameEngineAgent : AgentBase
+{
+    public GameEngineAgent(IAgentLogger logger)
+        : base("game-engine", "Game Engine", logger)
+    {
+        Capabilities = new AgentCapabilities
+        {
+            SupportedCategories = new List<string>
+            {
+                "Collection",
+                "AgentAction",
+                "HeatManagement",
+                "DailyOperations",
+                "FinalDecision",
+                "MajorDispute",
+                "Legal"
+            },
+            MaxConcurrentMessages = 100
+        };
+    }
+
+    protected override Task<MessageResult> HandleMessageAsync(AgentMessage message, CancellationToken ct)
+    {
+        // Game engine acknowledges all routed messages
+        // The actual game logic is handled separately in MafiaGameEngine.ExecuteAgentAction
+        return Task.FromResult(MessageResult.Ok($"Game engine received: {message.Subject}"));
+    }
+}
+
+/// <summary>
 /// Main game engine - runs the autonomous simulation.
 ///
 /// THREADING MODEL: This class is designed for single-threaded operation.
@@ -223,6 +256,9 @@ public class MafiaGameEngine
         InitializeGame();
         _rulesEngine = new GameRulesEngine(_state);
         _rulesEngine.SetupAsyncEventRules(); // Initialize async event processing
+
+        // Register the game engine agent to receive routed messages
+        _router.RegisterAgent(new GameEngineAgent(_logger));
     }
 
     public MafiaGameEngine(IAgentLogger logger)
@@ -235,6 +271,9 @@ public class MafiaGameEngine
         InitializeGame();
         _rulesEngine = new GameRulesEngine(_state);
         _rulesEngine.SetupAsyncEventRules(); // Initialize async event processing
+
+        // Register the game engine agent to receive routed messages
+        _router.RegisterAgent(new GameEngineAgent(_logger));
     }
 
     /// <summary>

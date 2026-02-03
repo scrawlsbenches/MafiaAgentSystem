@@ -651,11 +651,10 @@ public class PlayerAgentTests
 
         var decision = agent.DecideMission(mission, gameState);
 
-        // The rule "Reject - Underqualified" should match
+        // The rule "Reject - Underqualified" should match and reject the mission
         Assert.Equal("Reject - Underqualified", decision.RuleMatched);
-        // Note: The code checks topRule.Name.Contains("REJECT") but rule names use "Reject"
-        // so rejection rules don't actually set Accept to false (case-sensitive comparison)
-        Assert.True(decision.Accept); // Due to case mismatch in code
+        // Bug fix: Now uses rule ID (uppercase) for case-insensitive matching
+        Assert.False(decision.Accept);
     }
 
     [Test]
@@ -671,10 +670,10 @@ public class PlayerAgentTests
 
         var decision = agent.DecideMission(mission, gameState);
 
-        // The rule "Reject - Too Much Heat" should match
+        // The rule "Reject - Too Much Heat" should match and reject the mission
         Assert.Equal("Reject - Too Much Heat", decision.RuleMatched);
-        // Due to case-sensitive Contains("REJECT") check with "Reject" names
-        Assert.True(decision.Accept);
+        // Bug fix: Now uses rule ID (uppercase) for case-insensitive matching
+        Assert.False(decision.Accept);
     }
 
     [Test]
@@ -690,10 +689,10 @@ public class PlayerAgentTests
 
         var decision = agent.DecideMission(mission, gameState);
 
-        // The rule should contain "Reject" in the name
+        // The rule should contain "Reject" in the name and reject the mission
         Assert.Contains("Reject", decision.RuleMatched);
-        // Due to case-sensitive comparison
-        Assert.True(decision.Accept);
+        // Bug fix: Now uses rule ID (uppercase) for case-insensitive matching
+        Assert.False(decision.Accept);
     }
 
     [Test]
@@ -738,10 +737,10 @@ public class PlayerAgentTests
     }
 
     [Test]
-    public void DecideMission_AcceptingWithRejectRuleMatch_CalculatesConfidenceCorrectly()
+    public void DecideMission_RejectingWithRejectRuleMatch_CalculatesConfidenceCorrectly()
     {
-        // When a reject rule matches but Accept is still true (due to case mismatch),
-        // the confidence calculation uses the accepting=true path
+        // When a reject rule matches, Accept should be false and
+        // the confidence calculation uses the rejecting path
         var agent = new PlayerAgent("Skilled Tony");
         agent.Character.Skills.Intimidation = 10;
         agent.Character.Money = 5000m;
@@ -753,9 +752,9 @@ public class PlayerAgentTests
 
         var decision = agent.DecideMission(mission, gameState);
 
-        // Accept is true due to case mismatch
-        Assert.True(decision.Accept);
-        // Confidence should be calculated based on accepting path
+        // Accept is false since reject rule matched (bug was fixed)
+        Assert.False(decision.Accept);
+        // Confidence should be calculated based on rejecting path (not meeting skill requirements adds confidence)
         Assert.True(decision.Confidence >= 50);
     }
 

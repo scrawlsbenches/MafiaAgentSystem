@@ -68,9 +68,10 @@ class Program
         await game.StartGameAsync();
         
         Console.WriteLine("\n\nPress any key to exit...");
-        Console.ReadKey();
+        if (!Console.IsInputRedirected)
+            Console.ReadKey();
     }
-    
+
     static async Task RunScriptedDemo()
     {
         Console.Clear();
@@ -94,7 +95,8 @@ class Program
         Console.WriteLine("\n🎬 \"Leave the gun. Take the cannoli.\" 🍰");
         Console.WriteLine("\nThe family's business is concluded for today.");
         Console.WriteLine("\nPress any key to exit...");
-        Console.ReadKey();
+        if (!Console.IsInputRedirected)
+            Console.ReadKey();
     }
 
     static void PrintTitle()

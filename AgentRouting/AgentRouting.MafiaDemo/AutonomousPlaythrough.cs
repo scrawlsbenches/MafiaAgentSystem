@@ -108,7 +108,10 @@ class AutonomousPlaythroughDemo
         {
             Console.WriteLine($"\n╔═══ WEEK {week} ═══════════════════════════════════════════════════╗");
             await GameTimingOptions.DelayAsync(GameTimingOptions.Current.DialoguePauseMs);
-            
+
+            // Capture rank before processing to detect promotions
+            var rankBeforeWeek = player.Character.Rank;
+
             var weekResult = await player.ProcessWeekAsync(gameState);
             
             // Display mission
@@ -145,15 +148,11 @@ class AutonomousPlaythroughDemo
             PrintCurrentStatus(player.Character);
             await GameTimingOptions.DelayAsync(GameTimingOptions.Current.DialoguePauseMs);
             
-            // Check for promotion
-            if (weekResult.ExecutionResult?.MissionResult != null)
+            // Check for promotion (compare rank before and after week processing)
+            if (rankBeforeWeek != player.Character.Rank)
             {
-                var oldRank = GetPreviousRank(player.Character.Rank, player.Character.Achievements);
-                if (oldRank != player.Character.Rank)
-                {
-                    PrintPromotion(oldRank, player.Character.Rank);
-                    await GameTimingOptions.DelayAsync(GameTimingOptions.Current.DramaticPauseMs * 3);
-                }
+                PrintPromotion(rankBeforeWeek, player.Character.Rank);
+                await GameTimingOptions.DelayAsync(GameTimingOptions.Current.DramaticPauseMs * 3);
             }
             
             // Check for game over conditions
@@ -187,9 +186,10 @@ class AutonomousPlaythroughDemo
         }
         
         Console.WriteLine("\n\nPress any key to exit...");
-        Console.ReadKey();
+        if (!Console.IsInputRedirected)
+            Console.ReadKey();
     }
-    
+
     private static void PrintTitle()
     {
         Console.ForegroundColor = ConsoleColor.Red;
@@ -359,38 +359,21 @@ class AutonomousPlaythroughDemo
         Console.WriteLine($"Final Heat: {character.Heat}/100");
         Console.WriteLine();
         Console.WriteLine("STATISTICS:");
-        Console.WriteLine($"  Weeks Played: {character.Week}");
+        // Week is incremented at the START of ProcessWeekAsync, so subtract 1 for accurate count
+        Console.WriteLine($"  Weeks Played: {character.Week - 1}");
         Console.WriteLine($"  Missions Accepted: {stats.TotalMissions}");
         Console.WriteLine($"  Missions Rejected: {stats.MissionsRejected}");
         Console.WriteLine($"  Successful: {stats.SuccessfulMissions}");
         Console.WriteLine($"  Failed: {stats.FailedMissions}");
         Console.WriteLine($"  Success Rate: {(stats.TotalMissions > 0 ? (stats.SuccessfulMissions * 100.0 / stats.TotalMissions) : 0):F1}%");
         Console.WriteLine($"  Total Money Earned: ${stats.TotalMoneyEarned:N0}");
-        Console.WriteLine($"  Total Respect Gained: +{stats.TotalRespectGained}");
+        Console.WriteLine($"  Total Respect Gained: {(stats.TotalRespectGained >= 0 ? "+" : "")}{stats.TotalRespectGained}");
     }
     
     private static string GetBar(int value, int max)
     {
         var percentage = (int)((value / (double)max) * 20);
         return $"[{new string('■', Math.Max(0, percentage))}{new string('□', Math.Max(0, 20 - percentage))}]";
-    }
-    
-    private static PlayerRank GetPreviousRank(PlayerRank currentRank, List<string> achievements)
-    {
-        // Check most recent achievement for promotion
-        var lastAchievement = achievements.LastOrDefault();
-        if (lastAchievement != null && lastAchievement.Contains("Promoted to"))
-        {
-            return currentRank switch
-            {
-                PlayerRank.Soldier => PlayerRank.Associate,
-                PlayerRank.Capo => PlayerRank.Soldier,
-                PlayerRank.Underboss => PlayerRank.Capo,
-                PlayerRank.Don => PlayerRank.Underboss,
-                _ => currentRank
-            };
-        }
-        return currentRank;
     }
 }
 
