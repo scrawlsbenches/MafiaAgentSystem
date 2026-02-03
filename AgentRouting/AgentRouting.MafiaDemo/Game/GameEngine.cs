@@ -26,6 +26,29 @@ public enum GamePhase
 /// </summary>
 public class GameState
 {
+    // ==========================================================================
+    // Game Condition Thresholds (Single Source of Truth)
+    // ==========================================================================
+
+    /// <summary>Reputation at or below this value triggers defeat by betrayal</summary>
+    public const int DefeatReputationThreshold = 10;
+
+    /// <summary>Heat at or above this value triggers defeat by federal crackdown</summary>
+    public const int DefeatHeatThreshold = 100;
+
+    /// <summary>Minimum weeks to achieve victory</summary>
+    public const int VictoryWeekThreshold = 52;
+
+    /// <summary>Minimum wealth required for victory</summary>
+    public const decimal VictoryWealthThreshold = 1000000m;
+
+    /// <summary>Minimum reputation required for victory</summary>
+    public const int VictoryReputationThreshold = 80;
+
+    // ==========================================================================
+    // Game State Properties
+    // ==========================================================================
+
     public decimal FamilyWealth { get; set; } = 100000m;
     public int Reputation { get; set; } = 50; // 0-100
     public int HeatLevel { get; set; } = 0; // Police attention 0-100
@@ -34,7 +57,11 @@ public class GameState
 
     public Dictionary<string, Territory> Territories { get; set; } = new();
     public Dictionary<string, decimal> AgentLoyalty { get; set; } = new(); // 0-100
-    public List<GameEvent> EventLog { get; set; } = new();
+    /// <summary>
+    /// Event log using Queue for O(1) dequeue performance during eviction.
+    /// Old events are dequeued when the log reaches capacity.
+    /// </summary>
+    public Queue<GameEvent> EventLog { get; set; } = new();
     public Dictionary<string, RivalFamily> RivalFamilies { get; set; } = new();
 
     public bool GameOver { get; set; } = false;
@@ -64,14 +91,42 @@ public class GameState
     public bool WealthIsGrowing => FamilyWealth > PreviousWealth * 1.05m;
     public bool WealthIsShrinking => FamilyWealth < PreviousWealth * 0.95m;
 
-    // Find the most threatening rival
+    // ==========================================================================
+    // Rival Lookup Properties (with null safety)
+    // ==========================================================================
+
+    /// <summary>Returns true if there are any rival families</summary>
+    public bool HasRivals => RivalFamilies.Count > 0;
+
+    /// <summary>
+    /// Find the most hostile rival family, or null if no rivals exist.
+    /// Always check HasRivals or use null-conditional operator when accessing.
+    /// </summary>
     public RivalFamily? MostHostileRival => RivalFamilies.Values
         .OrderByDescending(r => r.Hostility)
         .FirstOrDefault();
 
+    /// <summary>
+    /// Find the weakest rival family, or null if no rivals exist.
+    /// Always check HasRivals or use null-conditional operator when accessing.
+    /// </summary>
     public RivalFamily? WeakestRival => RivalFamilies.Values
         .OrderBy(r => r.Strength)
         .FirstOrDefault();
+
+    /// <summary>Returns the hostility of the most hostile rival, or 0 if no rivals</summary>
+    public int MaxRivalHostility => MostHostileRival?.Hostility ?? 0;
+
+    /// <summary>Returns the strength of the weakest rival, or 0 if no rivals</summary>
+    public int MinRivalStrength => WeakestRival?.Strength ?? 0;
+
+    /// <summary>Returns true if any rival has hostility above the threshold</summary>
+    public bool HasHostileRival(int threshold = 70) =>
+        HasRivals && RivalFamilies.Values.Any(r => r.Hostility > threshold);
+
+    /// <summary>Returns true if any rival is weak (below strength threshold)</summary>
+    public bool HasWeakRival(int threshold = 40) =>
+        HasRivals && RivalFamilies.Values.Any(r => r.Strength < threshold);
 }
 
 /// <summary>
@@ -918,26 +973,29 @@ public class MafiaGameEngine
 
     private void CheckGameOver()
     {
+        // Defeat conditions (using GameState constants for single source of truth)
         if (_state.FamilyWealth <= 0)
         {
             _state.GameOver = true;
             _state.GameOverReason = "The family went bankrupt. You've been absorbed by the Barzinis.";
         }
 
-        if (_state.HeatLevel >= 100)
+        if (_state.HeatLevel >= GameState.DefeatHeatThreshold)
         {
             _state.GameOver = true;
             _state.GameOverReason = "The Feds shut down the family. Everyone's going to prison.";
         }
 
-        if (_state.Reputation <= 10)
+        if (_state.Reputation <= GameState.DefeatReputationThreshold)
         {
             _state.GameOver = true;
             _state.GameOverReason = "The family lost all respect. You've been betrayed from within.";
         }
 
-        // Victory condition
-        if (_state.Week >= 52 && _state.FamilyWealth >= 1000000 && _state.Reputation >= 80)
+        // Victory condition (using GameState constants for single source of truth)
+        if (_state.Week >= GameState.VictoryWeekThreshold &&
+            _state.FamilyWealth >= GameState.VictoryWealthThreshold &&
+            _state.Reputation >= GameState.VictoryReputationThreshold)
         {
             _state.GameOver = true;
             _state.GameOverReason = "Victory! You've built an empire. The Corleone family controls New York.";
@@ -946,13 +1004,13 @@ public class MafiaGameEngine
 
     private void LogEvent(string type, string description, string agent)
     {
-        // Evict oldest events if at capacity (prevents unbounded growth)
+        // Evict oldest events if at capacity (O(1) dequeue operation)
         while (_state.EventLog.Count >= MaxEventLogSize)
         {
-            _state.EventLog.RemoveAt(0);
+            _state.EventLog.Dequeue();
         }
 
-        _state.EventLog.Add(new GameEvent
+        _state.EventLog.Enqueue(new GameEvent
         {
             Type = type,
             Description = description,

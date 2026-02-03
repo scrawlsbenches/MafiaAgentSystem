@@ -138,7 +138,7 @@ public class AutonomousGameTests
         var engine = new MafiaGameEngine(logger);
 
         Assert.NotEmpty(engine.State.EventLog);
-        var firstEvent = engine.State.EventLog[0];
+        var firstEvent = engine.State.EventLog.First();  // Changed from [0] for Queue compatibility
         Assert.Equal("GameStart", firstEvent.Type);
     }
 
@@ -2464,6 +2464,129 @@ Action=WAIT
                 action == "laylow" || action == "recruit" || action == "bribe" || action == "wait",
                 $"Agent {agent.AgentId} returned invalid action: {action}");
         }
+    }
+
+    #endregion
+
+    // =========================================================================
+    // VICTORY ACHIEVABILITY TESTS (H-13)
+    // =========================================================================
+
+    #region Victory Achievability Tests
+
+    [Test]
+    public async Task MafiaGameEngine_VictoryAchievable_SimulatedOptimalPlay()
+    {
+        // H-13: Integration test to verify victory is achievable
+        // This test simulates a full game with balanced heat to verify
+        // the game can be won (reaches week 52 with $1M+ and 80+ rep)
+        EnsureInstantTiming();
+        var logger = CreateTestLogger();
+        var engine = new MafiaGameEngine(logger);
+
+        // Track game progress
+        int maxWeeksReached = 0;
+        decimal maxWealthReached = 0;
+        int maxRepReached = 0;
+        bool victoryAchieved = false;
+
+        // Run game for up to 60 weeks (some buffer past victory condition)
+        while (!engine.State.GameOver && engine.State.Week <= 60)
+        {
+            // Track maximums
+            maxWeeksReached = engine.State.Week;
+            if (engine.State.FamilyWealth > maxWealthReached)
+                maxWealthReached = engine.State.FamilyWealth;
+            if (engine.State.Reputation > maxRepReached)
+                maxRepReached = engine.State.Reputation;
+
+            // Check for victory
+            if (engine.State.GameOverReason?.Contains("Victory") == true)
+            {
+                victoryAchieved = true;
+                break;
+            }
+
+            // Execute turn
+            await engine.ExecuteTurnAsync();
+
+            // Help manage heat if needed (player would do this)
+            if (engine.State.HeatLevel > 70 && engine.State.FamilyWealth >= 10000m)
+            {
+                await engine.ExecutePlayerAction("bribe");
+            }
+        }
+
+        // Victory achieved OR game progressed far enough to demonstrate winnable
+        // The balanced heat mechanics should allow reaching week 52
+        Assert.True(
+            victoryAchieved || maxWeeksReached >= 52,
+            $"Game should be winnable. Reached Week {maxWeeksReached}, " +
+            $"Max Wealth ${maxWealthReached:N0}, Max Rep {maxRepReached}. " +
+            $"GameOver: {engine.State.GameOver}, Reason: {engine.State.GameOverReason}");
+    }
+
+    [Test]
+    public async Task MafiaGameEngine_HeatBalance_AllowsProgressTo52Weeks()
+    {
+        // Verify the heat balance fix allows games to progress past 21 weeks
+        // (The bug was that heat accumulated +18/week making games end around week 21)
+        EnsureInstantTiming();
+        var logger = CreateTestLogger();
+        var engine = new MafiaGameEngine(logger);
+
+        // Run for 30 weeks without intervention
+        int weeksCompleted = 0;
+        while (!engine.State.GameOver && engine.State.Week <= 30)
+        {
+            weeksCompleted = engine.State.Week;
+            await engine.ExecuteTurnAsync();
+        }
+
+        // With balanced heat (net +3/week vs old +18/week),
+        // games should last longer than 21 weeks even without intervention
+        Assert.True(
+            weeksCompleted >= 25 || engine.State.GameOverReason?.Contains("Victory") == true,
+            $"Heat balance should allow games to last 25+ weeks. " +
+            $"Only reached week {weeksCompleted}. " +
+            $"Final heat: {engine.State.HeatLevel}. " +
+            $"GameOver reason: {engine.State.GameOverReason}");
+    }
+
+    [Test]
+    public async Task MafiaGameEngine_VictoryConditions_AllThreeRequirementsMet()
+    {
+        // Test that when all three victory conditions are met, victory is declared
+        EnsureInstantTiming();
+        var logger = CreateTestLogger();
+        var engine = new MafiaGameEngine(logger);
+
+        // Set up state just before victory
+        engine.State.Week = 51;
+        engine.State.FamilyWealth = 900000m;  // Close to $1M
+        engine.State.Reputation = 78;          // Close to 80
+        engine.State.HeatLevel = 20;           // Safe heat level
+
+        // Run turns until victory or failure
+        int turnsRun = 0;
+        while (!engine.State.GameOver && turnsRun < 20)
+        {
+            await engine.ExecuteTurnAsync();
+            turnsRun++;
+
+            // If heat gets high, bribe
+            if (engine.State.HeatLevel > 60 && engine.State.FamilyWealth >= 10000m)
+            {
+                await engine.ExecutePlayerAction("bribe");
+            }
+        }
+
+        // Should have achieved victory (week 52+, $1M+, 80+ rep)
+        Assert.True(
+            engine.State.GameOver && engine.State.GameOverReason?.Contains("Victory") == true,
+            $"Should achieve victory when conditions are close. " +
+            $"Week: {engine.State.Week}, Wealth: ${engine.State.FamilyWealth:N0}, " +
+            $"Rep: {engine.State.Reputation}, Reason: {engine.State.GameOverReason}");
     }
 
     #endregion

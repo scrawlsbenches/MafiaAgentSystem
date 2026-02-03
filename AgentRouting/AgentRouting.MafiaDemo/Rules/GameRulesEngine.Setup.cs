@@ -15,11 +15,11 @@ public partial class GameRulesEngine
 
     private void SetupGameRules()
     {
-        // Victory conditions
+        // Victory conditions (using GameState constants for single source of truth)
         _gameRules.AddRule(
             "VICTORY_EMPIRE",
             "Empire Victory",
-            ctx => ctx.Week >= 52 && ctx.IsRichFinancially && ctx.HasHighReputation,
+            ctx => ctx.Week >= GameState.VictoryWeekThreshold && ctx.IsRichFinancially && ctx.HasHighReputation,
             ctx => {
                 ctx.State.GameOver = true;
                 ctx.State.GameOverReason = "VICTORY! You've built an empire that will last generations!";
@@ -30,7 +30,7 @@ public partial class GameRulesEngine
         _gameRules.AddRule(
             "VICTORY_SURVIVAL",
             "Survival Victory",
-            ctx => ctx.Week >= 52 && ctx.Wealth > 150000,
+            ctx => ctx.Week >= GameState.VictoryWeekThreshold && ctx.Wealth > 150000,
             ctx => {
                 ctx.State.GameOver = true;
                 ctx.State.GameOverReason = "Victory! The family survived and prospered!";
@@ -38,7 +38,7 @@ public partial class GameRulesEngine
             priority: 900
         );
 
-        // Defeat conditions
+        // Defeat conditions (using GameState constants for single source of truth)
         _gameRules.AddRule(
             "DEFEAT_BANKRUPTCY",
             "Bankruptcy",
@@ -53,7 +53,7 @@ public partial class GameRulesEngine
         _gameRules.AddRule(
             "DEFEAT_FEDERAL",
             "Federal Crackdown",
-            ctx => ctx.Heat >= 100,
+            ctx => ctx.Heat >= GameState.DefeatHeatThreshold,
             ctx => {
                 ctx.State.GameOver = true;
                 ctx.State.GameOverReason = "DEFEAT: Federal crackdown! Everyone's going to prison!";
@@ -64,7 +64,7 @@ public partial class GameRulesEngine
         _gameRules.AddRule(
             "DEFEAT_BETRAYAL",
             "Internal Betrayal",
-            ctx => ctx.Reputation <= 5,
+            ctx => ctx.Reputation <= GameState.DefeatReputationThreshold,
             ctx => {
                 ctx.State.GameOver = true;
                 ctx.State.GameOverReason = "DEFEAT: Betrayed from within. The family is destroyed.";
