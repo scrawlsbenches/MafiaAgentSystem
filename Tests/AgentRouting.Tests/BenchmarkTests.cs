@@ -339,4 +339,279 @@ public class BenchmarkTests
             Priority = MessagePriority.Normal
         };
     }
+
+    // ==================== Additional Benchmarks ====================
+
+    [Test]
+    public async Task Benchmark_CircuitBreakerMiddleware()
+    {
+        var middleware = new CircuitBreakerMiddleware(
+            new InMemoryStateStore(),
+            failureThreshold: 100000,
+            resetTimeout: TimeSpan.FromMinutes(1),
+            failureWindow: TimeSpan.FromMinutes(1),
+            clock: SystemClock.Instance);
+
+        MessageDelegate handler = (msg, ct) => Task.FromResult(MessageResult.Ok("Done"));
+        var message = CreateTestMessage();
+
+        // Warmup
+        for (int i = 0; i < 100; i++)
+            await middleware.InvokeAsync(message, handler, CancellationToken.None);
+
+        // Benchmark
+        var iterations = 10000;
+        var sw = Stopwatch.StartNew();
+
+        for (int i = 0; i < iterations; i++)
+        {
+            await middleware.InvokeAsync(message, handler, CancellationToken.None);
+        }
+
+        sw.Stop();
+        var avgMicroseconds = (sw.Elapsed.TotalMilliseconds * 1000) / iterations;
+
+        Console.WriteLine($"  Circuit breaker check: {avgMicroseconds:F2}µs per execution");
+        Console.WriteLine($"  Throughput: {iterations / sw.Elapsed.TotalSeconds:F0} ops/sec");
+
+        Assert.True(avgMicroseconds < 200, $"Circuit breaker too slow: {avgMicroseconds:F2}µs");
+    }
+
+    [Test]
+    public void Benchmark_ImmutableRulesEngine()
+    {
+        var engine = new ImmutableRulesEngine<BenchmarkFact>();
+
+        // Build engine with rules
+        for (int i = 0; i < 10; i++)
+        {
+            var threshold = i * 10;
+            var rule = new RuleBuilder<BenchmarkFact>()
+                .WithId($"R{i}")
+                .WithName($"Rule {i}")
+                .When(f => f.Value > threshold)
+                .Then(f => { })
+                .Build();
+            engine = engine.WithRule(rule);
+        }
+
+        var fact = new BenchmarkFact { Value = 100 };
+
+        // Warmup
+        for (int i = 0; i < 100; i++)
+            engine.Execute(fact);
+
+        // Benchmark
+        var iterations = 10000;
+        var sw = Stopwatch.StartNew();
+
+        for (int i = 0; i < iterations; i++)
+        {
+            engine.Execute(fact);
+        }
+
+        sw.Stop();
+        var avgMicroseconds = (sw.Elapsed.TotalMilliseconds * 1000) / iterations;
+
+        Console.WriteLine($"  Immutable engine (10 rules): {avgMicroseconds:F2}µs per execution");
+        Console.WriteLine($"  Throughput: {iterations / sw.Elapsed.TotalSeconds:F0} ops/sec");
+
+        Assert.True(avgMicroseconds < 500, $"Immutable engine too slow: {avgMicroseconds:F2}µs");
+    }
+
+    [Test]
+    public void Benchmark_RuleBuilder_Creation()
+    {
+        // Benchmark rule creation speed
+        var iterations = 10000;
+        var sw = Stopwatch.StartNew();
+
+        for (int i = 0; i < iterations; i++)
+        {
+            var rule = new RuleBuilder<BenchmarkFact>()
+                .WithId($"R{i}")
+                .WithName($"Rule {i}")
+                .WithPriority(100)
+                .When(f => f.Value > 50)
+                .And(f => f.Amount > 100m)
+                .Then(f => f.Category = "Processed")
+                .Build();
+        }
+
+        sw.Stop();
+        var avgMicroseconds = (sw.Elapsed.TotalMilliseconds * 1000) / iterations;
+
+        Console.WriteLine($"  Rule builder creation: {avgMicroseconds:F2}µs per rule");
+        Console.WriteLine($"  Throughput: {iterations / sw.Elapsed.TotalSeconds:F0} rules/sec");
+
+        // Relaxed threshold for CI environments which may be slower
+        Assert.True(avgMicroseconds < 1000, $"Rule creation too slow: {avgMicroseconds:F2}µs");
+    }
+
+    [Test]
+    public async Task Benchmark_AgentRouter_Routing()
+    {
+        var logger = new ConsoleAgentLogger();
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
+
+        var agent = new BenchmarkAgent("benchmark-agent", "Benchmark Agent");
+        router.RegisterAgent(agent);
+        router.AddRoutingRule("DEFAULT", "Default Route", ctx => true, "benchmark-agent");
+
+        var message = CreateTestMessage();
+
+        // Warmup
+        for (int i = 0; i < 100; i++)
+            await router.RouteMessageAsync(message);
+
+        // Benchmark
+        var iterations = 5000;
+        var sw = Stopwatch.StartNew();
+
+        for (int i = 0; i < iterations; i++)
+        {
+            await router.RouteMessageAsync(message);
+        }
+
+        sw.Stop();
+        var avgMicroseconds = (sw.Elapsed.TotalMilliseconds * 1000) / iterations;
+
+        Console.WriteLine($"  Router message routing: {avgMicroseconds:F2}µs per message");
+        Console.WriteLine($"  Throughput: {iterations / sw.Elapsed.TotalSeconds:F0} msgs/sec");
+
+        Assert.True(avgMicroseconds < 500, $"Routing too slow: {avgMicroseconds:F2}µs");
+    }
+
+    [Test]
+    public async Task Benchmark_MiddlewarePipeline_TenMiddleware()
+    {
+        var pipeline = new MiddlewarePipeline();
+
+        // Add 10 middleware components
+        for (int i = 0; i < 10; i++)
+        {
+            pipeline.Use(new NoOpMiddleware());
+        }
+
+        MessageDelegate handler = (msg, ct) => Task.FromResult(MessageResult.Ok("Done"));
+
+        var executor = pipeline.Build(handler);
+        var message = CreateTestMessage();
+
+        // Warmup
+        for (int i = 0; i < 100; i++)
+            await executor(message, CancellationToken.None);
+
+        // Benchmark
+        var iterations = 5000;
+        var sw = Stopwatch.StartNew();
+
+        for (int i = 0; i < iterations; i++)
+        {
+            await executor(message, CancellationToken.None);
+        }
+
+        sw.Stop();
+        var avgMicroseconds = (sw.Elapsed.TotalMilliseconds * 1000) / iterations;
+
+        Console.WriteLine($"  10-middleware pipeline: {avgMicroseconds:F2}µs per execution");
+        Console.WriteLine($"  Throughput: {iterations / sw.Elapsed.TotalSeconds:F0} ops/sec");
+
+        Assert.True(avgMicroseconds < 1000, $"10-middleware pipeline too slow: {avgMicroseconds:F2}µs");
+    }
+
+    [Test]
+    public void Benchmark_GetMatchingRules_LargeRuleSet()
+    {
+        var engine = new RulesEngineCore<BenchmarkFact>();
+
+        // Add 500 rules
+        for (int i = 0; i < 500; i++)
+        {
+            var threshold = i;
+            engine.AddRule($"R{i}", $"Rule {i}", f => f.Value > threshold, f => { });
+        }
+
+        var fact = new BenchmarkFact { Value = 250 }; // Matches ~250 rules
+
+        // Warmup
+        for (int i = 0; i < 50; i++)
+            engine.GetMatchingRules(fact).ToList();
+
+        // Benchmark
+        var iterations = 500;
+        var sw = Stopwatch.StartNew();
+
+        for (int i = 0; i < iterations; i++)
+        {
+            engine.GetMatchingRules(fact).ToList();
+        }
+
+        sw.Stop();
+        var avgMicroseconds = (sw.Elapsed.TotalMilliseconds * 1000) / iterations;
+
+        Console.WriteLine($"  GetMatchingRules (500 rules): {avgMicroseconds:F2}µs per call");
+        Console.WriteLine($"  Throughput: {iterations / sw.Elapsed.TotalSeconds:F0} ops/sec");
+
+        Assert.True(avgMicroseconds < 10000, $"GetMatchingRules too slow: {avgMicroseconds:F2}µs");
+    }
+
+    [Test]
+    public async Task Benchmark_ConcurrentMessageRouting()
+    {
+        var logger = new ConsoleAgentLogger();
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
+
+        var agent = new BenchmarkAgent("benchmark-agent", "Benchmark Agent");
+        router.RegisterAgent(agent);
+        router.AddRoutingRule("DEFAULT", "Default Route", ctx => true, "benchmark-agent");
+
+        var iterations = 1000;
+        var threadCount = 10;
+
+        var sw = Stopwatch.StartNew();
+
+        var tasks = new List<Task>();
+        for (int t = 0; t < threadCount; t++)
+        {
+            tasks.Add(Task.Run(async () =>
+            {
+                for (int i = 0; i < iterations; i++)
+                {
+                    await router.RouteMessageAsync(CreateTestMessage());
+                }
+            }));
+        }
+
+        await Task.WhenAll(tasks);
+
+        sw.Stop();
+        var totalOps = iterations * threadCount;
+        var opsPerSecond = totalOps / sw.Elapsed.TotalSeconds;
+
+        Console.WriteLine($"  Concurrent routing ({threadCount} threads): {opsPerSecond:F0} msgs/sec");
+        Console.WriteLine($"  Total: {totalOps} messages in {sw.Elapsed.TotalMilliseconds:F0}ms");
+
+        Assert.True(opsPerSecond > 1000, $"Concurrent routing too slow: {opsPerSecond:F0} msgs/sec");
+    }
+
+    // Helper classes for benchmarks
+
+    private class BenchmarkAgent : AgentBase
+    {
+        public BenchmarkAgent(string id, string name) : base(id, name, new ConsoleAgentLogger()) { }
+
+        protected override Task<MessageResult> HandleMessageAsync(AgentMessage message, CancellationToken ct)
+        {
+            return Task.FromResult(MessageResult.Ok("Handled"));
+        }
+    }
+
+    private class NoOpMiddleware : MiddlewareBase
+    {
+        public override Task<MessageResult> InvokeAsync(AgentMessage message, MessageDelegate next, CancellationToken ct)
+        {
+            return next(message, ct);
+        }
+    }
 }

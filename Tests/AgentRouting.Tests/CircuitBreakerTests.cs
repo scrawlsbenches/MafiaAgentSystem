@@ -371,4 +371,240 @@ public class CircuitBreakerTests
         Assert.True(result.Success);
         Assert.Equal(2, middleware.CurrentFailureCount);
     }
+
+    // ==================== Additional Circuit Breaker Tests ====================
+
+    [Test]
+    public async Task HalfOpenState_SuccessClosesCircuit()
+    {
+        var middleware = new CircuitBreakerMiddleware(
+            new InMemoryStateStore(),
+            failureThreshold: 2,
+            resetTimeout: TimeSpan.FromMilliseconds(100),
+            failureWindow: TimeSpan.FromSeconds(60),
+            clock: SystemClock.Instance);
+
+        // Open the circuit
+        await middleware.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
+        await middleware.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
+
+        // Verify circuit is open
+        var openResult = await middleware.InvokeAsync(CreateTestMessage(), CreateSuccessHandler(), CancellationToken.None);
+        Assert.False(openResult.Success);
+
+        // Wait for reset timeout (half-open state)
+        await Task.Delay(150);
+
+        // Next successful request should close the circuit
+        var halfOpenResult = await middleware.InvokeAsync(CreateTestMessage(), CreateSuccessHandler(), CancellationToken.None);
+        Assert.True(halfOpenResult.Success);
+
+        // Verify circuit is now closed (more requests allowed)
+        var closedResult = await middleware.InvokeAsync(CreateTestMessage(), CreateSuccessHandler(), CancellationToken.None);
+        Assert.True(closedResult.Success);
+    }
+
+    [Test]
+    public async Task HalfOpenState_FailureReopensCircuit()
+    {
+        var middleware = new CircuitBreakerMiddleware(
+            new InMemoryStateStore(),
+            failureThreshold: 2,
+            resetTimeout: TimeSpan.FromMilliseconds(100),
+            failureWindow: TimeSpan.FromSeconds(60),
+            clock: SystemClock.Instance);
+
+        // Open the circuit
+        await middleware.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
+        await middleware.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
+
+        // Wait for reset timeout (half-open state)
+        await Task.Delay(150);
+
+        // Failure in half-open state should re-open
+        await middleware.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
+
+        // Circuit should be open again
+        var result = await middleware.InvokeAsync(CreateTestMessage(), CreateSuccessHandler(), CancellationToken.None);
+        Assert.False(result.Success);
+    }
+
+    [Test]
+    public async Task LargeFailureThreshold_ToleratesManyFailures()
+    {
+        var middleware = new CircuitBreakerMiddleware(
+            new InMemoryStateStore(),
+            failureThreshold: 100,
+            resetTimeout: TimeSpan.FromSeconds(30),
+            failureWindow: TimeSpan.FromSeconds(60),
+            clock: SystemClock.Instance);
+
+        // 99 failures should not open the circuit
+        for (int i = 0; i < 99; i++)
+        {
+            await middleware.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
+        }
+
+        // Should still be closed
+        var result = await middleware.InvokeAsync(CreateTestMessage(), CreateSuccessHandler(), CancellationToken.None);
+        Assert.True(result.Success);
+
+        Assert.Equal(99, middleware.CurrentFailureCount);
+    }
+
+    [Test]
+    public async Task PartialFailures_MixedSuccessAndFailure()
+    {
+        var middleware = new CircuitBreakerMiddleware(
+            new InMemoryStateStore(),
+            failureThreshold: 5,
+            resetTimeout: TimeSpan.FromSeconds(30),
+            failureWindow: TimeSpan.FromSeconds(60),
+            clock: SystemClock.Instance);
+
+        // Mix of successes and failures
+        await middleware.InvokeAsync(CreateTestMessage(), CreateSuccessHandler(), CancellationToken.None);
+        await middleware.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
+        await middleware.InvokeAsync(CreateTestMessage(), CreateSuccessHandler(), CancellationToken.None);
+        await middleware.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
+        await middleware.InvokeAsync(CreateTestMessage(), CreateSuccessHandler(), CancellationToken.None);
+        await middleware.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
+        await middleware.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
+
+        // Only 4 failures - should still be closed
+        Assert.Equal(4, middleware.CurrentFailureCount);
+
+        var result = await middleware.InvokeAsync(CreateTestMessage(), CreateSuccessHandler(), CancellationToken.None);
+        Assert.True(result.Success);
+    }
+
+    [Test]
+    public async Task ConcurrentHalfOpenTransitions_ThreadSafe()
+    {
+        var middleware = new CircuitBreakerMiddleware(
+            new InMemoryStateStore(),
+            failureThreshold: 2,
+            resetTimeout: TimeSpan.FromMilliseconds(50),
+            failureWindow: TimeSpan.FromSeconds(60),
+            clock: SystemClock.Instance);
+
+        // Open the circuit
+        await middleware.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
+        await middleware.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
+
+        // Wait for half-open
+        await Task.Delay(100);
+
+        // Concurrent requests in half-open state
+        var tasks = new List<Task<MessageResult>>();
+        for (int i = 0; i < 10; i++)
+        {
+            tasks.Add(middleware.InvokeAsync(CreateTestMessage(), CreateSuccessHandler(), CancellationToken.None));
+        }
+
+        var results = await Task.WhenAll(tasks);
+
+        // At least one should succeed (the probe request)
+        var successCount = results.Count(r => r.Success);
+        Assert.True(successCount >= 1);
+    }
+
+    [Test]
+    public async Task CircuitBreakerError_ContainsHelpfulMessage()
+    {
+        var middleware = new CircuitBreakerMiddleware(
+            new InMemoryStateStore(),
+            failureThreshold: 1,
+            resetTimeout: TimeSpan.FromSeconds(30),
+            failureWindow: TimeSpan.FromSeconds(60),
+            clock: SystemClock.Instance);
+
+        // Open the circuit
+        await middleware.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
+
+        // Verify error message
+        var result = await middleware.InvokeAsync(CreateTestMessage(), CreateSuccessHandler(), CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.NotNull(result.Error);
+        Assert.True(result.Error!.Length > 0);
+    }
+
+    [Test]
+    public async Task SlowHandler_NotTreatedAsFailure()
+    {
+        var middleware = new CircuitBreakerMiddleware(
+            new InMemoryStateStore(),
+            failureThreshold: 2,
+            resetTimeout: TimeSpan.FromSeconds(30),
+            failureWindow: TimeSpan.FromSeconds(60),
+            clock: SystemClock.Instance);
+
+        MessageDelegate slowHandler = async (msg, ct) =>
+        {
+            await Task.Delay(50);
+            return MessageResult.Ok("Slow but successful");
+        };
+
+        // Multiple slow requests should not open the circuit
+        await middleware.InvokeAsync(CreateTestMessage(), slowHandler, CancellationToken.None);
+        await middleware.InvokeAsync(CreateTestMessage(), slowHandler, CancellationToken.None);
+        await middleware.InvokeAsync(CreateTestMessage(), slowHandler, CancellationToken.None);
+
+        // Should still be closed
+        var result = await middleware.InvokeAsync(CreateTestMessage(), CreateSuccessHandler(), CancellationToken.None);
+        Assert.True(result.Success);
+        Assert.Equal(0, middleware.CurrentFailureCount);
+    }
+
+    [Test]
+    public async Task MultipleCircuitBreakers_SeparateStateStores_IndependentState()
+    {
+        // Use separate state stores to ensure independent state
+        var stateStore1 = new InMemoryStateStore();
+        var stateStore2 = new InMemoryStateStore();
+
+        var middleware1 = new CircuitBreakerMiddleware(stateStore1, failureThreshold: 2, resetTimeout: TimeSpan.FromSeconds(30), failureWindow: TimeSpan.FromSeconds(60), clock: SystemClock.Instance);
+        var middleware2 = new CircuitBreakerMiddleware(stateStore2, failureThreshold: 2, resetTimeout: TimeSpan.FromSeconds(30), failureWindow: TimeSpan.FromSeconds(60), clock: SystemClock.Instance);
+
+        // Open middleware1's circuit
+        await middleware1.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
+        await middleware1.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
+
+        // middleware1 should be open
+        var result1 = await middleware1.InvokeAsync(CreateTestMessage(), CreateSuccessHandler(), CancellationToken.None);
+        Assert.False(result1.Success);
+
+        // middleware2 should still be closed (separate state store)
+        var result2 = await middleware2.InvokeAsync(CreateTestMessage(), CreateSuccessHandler(), CancellationToken.None);
+        Assert.True(result2.Success);
+    }
+
+    [Test]
+    public async Task RecoveryAfterLongOutage_CircuitCloses()
+    {
+        var middleware = new CircuitBreakerMiddleware(
+            new InMemoryStateStore(),
+            failureThreshold: 1,
+            resetTimeout: TimeSpan.FromMilliseconds(50),
+            failureWindow: TimeSpan.FromMilliseconds(100),
+            clock: SystemClock.Instance);
+
+        // Open the circuit
+        await middleware.InvokeAsync(CreateTestMessage(), CreateFailureHandler(), CancellationToken.None);
+
+        // Verify open
+        var openResult = await middleware.InvokeAsync(CreateTestMessage(), CreateSuccessHandler(), CancellationToken.None);
+        Assert.False(openResult.Success);
+
+        // Wait for reset timeout
+        await Task.Delay(100);
+
+        // Recover with successful request
+        var recoveryResult = await middleware.InvokeAsync(CreateTestMessage(), CreateSuccessHandler(), CancellationToken.None);
+        Assert.True(recoveryResult.Success);
+
+        // Failure count should be reset
+        Assert.Equal(0, middleware.CurrentFailureCount);
+    }
 }
