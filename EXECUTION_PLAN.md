@@ -1,7 +1,7 @@
 # Execution Plan: MafiaAgentSystem Build & MVP
 
 > **Created**: 2026-01-31
-> **Last Updated**: 2026-02-03 (Batch I: Story System Integration)
+> **Last Updated**: 2026-02-03 (Added F-3 runtime bugs from testing)
 > **Constraint**: Zero 3rd party libraries (only .NET SDK)
 > **Goal**: Compiling codebase → Test baseline → MVP game → Production Quality
 
@@ -17,9 +17,9 @@ See `TASK_LIST.md` for full details.
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │ Layer F: POLISH (last)                                       │
-│   Documentation, code cleanup                                │
+│   Documentation, code cleanup, runtime bug fixes             │
 ├─────────────────────────────────────────────────────────────┤
-│ Layer I: STORY SYSTEM INTEGRATION    ⏳ 14/16 COMPLETE       │
+│ Layer I: STORY SYSTEM INTEGRATION    ✅ COMPLETE (14/16)     │
 │   GameState↔WorldState sync, NPCs, plots, missions           │
 ├─────────────────────────────────────────────────────────────┤
 │ Layer H: CODE REVIEW BUG FIXES        ✅ COMPLETE            │
@@ -54,16 +54,16 @@ See `TASK_LIST.md` for full details.
 | **E** | Enhancement | ✅ Complete | 15 | 2026-02-03 |
 | **G** | Critical Integration | ✅ Complete | 5 | 2026-02-03 |
 | **H** | Code Review Fixes | ✅ Complete | 14 | 2026-02-03 |
-| **I** | Story System Integration | ⏳ **14/16 done** | 16 | In Progress |
-| **F** | Polish | ⏳ Pending | 11 | - |
+| **I** | Story System Integration | ✅ Complete | 16 | 2026-02-03 |
+| **F** | Polish | ⏳ Pending | 14 | - |
 
-**Test count: ~1,800+ tests (346 RulesEngine + 823 AgentRouting + 693 MafiaDemo)**
+**Test count: 1,862 tests (346 RulesEngine + 823 AgentRouting + 693 MafiaDemo)**
 
 ---
 
 ## Recent Activity Log
 
-### Batch I: Story System Integration (2026-02-03) ⏳ IN PROGRESS
+### Batch I: Story System Integration (2026-02-03) ✅ COMPLETE
 
 **Source**: Story System fully implemented in `AgentRouting.MafiaDemo/Story/` (28 files)
 **Design Review**: `AgentRouting.MafiaDemo/Story/GAME_REVIEW.md`
@@ -982,7 +982,37 @@ Remaining (Moved to Batch F):
 - [ ] F-2a: Basic NPC Conversation Command (was I-6a)
 - [ ] F-2b: Conversation Results Integration (was I-6b)
 
+✅ PlayerAgent E2E Integration Tests (2026-02-03)
+   - 4 additional tests verifying Story System through PlayerAgent.ExecuteMissionAsync
+   - Tests consequence rules application, intel recording, backward compatibility
+
 Gate: Story System integrated with MafiaDemo (14/16 tasks complete, conversation deferred to F)
+Total integration tests: 44 (40 + 4 PlayerAgent E2E)
+```
+
+### Runtime Testing Log - 2026-02-03
+```
+Ran all three MafiaDemo modes to verify runtime behavior:
+
+Option 3 (Scripted Demo): ✅ Runs clean
+Option 2 (Autonomous Game): Shows "0 active plots" (minor display issue)
+Option 1 (AI Career Mode): ❌ Major bug - doesn't use Story System
+
+Bugs Discovered:
+- F-3a (HIGH): AutonomousPlaythrough.cs:98 creates raw GameState instead of MafiaGameEngine
+  - Story System never initialized in AI Career Mode
+  - All Story integration work bypassed
+
+- F-3b (MEDIUM): Mission success rate too harsh for new players
+  - Base rate 50% + modifiers
+  - New player with 0 loyalty/skill fails ~40% of missions
+  - Suggested fix: Bump base rate to 60%
+
+- F-3c (LOW): "0 active plots" display misleading
+  - Plots are dormant by design until triggered
+  - Display should explain plot system or show available plots
+
+Updated TASK_LIST.md with F-3 section (3 new tasks)
 ```
 
 ### Documentation Review Log - 2026-02-03
@@ -1019,26 +1049,13 @@ Deep review of all process markdown files:
 
 ## Next Steps
 
-**Batch I: Story System Integration** (7 remaining tasks) - CURRENT
+**Batch F: Polish** (14 tasks) - CURRENT
 
-See `TASK_LIST.md` for full details. Remaining work:
+See `TASK_LIST.md` for full details. Work organized into three groups:
 
-| Task | Description | Hours | Priority |
-|------|-------------|-------|----------|
-| I-2c | Week Counter Consolidation | 2-3 | P0 |
-| I-5b | Apply ConsequenceRules After Missions | 2-3 | P2 |
-| I-5c | Intel Recording for Information Missions | 2-3 | P2 |
-| I-6a | Basic NPC Conversation Command | 2-3 | P3 |
-| I-6b | Conversation Results Integration | 2-3 | P3 |
-
-**Priority**: I-2c is foundation work that prevents dual-tracking bugs.
-
----
-
-**Batch F: Polish** (9 tasks, 18-26 hours) - AFTER BATCH I
-
-| Group | Tasks | Hours | Notes |
-|-------|-------|-------|-------|
+### F-1: Documentation (8 tasks)
+| Task | Description | Hours | Notes |
+|------|-------------|-------|-------|
 | F-1a | Consolidate MafiaDemo docs | 2-3 | Merge 7 overlapping files |
 | F-1b | Update ARCHITECTURE.md status | 1-2 | ✅ Already complete |
 | F-1c | Update CLAUDE.md patterns | 2-3 | New DI/interface patterns |
@@ -1047,3 +1064,18 @@ See `TASK_LIST.md` for full details. Remaining work:
 | F-1f | MafiaDemo player guide | 2-3 | Gameplay documentation |
 | F-1g | Code style cleanup | 2-3 | Warnings, formatting |
 | F-1h | Release checklist | 1-2 | Deployment preparation |
+
+### F-2: Conversation System (2 tasks, deferred from Batch I)
+| Task | Description | Hours | Priority |
+|------|-------------|-------|----------|
+| F-2a | Basic NPC Conversation Command | 2-3 | P3 |
+| F-2b | Conversation Results Integration | 2-3 | P3 |
+
+### F-3: Runtime Bugs (3 tasks, discovered during testing)
+| Task | Description | Hours | Priority |
+|------|-------------|-------|----------|
+| F-3a | AI Career Mode uses raw GameState | 3-4 | **HIGH** |
+| F-3b | Mission success rate too low (60%) | 1-2 | MEDIUM |
+| F-3c | Plot count display misleading | 0.5-1 | LOW |
+
+**Priority**: F-3a is a HIGH priority bug - AI Career Mode doesn't use Story System at all.
