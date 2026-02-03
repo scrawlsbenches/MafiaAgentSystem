@@ -164,23 +164,45 @@ public class Rule<T> : IRule<T>
     
     public RuleResult Execute(T fact)
     {
+        // Track whether condition matched before attempting actions
+        bool conditionMatched;
         try
         {
-            if (!Evaluate(fact))
+            conditionMatched = Evaluate(fact);
+            if (!conditionMatched)
             {
                 return RuleResult.NotMatched(Id, Name);
             }
-            
+        }
+        catch (Exception ex)
+        {
+            // Condition evaluation threw - rule did not match
+            return RuleResult.Error(Id, Name, ex.Message);
+        }
+
+        // Condition matched - now try to execute actions
+        try
+        {
             foreach (var action in _actions)
             {
                 action(fact);
             }
-            
+
             return RuleResult.Success(Id, Name);
         }
         catch (Exception ex)
         {
-            return RuleResult.Error(Id, Name, ex.Message);
+            // Action threw but condition DID match - preserve Matched=true
+            // This is consistent with ActionRule behavior
+            return new RuleResult
+            {
+                RuleId = Id,
+                RuleName = Name,
+                Matched = true,
+                ActionExecuted = false,
+                ExecutedAt = DateTime.UtcNow,
+                ErrorMessage = ex.Message
+            };
         }
     }
     

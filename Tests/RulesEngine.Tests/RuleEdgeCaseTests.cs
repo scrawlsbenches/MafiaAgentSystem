@@ -322,12 +322,12 @@ public class RuleEdgeCaseTests
     }
 
     /// <summary>
-    /// KEY EDGE CASE: When condition matches but action throws,
-    /// RuleResult.Error sets Matched=false. This is the documented behavior.
+    /// When condition matches but action throws, the rule is still counted as matched
+    /// but with an error. This preserves the information that the condition DID match.
     /// See ARCHITECTURE_DECISIONS.md section 5.
     /// </summary>
     [Test]
-    public void RuleResult_Error_ActionThrows_AfterMatchingCondition_SetsMatchedFalse()
+    public void RuleResult_Error_ActionThrows_AfterMatchingCondition_PreservesMatched()
     {
         var engine = new RulesEngineCore<TestFact>();
 
@@ -344,9 +344,8 @@ public class RuleEdgeCaseTests
         var fact = new TestFact { Value = 10 }; // Matches condition (10 > 5)
         var result = engine.Execute(fact);
 
-        // Condition was evaluated and matched, but RuleResult.Error sets Matched=false
-        // IMPORTANT: This behavior loses the information that the rule actually matched
-        Assert.Equal(0, result.MatchedRules); // Currently 0 due to Error semantics
+        // Condition was evaluated and matched - Matched=true is preserved even though action threw
+        Assert.Equal(1, result.MatchedRules);
         Assert.True(result.Errors > 0);
 
         // Verify error message is captured
@@ -433,13 +432,13 @@ public class RuleEdgeCaseTests
     }
 
     /// <summary>
-    /// CRITICAL EDGE CASE: ActionRule and Rule&lt;T&gt; handle exceptions differently!
+    /// Both ActionRule and Rule&lt;T&gt; now handle exceptions consistently:
     /// - ActionRule (from AddRule): Matched=true when condition matched but action threw
-    /// - Rule&lt;T&gt; (from RuleBuilder): Matched=false via RuleResult.Error()
-    /// This inconsistency is documented in ARCHITECTURE_DECISIONS.md section 5.
+    /// - Rule&lt;T&gt; (from RuleBuilder): Matched=true when condition matched but action threw
+    /// This consistency is documented in ARCHITECTURE_DECISIONS.md section 5.
     /// </summary>
     [Test]
-    public void RuleResult_Error_ActionRuleVsRuleT_InconsistentBehavior()
+    public void RuleResult_Error_ActionRuleVsRuleT_ConsistentBehavior()
     {
         // Test with ActionRule (AddRule) - preserves Matched=true
         var engine1 = new RulesEngineCore<TestFact>();
@@ -463,8 +462,9 @@ public class RuleEdgeCaseTests
         var fact2 = new TestFact { Value = 10 };
         var result2 = engine2.Execute(fact2);
 
-        // Rule<T> incorrectly sets Matched=false via RuleResult.Error()
-        Assert.Equal(0, result2.MatchedRules); // BUG: Should be 1
+        // Rule<T> now correctly sets Matched=true when condition matched but action threw
+        // (consistent with ActionRule behavior)
+        Assert.Equal(1, result2.MatchedRules);
         Assert.Equal(1, result2.Errors);
     }
 

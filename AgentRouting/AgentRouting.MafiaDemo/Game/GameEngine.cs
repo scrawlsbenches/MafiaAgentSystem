@@ -593,6 +593,34 @@ public class MafiaGameEngine
                     return $"{agent.AgentId} expands operations - Reputation +5";
                 }
                 break;
+
+            case "recruit":
+                // Recruitment costs money but adds soldiers
+                if (_state.FamilyWealth >= 5000)
+                {
+                    _state.FamilyWealth -= 5000;
+                    _state.SoldierCount += 1;
+                    _state.Reputation += 2;
+                    LogEvent("Recruit", $"{agent.AgentId} recruited new soldier", agent.AgentId);
+                    return $"{agent.AgentId} recruits a new soldier - Cost $5,000, Soldiers: {_state.SoldierCount}";
+                }
+                break;
+
+            case "bribe":
+                // Bribe officials to reduce heat
+                if (_state.FamilyWealth >= 10000 && _state.HeatLevel > 20)
+                {
+                    _state.FamilyWealth -= 10000;
+                    _state.HeatLevel -= 15;
+                    LogEvent("Bribe", $"{agent.AgentId} bribed officials", agent.AgentId);
+                    return $"{agent.AgentId} bribes officials - Cost $10,000, Heat -15";
+                }
+                break;
+
+            case "laylow":
+                // Laying low reduces heat slightly but no other action
+                _state.HeatLevel = Math.Max(0, _state.HeatLevel - 5);
+                return $"{agent.AgentId} lays low - Heat -5";
         }
 
         return null;
@@ -632,10 +660,10 @@ public class MafiaGameEngine
 
     private void UpdateGameState()
     {
-        // Heat naturally decreases
+        // Heat naturally decreases (balanced: 5/week allows recovery from hit in ~5 weeks)
         if (_state.HeatLevel > 0)
         {
-            _state.HeatLevel -= 2;
+            _state.HeatLevel -= 5;
         }
 
         _state.HeatLevel = Math.Max(0, Math.Min(100, _state.HeatLevel));

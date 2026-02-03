@@ -191,15 +191,15 @@ public class MissionGenerator
     
     private Mission GenerateCollectionMission(PlayerCharacter player)
     {
-        var businesses = new[] 
-        { 
-            "Tony's Restaurant", "Luigi's Bakery", "Marino's Deli", 
-            "Sal's Bar", "Vinnie's Grocery", "Angelo's Butcher Shop" 
+        var businesses = new[]
+        {
+            "Tony's Restaurant", "Luigi's Bakery", "Marino's Deli",
+            "Sal's Bar", "Vinnie's Grocery", "Angelo's Butcher Shop"
         };
-        
+
         var business = businesses[Random.Shared.Next(businesses.Length)];
-        var amount = Random.Shared.Next(300, 800);
-        
+        var amount = Random.Shared.Next(400, 1000);
+
         return new Mission
         {
             Title = $"Collect from {business}",
@@ -208,8 +208,8 @@ public class MissionGenerator
             AssignedBy = player.Rank >= PlayerRank.Capo ? "underboss-001" : "capo-001",
             MinimumRank = 0,
             RiskLevel = Random.Shared.Next(1, 4),
-            RespectReward = 3,
-            MoneyReward = amount * 0.25m, // Player gets 25% cut
+            RespectReward = 4,
+            MoneyReward = amount * 0.40m, // Player gets 40% cut (balanced)
             HeatGenerated = 2,
             Data = new Dictionary<string, object>
             {
@@ -332,9 +332,9 @@ public class MissionGenerator
             "corrupt detective",
             "business owner who killed a made man"
         };
-        
+
         var target = targets[Random.Shared.Next(targets.Length)];
-        
+
         return new Mission
         {
             Title = $"Eliminate the {target}",
@@ -343,9 +343,9 @@ public class MissionGenerator
             AssignedBy = "godfather-001",
             MinimumRank = 3, // Underboss only
             RiskLevel = 10,
-            RespectReward = 25,
-            MoneyReward = 5000m,
-            HeatGenerated = 30,
+            RespectReward = 20,
+            MoneyReward = 2500m, // Balanced: ~6x collection reward (down from ~25x)
+            HeatGenerated = 25,  // Balanced: ~5 weeks to recover (down from 30)
             SkillRequirements = new Dictionary<string, int>
             {
                 ["Intimidation"] = 50,

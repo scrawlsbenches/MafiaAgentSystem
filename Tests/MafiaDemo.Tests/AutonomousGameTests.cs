@@ -164,8 +164,10 @@ public class AutonomousGameTests
         var godfather = new GodfatherAgent("godfather-test", "Test Don", logger);
         engine.RegisterAutonomousAgent(godfather);
 
-        // Agent registered - no exception means success
-        Assert.True(true);
+        // Verify agent is properly initialized and can make decisions
+        Assert.NotNull(godfather);
+        Assert.Equal("godfather-test", godfather.Id);
+        Assert.Equal("Test Don", godfather.Name);
     }
 
     [Test]
@@ -178,8 +180,10 @@ public class AutonomousGameTests
 
         engine.SetupRoutingRules();
 
-        // Rules set up - no exception means success
-        Assert.True(true);
+        // Verify engine state is valid after setup and game can proceed
+        Assert.NotNull(engine.State);
+        Assert.False(engine.State.GameOver);
+        Assert.Equal(1, engine.State.Week);
     }
 
     #endregion
@@ -730,8 +734,10 @@ public class AutonomousGameTests
 
         engine.ApplyTerritoryValuation(territory, state);
 
-        // Should complete without exception
-        Assert.True(true);
+        // Verify territory data remains valid after rule evaluation
+        Assert.NotNull(territory.Name);
+        Assert.True(territory.WeeklyRevenue >= 0);
+        Assert.Equal("Protection", territory.Type);
     }
 
     [Test]
@@ -773,8 +779,10 @@ public class AutonomousGameTests
 
         engine.ApplyDifficultyAdjustment(state, 35000m, 0, 0);
 
-        // Should complete without exception
-        Assert.True(true);
+        // Verify game state remains valid after difficulty adjustment
+        Assert.True(state.FamilyWealth >= 0);
+        Assert.True(state.Reputation >= 0 && state.Reputation <= 100);
+        Assert.True(state.RivalFamilies["test"].Strength >= 0);
     }
 
     [Test]
@@ -816,8 +824,10 @@ public class AutonomousGameTests
 
         engine.ApplyRivalStrategy(rival, state);
 
-        // Should complete without exception
-        Assert.True(true);
+        // Verify rival and state data remain valid after strategy evaluation
+        Assert.Equal("Test Rival", rival.Name);
+        Assert.True(rival.Strength >= 0 && rival.Strength <= 100);
+        Assert.True(rival.Hostility >= 0 && rival.Hostility <= 100);
     }
 
     [Test]
@@ -857,8 +867,10 @@ public class AutonomousGameTests
 
         engine.ApplyChainReactions("PoliceRaid", state);
 
-        // Should complete without exception
-        Assert.True(true);
+        // Verify state remains valid after chain reactions
+        Assert.True(state.FamilyWealth >= 0);
+        Assert.True(state.HeatLevel >= 0 && state.HeatLevel <= 100);
+        Assert.False(state.GameOver); // Police raid alone shouldn't end game
     }
 
     [Test]
@@ -875,8 +887,10 @@ public class AutonomousGameTests
 
         engine.ApplyChainReactions("Hit", state);
 
-        // Should complete without exception
-        Assert.True(true);
+        // Verify state remains valid after chain reactions
+        Assert.True(state.FamilyWealth >= 0);
+        Assert.True(state.RivalFamilies.ContainsKey("test"));
+        Assert.True(state.RivalFamilies["test"].Hostility >= 0);
     }
 
     [Test]
@@ -892,8 +906,10 @@ public class AutonomousGameTests
 
         engine.ApplyChainReactions("Betrayal", state);
 
-        // Should complete without exception
-        Assert.True(true);
+        // Verify state remains valid after chain reactions
+        Assert.True(state.FamilyWealth >= 0);
+        Assert.True(state.Reputation >= 0);
+        Assert.True(state.HeatLevel >= 0);
     }
 
     [Test]
@@ -909,8 +925,10 @@ public class AutonomousGameTests
 
         engine.ApplyChainReactions("TerritoryLost", state);
 
-        // Should complete without exception
-        Assert.True(true);
+        // Verify state remains valid after chain reactions
+        Assert.True(state.FamilyWealth >= 0);
+        Assert.True(state.Reputation >= 0);
+        Assert.False(state.GameOver); // Single territory loss shouldn't end game
     }
 
     [Test]
@@ -931,8 +949,10 @@ public class AutonomousGameTests
 
         engine.ApplyChainReactions("PoliceRaid", state, data);
 
-        // Should complete without exception
-        Assert.True(true);
+        // Verify state remains valid and data was accepted
+        Assert.True(state.FamilyWealth >= 0);
+        Assert.True(state.HeatLevel >= 0);
+        Assert.NotNull(data["location"]);
     }
 
     #endregion

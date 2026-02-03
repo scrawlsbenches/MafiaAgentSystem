@@ -48,12 +48,13 @@ public class PlayerDecisionContext
     
     private int GetPromotionThreshold()
     {
+        // Balanced thresholds with adequate buffer at each rank
         return Player.Rank switch
         {
-            PlayerRank.Associate => 40,
-            PlayerRank.Soldier => 70,
-            PlayerRank.Capo => 85,
-            PlayerRank.Underboss => 95,
+            PlayerRank.Associate => 35,  // 35 point buffer to max
+            PlayerRank.Soldier => 60,    // 25 point buffer
+            PlayerRank.Capo => 80,       // 15 point buffer
+            PlayerRank.Underboss => 90,  // 10 point buffer (Don is rare)
             _ => 100
         };
     }
@@ -359,27 +360,28 @@ public class PlayerAgent
     {
         var promoted = false;
         var oldRank = _character.Rank;
-        
+
+        // Balanced thresholds with adequate buffer at each rank
         switch (_character.Rank)
         {
-            case PlayerRank.Associate when _character.Respect >= 40:
+            case PlayerRank.Associate when _character.Respect >= 35:
                 _character.Rank = PlayerRank.Soldier;
                 promoted = true;
                 break;
-            case PlayerRank.Soldier when _character.Respect >= 70:
+            case PlayerRank.Soldier when _character.Respect >= 60:
                 _character.Rank = PlayerRank.Capo;
                 promoted = true;
                 break;
-            case PlayerRank.Capo when _character.Respect >= 85:
+            case PlayerRank.Capo when _character.Respect >= 80:
                 _character.Rank = PlayerRank.Underboss;
                 promoted = true;
                 break;
-            case PlayerRank.Underboss when _character.Respect >= 95:
+            case PlayerRank.Underboss when _character.Respect >= 90:
                 _character.Rank = PlayerRank.Don;
                 promoted = true;
                 break;
         }
-        
+
         if (promoted)
         {
             _character.Achievements.Add($"Promoted to {_character.Rank} in week {_character.Week}");
@@ -392,9 +394,9 @@ public class PlayerAgent
     public async Task<WeekResult> ProcessWeekAsync(GameState gameState)
     {
         _character.Week++;
-        
-        // Heat naturally decreases over time
-        _character.Heat = Math.Max(0, _character.Heat - 3);
+
+        // Heat naturally decreases over time (balanced: 5/week allows recovery from hit in ~6 weeks)
+        _character.Heat = Math.Max(0, _character.Heat - 5);
         
         // Generate a mission
         var mission = _missionGenerator.GenerateMission(_character, gameState);

@@ -56,6 +56,12 @@ public class AgentDecisionContext
     public int Ambition { get; set; }
     public GameState GameState { get; set; } = null!;
 
+    /// <summary>
+    /// The recommended action set by rule evaluation.
+    /// Valid values: "collection", "intimidate", "expand", "laylow", "recruit", "bribe", "wait"
+    /// </summary>
+    public string RecommendedAction { get; set; } = "wait";
+
     // Helper properties
     public bool IsAggressive => Aggression > 70;
     public bool IsGreedy => Greed > 70;
@@ -70,6 +76,8 @@ public class AgentDecisionContext
     public bool FamilyUnderThreat => GameState.HeatLevel > 60 ||
                                      GameState.RivalFamilies.Values.Any(r => r.Hostility > 80);
     public bool CanTakeRisks => GameState.FamilyWealth > 150000 && GameState.HeatLevel < 50;
+    public bool NeedsMoreSoldiers => GameState.SoldierCount < 15;
+    public bool CanAffordBribe => GameState.FamilyWealth > 50000 && GameState.HeatLevel > 40;
 }
 
 /// <summary>
@@ -418,58 +426,76 @@ public class GameRulesEngine
 
     private void SetupAgentRules()
     {
-        // Greedy agents prioritize money
-        _agentRules.AddRule(
-            "GREEDY_COLLECTION",
-            "Greedy Agent Collection",
-            ctx => ctx.IsGreedy && ctx.FamilyNeedsMoney,
-            ctx => { /* Return "collection" action */ },
-            priority: 900
-        );
-
-        // Aggressive agents attack when family is threatened
-        _agentRules.AddRule(
-            "AGGRESSIVE_RETALIATE",
-            "Aggressive Retaliation",
-            ctx => ctx.IsAggressive && ctx.FamilyUnderThreat,
-            ctx => { /* Return "intimidate" action */ },
-            priority: 850
-        );
-
-        // Hot-headed agents act impulsively
-        _agentRules.AddRule(
-            "HOTHEADED_VIOLENCE",
-            "Hot-headed Violence",
-            ctx => ctx.IsHotHeaded && ctx.CanTakeRisks,
-            ctx => { /* Return "hit" action */ },
-            priority: 800
-        );
-
-        // Ambitious agents seek to impress
-        _agentRules.AddRule(
-            "AMBITIOUS_EXPAND",
-            "Ambitious Expansion",
-            ctx => ctx.IsAmbitious && ctx.GameState.FamilyWealth > 100000,
-            ctx => { /* Return "expand" action */ },
-            priority: 750
-        );
-
-        // Calculating agents make strategic moves
-        _agentRules.AddRule(
-            "CALCULATING_STRATEGY",
-            "Strategic Planning",
-            ctx => ctx.IsCalculating && ctx.GameState.Week % 3 == 0,
-            ctx => { /* Return "report" action */ },
-            priority: 700
-        );
-
-        // Loyal agents protect family
+        // Loyal agents protect family when heat is high (highest priority)
         _agentRules.AddRule(
             "LOYAL_PROTECT",
             "Family Protection",
             ctx => ctx.IsFamilyFirst && ctx.GameState.HeatLevel > 60,
-            ctx => { /* Return "layfow" action */ },
+            ctx => { ctx.RecommendedAction = "laylow"; },
             priority: 950
+        );
+
+        // Greedy agents prioritize money when family needs it
+        _agentRules.AddRule(
+            "GREEDY_COLLECTION",
+            "Greedy Agent Collection",
+            ctx => ctx.IsGreedy && ctx.FamilyNeedsMoney,
+            ctx => { ctx.RecommendedAction = "collection"; },
+            priority: 900
+        );
+
+        // Aggressive agents retaliate when family is threatened
+        _agentRules.AddRule(
+            "AGGRESSIVE_RETALIATE",
+            "Aggressive Retaliation",
+            ctx => ctx.IsAggressive && ctx.FamilyUnderThreat,
+            ctx => { ctx.RecommendedAction = "intimidate"; },
+            priority: 850
+        );
+
+        // Hot-headed agents act impulsively when they can take risks
+        _agentRules.AddRule(
+            "HOTHEADED_VIOLENCE",
+            "Hot-headed Violence",
+            ctx => ctx.IsHotHeaded && ctx.CanTakeRisks,
+            ctx => { ctx.RecommendedAction = "intimidate"; },
+            priority: 800
+        );
+
+        // Ambitious agents expand when financially able
+        _agentRules.AddRule(
+            "AMBITIOUS_EXPAND",
+            "Ambitious Expansion",
+            ctx => ctx.IsAmbitious && ctx.GameState.FamilyWealth > 100000,
+            ctx => { ctx.RecommendedAction = "expand"; },
+            priority: 750
+        );
+
+        // Ambitious agents recruit when needing more soldiers
+        _agentRules.AddRule(
+            "AMBITIOUS_RECRUIT",
+            "Ambitious Recruitment",
+            ctx => ctx.IsAmbitious && ctx.NeedsMoreSoldiers && ctx.GameState.FamilyWealth > 50000,
+            ctx => { ctx.RecommendedAction = "recruit"; },
+            priority: 725
+        );
+
+        // Calculating agents bribe officials when heat is high
+        _agentRules.AddRule(
+            "CALCULATING_BRIBE",
+            "Strategic Bribe",
+            ctx => ctx.IsCalculating && ctx.CanAffordBribe,
+            ctx => { ctx.RecommendedAction = "bribe"; },
+            priority: 700
+        );
+
+        // Calculating agents make strategic collections on schedule
+        _agentRules.AddRule(
+            "CALCULATING_STRATEGY",
+            "Strategic Planning",
+            ctx => ctx.IsCalculating && ctx.GameState.Week % 3 == 0,
+            ctx => { ctx.RecommendedAction = "collection"; },
+            priority: 650
         );
 
         // Default: cautious wait
@@ -477,7 +503,7 @@ public class GameRulesEngine
             "DEFAULT_WAIT",
             "Cautious Waiting",
             ctx => true,
-            ctx => { /* Return "wait" action */ },
+            ctx => { ctx.RecommendedAction = "wait"; },
             priority: 1
         );
     }
@@ -863,7 +889,8 @@ public class GameRulesEngine
     }
 
     /// <summary>
-    /// Get agent action using rules
+    /// Get agent action using rules. Rules are evaluated in priority order
+    /// and the first matching rule sets the RecommendedAction on the context.
     /// </summary>
     public string GetAgentAction(GameAgentData agent)
     {
@@ -874,24 +901,25 @@ public class GameRulesEngine
             Greed = agent.Personality.Greed,
             Loyalty = agent.Personality.Loyalty,
             Ambition = agent.Personality.Ambition,
-            GameState = _state
+            GameState = _state,
+            RecommendedAction = "wait" // Default
         };
 
-        // Evaluate rules and get highest priority matching rule
+        // Evaluate all matching rules - the highest priority matching rule
+        // will set RecommendedAction (subsequent lower priority rules may
+        // also match but their actions still execute, potentially overriding).
+        // Since rules are sorted by priority (high to low), we use Execute
+        // with StopOnFirstMatch semantics to get the highest priority match.
         var matchedRules = _agentRules.GetMatchingRules(context);
 
         if (matchedRules.Any())
         {
+            // Execute only the highest priority matching rule's action
             var topRule = matchedRules.First();
-
-            // Map rule names to actions
-            if (topRule.Name.Contains("COLLECTION")) return "collection";
-            if (topRule.Name.Contains("RETALIATE") || topRule.Name.Contains("VIOLENCE")) return "intimidate";
-            if (topRule.Name.Contains("EXPAND")) return "expand";
-            if (topRule.Name.Contains("PROTECT")) return "laylow";
+            topRule.Execute(context);
         }
 
-        return "wait";
+        return context.RecommendedAction;
     }
 
     /// <summary>

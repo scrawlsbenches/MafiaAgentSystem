@@ -669,7 +669,7 @@ public class MissionSystemTests
         {
             Assert.Contains("Collect from", collectionMission.Title);
             Assert.Equal(0, collectionMission.MinimumRank);
-            Assert.Equal(3, collectionMission.RespectReward);
+            Assert.Equal(4, collectionMission.RespectReward); // Balanced economy
             Assert.Equal(2, collectionMission.HeatGenerated);
             Assert.True(collectionMission.Data.ContainsKey("BusinessName"));
             Assert.True(collectionMission.Data.ContainsKey("AmountOwed"));
@@ -792,9 +792,9 @@ public class MissionSystemTests
             Assert.Contains("Eliminate", hitMission.Title);
             Assert.Equal(3, hitMission.MinimumRank);
             Assert.Equal(10, hitMission.RiskLevel);
-            Assert.Equal(25, hitMission.RespectReward);
-            Assert.Equal(5000m, hitMission.MoneyReward);
-            Assert.Equal(30, hitMission.HeatGenerated);
+            Assert.Equal(20, hitMission.RespectReward); // Balanced economy
+            Assert.Equal(2500m, hitMission.MoneyReward); // Balanced economy (~6x collection)
+            Assert.Equal(25, hitMission.HeatGenerated); // Balanced economy (~5 weeks to recover)
             Assert.Equal("godfather-001", hitMission.AssignedBy);
             Assert.True(hitMission.SkillRequirements.ContainsKey("Intimidation"));
             Assert.True(hitMission.SkillRequirements.ContainsKey("StreetSmarts"));
