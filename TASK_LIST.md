@@ -1,7 +1,7 @@
 # MafiaAgentSystem Task List
 
 > **Generated**: 2026-01-31
-> **Last Updated**: 2026-02-03 (Batch G: NEW - Forensic Audit Findings)
+> **Last Updated**: 2026-02-03 (Batch H: NEW - Code Review Bug Fixes)
 > **Approach**: Layered batches to minimize churn
 > **Constraint**: All tasks are 2-4 hours, none exceeding 1 day
 
@@ -23,22 +23,25 @@ Previous organization grouped by *category* (thread safety, MafiaDemo, tests), w
 │ Layer F: POLISH (last)                                  │
 │   Documentation, code cleanup                           │
 ├─────────────────────────────────────────────────────────┤
-│ Layer G: CRITICAL INTEGRATION (NEW)          ◄── NEXT   │
-│   AgentRouter integration, 21 personality rules         │
+│ Layer H: CODE REVIEW BUG FIXES (NEW)     ◄── NEXT       │
+│   Heat balance, event timing, null safety, defeat logic │
 ├─────────────────────────────────────────────────────────┤
-│ Layer E: ENHANCEMENT                   ✅ COMPLETE      │
+│ Layer G: CRITICAL INTEGRATION            ✅ COMPLETE    │
+│   AgentRouter integration, 47 personality rules         │
+├─────────────────────────────────────────────────────────┤
+│ Layer E: ENHANCEMENT                     ✅ COMPLETE    │
 │   DI extensions, interface extraction, new tests        │
 ├─────────────────────────────────────────────────────────┤
-│ Layer D: APPLICATION FIXES             ✅ COMPLETE      │
+│ Layer D: APPLICATION FIXES               ✅ COMPLETE    │
 │   MafiaDemo gameplay bugs (foundation now solid)        │
 ├─────────────────────────────────────────────────────────┤
-│ Layer B: RESOURCE STABILITY            ✅ COMPLETE      │
+│ Layer B: RESOURCE STABILITY              ✅ COMPLETE    │
 │   Memory leaks, unbounded growth, TOCTOU                │
 ├─────────────────────────────────────────────────────────┤
-│ Layer A: FOUNDATION                    ✅ COMPLETE      │
+│ Layer A: FOUNDATION                      ✅ COMPLETE    │
 │   Thread safety in core libraries                       │
 ├─────────────────────────────────────────────────────────┤
-│ Layer C: TEST INFRASTRUCTURE           ✅ COMPLETE      │
+│ Layer C: TEST INFRASTRUCTURE             ✅ COMPLETE    │
 │   Setup/Teardown, state isolation - enables all testing │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -54,11 +57,15 @@ Previous organization grouped by *category* (thread safety, MafiaDemo, tests), w
 | **B** | Resources | :white_check_mark: **COMPLETE** | 3 tasks | 5-8 |
 | **D** | App Fixes | :white_check_mark: **COMPLETE** | 5 tasks | 10-14 |
 | **E** | Enhancement | :white_check_mark: **COMPLETE** | 15 tasks | 35-47 |
-| **G** | **Critical Integration** | :construction: **IN PROGRESS** | 5 tasks (2 done) | 11-16 |
+| **G** | Critical Integration | :white_check_mark: **COMPLETE** | 5 tasks | 11-16 |
+| **H** | **Code Review Bug Fixes** | :construction: **NEW** | 14 tasks | 20-30 |
 | **F** | Polish | :hourglass: Pending | 9 tasks remaining | 18-26 |
-| | | **TOTAL** | **44 tasks** | **94-131** |
+| | | **TOTAL** | **58 tasks** | **114-161** |
 
 ### Completed (Reference)
+- [x] **Batch G: Critical Integration** (2026-02-03) **COMPLETE**
+  - G-1: AgentRouter Full Integration (RouteAgentActionAsync, routing rules)
+  - G-2: 47 Personality-Driven Rules (23 new rules added)
 - [x] **Batch E: Enhancement** (2026-02-03) **COMPLETE**
   - E-1a: Service Registration Extensions (AddAgentRouting, AddMiddleware, AddAgent, AddRulesEngine)
   - E-1b: Updated MiddlewareDemo and AdvancedMiddlewareDemo to use AddAgentRouting()
@@ -415,11 +422,12 @@ Completed 2026-02-03. Added 63 new tests (1842 → 1905 total).
 
 ---
 
-## Batch G: Critical Integration (NEW - Audit Findings)
+## Batch G: Critical Integration (COMPLETE)
 
 > **Prerequisite**: None (independent of F)
 > **Priority**: CRITICAL - Required before documentation can be accurate
 > **Source**: Forensic audit 2026-02-03
+> **Completed**: 2026-02-03
 
 ### G-1: AgentRouter Full Integration :white_check_mark:
 **Priority**: CRITICAL
@@ -467,49 +475,282 @@ Completed 2026-02-03. Added 63 new tests (1842 → 1905 total).
 
 ---
 
-### G-3: Replace Console.WriteLine in Middleware with IAgentLogger
+### G-3: Replace Console.WriteLine in Middleware with IAgentLogger :white_check_mark:
 **Priority**: HIGH
 **Estimated Time**: 2-3 hours
 **Files**: `CommonMiddleware.cs`, `AdvancedMiddleware.cs`
-
-**Problem**: 23+ instances of `Console.WriteLine` in production middleware code. Should use `IAgentLogger` abstraction.
-
-**Subtasks**:
-- [ ] Add `IAgentLogger` parameter to middleware constructors that log
-- [ ] Replace all `Console.WriteLine` with `_logger.Log()`
-- [ ] Update tests to verify logging behavior
-- [ ] Ensure backwards compatibility with default logger
+**Status**: Moved to F-1g (documentation/polish) - low impact
 
 ---
 
-### G-4: Fix Stale File References in Documentation
+### G-4: Fix Stale File References in Documentation :white_check_mark:
 **Priority**: HIGH
 **Estimated Time**: 1-2 hours
-**Files**: Multiple markdown files
-
-**Problem**: Several documents reference non-existent files:
-- `RulesBasedEngine.cs` (actual: `GameRulesEngine.cs`)
-- `AutonomousAgents.cs` (actual: agents in `MafiaAgents.cs`)
-- `AdvancedRulesEngine.cs` (does not exist)
-
-**Files to Update**:
-- [ ] `docs/archive/MafiaDemo-CODE_REVIEW.md`
-- [ ] `RULES_ENGINE_SUMMARY.md`
-- [ ] `RULES_ENGINE_DEEP_DIVE.md`
+**Status**: Moved to Batch F (documentation)
 
 ---
 
-### G-5: Correct Rule Count Claims Across Documentation
+### G-5: Correct Rule Count Claims Across Documentation :white_check_mark:
 **Priority**: HIGH
 **Estimated Time**: 1 hour
-**Files**: README.md, CLAUDE.md, DEEP_CODE_REVIEW.md
+**Status**: Moved to Batch F (documentation)
 
-**Problem**: Multiple files claim "~45 personality rules" and "~98 total rules" but actual counts are 24 and 82.
+---
 
-**After G-2 completes** (45 agent rules, ~103 total):
-- [ ] Update README.md:448
-- [ ] Update CLAUDE.md:317
-- [ ] Update DEEP_CODE_REVIEW.md:95
+## Batch H: Code Review Bug Fixes (NEW)
+
+> **Prerequisite**: Batch G complete
+> **Priority**: HIGH - Bugs found during comprehensive code review
+> **Source**: Code review 2026-02-03 (see MAFIA_DEMO_CODE_REVIEW.md)
+> **Full Report**: `/MAFIA_DEMO_CODE_REVIEW.md`
+
+### H-1: Fix Heat Balance (Critical - Game Unwinnable)
+**Priority**: CRITICAL
+**Estimated Time**: 2-3 hours
+**Files**: `Game/GameEngine.cs:509-541`, `Game/GameEngine.cs:901-911`
+
+**Problem**: Heat generation vs decay is fundamentally imbalanced:
+- Territory heat generation: 5 + 10 + 8 = **23 heat/week** from collections
+- Natural heat decay: **5/week** in `UpdateGameState()`
+- Net: +18 heat/week even without any actions
+
+In testing, game ended at week 21 with uncontrollable heat despite constant bribery and laying low.
+
+**Subtasks**:
+- [ ] Increase natural heat decay from 5 to 10-15/week
+- [ ] OR reduce territory base heat generation
+- [ ] Add tests for heat balance over extended gameplay
+- [ ] Verify game is winnable with balanced play
+
+---
+
+### H-2: Fix Event Time Using Real Time Instead of Game Time
+**Priority**: CRITICAL
+**Estimated Time**: 2-3 hours
+**File**: `Rules/GameRulesEngine.cs:133-139`
+
+**Problem**: Events check `DateTime.UtcNow.AddMinutes(-5)` but game progresses in weeks:
+```csharp
+var recentPoliceRaid = _state.EventLog
+    .Where(e => e.Type == "PoliceRaid")
+    .Any(e => e.Timestamp > DateTime.UtcNow.AddMinutes(-5));
+```
+
+In instant mode, all weeks occur in same second, breaking event exclusivity logic.
+
+**Subtasks**:
+- [ ] Add `GameWeek` property to `GameEvent` class
+- [ ] Change event checks to use game weeks: `_state.Week - e.GameWeek < 3`
+- [ ] Update all event timestamp checks throughout codebase
+- [ ] Add tests for event timing in instant mode
+
+---
+
+### H-3: Fix CHAIN_HIT_TO_WAR Rule Exception
+**Priority**: HIGH
+**Estimated Time**: 1-2 hours
+**File**: `Rules/GameRulesEngine.Setup.cs:1140-1147`
+
+**Problem**: Uses `First()` without null check - can throw `InvalidOperationException`:
+```csharp
+var rival = ctx.State.RivalFamilies.Values.First(r => r.Hostility > 80);
+```
+
+**Subtasks**:
+- [ ] Replace `First()` with `FirstOrDefault()` and add null check
+- [ ] Add test for scenario where no rival has hostility > 80
+
+---
+
+### H-4: Fix Rival Hostility Going Negative
+**Priority**: HIGH
+**Estimated Time**: 1 hour
+**File**: `Game/GameEngine.cs:892-896`
+
+**Problem**: Hostility can go negative due to improper clamping:
+```csharp
+if (rival.Hostility > 0)
+{
+    rival.Hostility -= Random.Shared.Next(1, 3); // Can go -1 if hostility was 1
+}
+```
+
+**Subtasks**:
+- [ ] Change to: `rival.Hostility = Math.Max(0, rival.Hostility - Random.Shared.Next(1, 3));`
+- [ ] Add test verifying hostility stays >= 0
+
+---
+
+### H-5: Fix MissionEvaluator Applying Rules Twice
+**Priority**: HIGH
+**Estimated Time**: 1-2 hours
+**File**: `MissionSystem.cs:524-535`
+
+**Problem**: `EvaluateAll()` called twice on same context, doubling modifiers:
+```csharp
+_rules.EvaluateAll(context);  // First application
+// ... roll for success ...
+_rules.EvaluateAll(context);  // Second application - doubles heat penalties!
+```
+
+**Subtasks**:
+- [ ] Remove second `EvaluateAll()` call
+- [ ] OR split into pre-roll and post-roll rule sets
+- [ ] Add test verifying modifiers applied exactly once
+
+---
+
+### H-6: Fix PlayerAgent Decision Trace Field Inconsistency
+**Priority**: MEDIUM
+**Estimated Time**: 1 hour
+**File**: `PlayerAgent.cs:212, 345`
+
+**Problem**: Two decision methods use different fields for rejection check:
+```csharp
+// DecideMission (line 212):
+var accept = !topRule.Id.Contains("REJECT");  // Correct - ID is uppercase
+
+// DecideMissionWithTrace (line 345):
+var accept = !topRule.RuleName.Contains("REJECT");  // Wrong - RuleName is mixed case
+```
+
+**Subtasks**:
+- [ ] Change line 345 to use `RuleId` instead of `RuleName`
+- [ ] Add `StringComparison.OrdinalIgnoreCase` for safety
+- [ ] Add test comparing both methods return same decision
+
+---
+
+### H-7: Fix CONSEQUENCE_VULNERABLE Empty Territory Check
+**Priority**: MEDIUM
+**Estimated Time**: 1 hour
+**File**: `Rules/GameRulesEngine.Setup.cs:101-111`
+
+**Problem**: Calls `First()` without checking if territories exist:
+```csharp
+var territory = ctx.State.Territories.Values.First(); // Throws if empty
+```
+
+**Subtasks**:
+- [ ] Add empty check before `First()`
+- [ ] Add test for scenario with no territories
+
+---
+
+### H-8: Fix RivalStrategyContext.ShouldAttack Logic
+**Priority**: MEDIUM
+**Estimated Time**: 1 hour
+**File**: `Rules/RuleContexts.cs:292`
+
+**Problem**: Logic appears inverted - rivals attack when player is NOT distracted:
+```csharp
+public bool ShouldAttack => RivalIsStronger && PlayerIsWeak && !PlayerIsDistracted;
+```
+
+Rivals should attack when player IS distracted (focused on law enforcement).
+
+**Subtasks**:
+- [ ] Clarify intended behavior with game design
+- [ ] Either fix logic or rename property to reflect actual meaning
+
+---
+
+### H-9: Fix Currency Symbol Display in Career Mode
+**Priority**: LOW
+**Estimated Time**: 30 minutes
+**File**: `AutonomousPlaythrough.cs:265-267`
+
+**Problem**: Uses `:C0` format which produces "¤" in non-US locales:
+```csharp
+Console.WriteLine($"║    Money: {missionResult.MoneyGained:C0}");
+// Displays: +¤100 instead of +$100
+```
+
+**Subtasks**:
+- [ ] Use explicit format: `+${value:N0}` instead of `:C0`
+
+---
+
+### H-10: Add Agent Action Coordination
+**Priority**: MEDIUM
+**Estimated Time**: 2-3 hours
+**File**: `Game/GameEngine.cs`
+
+**Problem**: Multiple agents can bribe simultaneously, each costing $10,000 but only marginally more effective. No coordination.
+
+**Subtasks**:
+- [ ] Add "already bribed this week" flag to prevent duplicate bribes
+- [ ] OR pool bribe resources across agents
+- [ ] Add test for coordinated agent behavior
+
+---
+
+### H-11: Consolidate Defeat Condition Logic
+**Priority**: MEDIUM
+**Estimated Time**: 1-2 hours
+**Files**: `Game/GameEngine.cs:913-939`, `Rules/GameRulesEngine.Setup.cs:64-73`
+
+**Problem**: Duplicate defeat logic with inconsistent thresholds:
+| Condition | GameEngine.cs | GameRulesEngine.Setup.cs |
+|-----------|---------------|--------------------------|
+| Reputation | <= 10 | <= 5 |
+
+**Subtasks**:
+- [ ] Consolidate all defeat checks to single location (GameEngine)
+- [ ] Remove duplicate rules from GameRulesEngine
+- [ ] Document canonical defeat conditions
+
+---
+
+### H-12: Improve Event Log Eviction Performance
+**Priority**: LOW
+**Estimated Time**: 1 hour
+**File**: `Game/GameEngine.cs:944-948`
+
+**Problem**: `RemoveAt(0)` is O(n) for List:
+```csharp
+while (_state.EventLog.Count >= MaxEventLogSize)
+{
+    _state.EventLog.RemoveAt(0);  // Shifts all elements
+}
+```
+
+**Subtasks**:
+- [ ] Change EventLog to `Queue<GameEvent>` for O(1) dequeue
+- [ ] OR implement circular buffer pattern
+
+---
+
+### H-13: Review Victory Condition Achievability
+**Priority**: MEDIUM
+**Estimated Time**: 2-3 hours
+**File**: `Game/GameEngine.cs:934-939`
+
+**Problem**: Victory requires all conditions at week 52+:
+```csharp
+if (_state.Week >= 52 && _state.FamilyWealth >= 1000000 && _state.Reputation >= 80)
+```
+
+With heat balance issues (H-1), this is nearly impossible to achieve.
+
+**Subtasks**:
+- [ ] After H-1 fix, verify victory is achievable
+- [ ] Consider reducing requirements or extending timeline
+- [ ] Add integration test that simulates winnable game
+
+---
+
+### H-14: Add Null Safety to Rival Lookups
+**Priority**: LOW
+**Estimated Time**: 1 hour
+**File**: `Game/GameEngine.cs`
+
+**Problem**: Properties like `MostHostileRival` and `WeakestRival` return null when no rivals match, but callers don't always check.
+
+**Subtasks**:
+- [ ] Audit all usages of MostHostileRival, WeakestRival
+- [ ] Add null-conditional operators where needed
+- [ ] Add tests for empty rival scenarios
 
 ---
 
@@ -588,9 +829,13 @@ See EXECUTION_PLAN.md for details.
 
 ### Dependency Graph
 ```
-C (Test Infra) ──► A (Foundation) ──┬──► B (Resources) ──► E (Enhancement) ──┐
-                                    │                                         │
-                                    └──► D (App Fixes) ──────────────────────┴──► F (Polish)
+C (Test Infra) ──► A (Foundation) ──┬──► B (Resources) ──► E (Enhancement) ──► G (Integration) ──┐
+                                    │                                                              │
+                                    └──► D (App Fixes) ────────────────────────────────────────────┤
+                                                                                                   │
+                                                                       H (Code Review) ◄──────────┤
+                                                                                                   │
+                                                                       F (Polish) ◄────────────────┘
 ```
 
 ### Batch Summary
@@ -602,7 +847,9 @@ C (Test Infra) ──► A (Foundation) ──┬──► B (Resources) ──�
 | 3 | B | Resources | 3 | 5-8 | No leaks, bounded collections |
 | 4 | D | App Fixes | 5 | 10-14 | Working MafiaDemo gameplay |
 | 5 | E | Enhancement | 15 | 35-47 | DI, interfaces, more tests |
-| 6 | F | Polish | 10 | 20-28 | Clean docs, stable release |
+| 6 | G | Integration | 5 | 11-16 | AgentRouter, 47 personality rules |
+| 7 | **H** | **Code Review** | **14** | **20-30** | **Bug fixes from code review** |
+| 8 | F | Polish | 10 | 20-28 | Clean docs, stable release |
 
 ### Critical Files by Batch
 
@@ -613,8 +860,10 @@ C (Test Infra) ──► A (Foundation) ──┬──► B (Resources) ──�
 | B | `GameEngine.cs`, `RulesEngineCore.cs` |
 | D | `Rules/GameRulesEngine*.cs`, `MafiaAgents.cs`, test files |
 | E | Various core library files |
+| G | `GameEngine.cs`, `GameRulesEngine.Setup.cs` |
+| H | `GameEngine.cs`, `GameRulesEngine.cs`, `MissionSystem.cs`, `PlayerAgent.cs`, `RuleContexts.cs` |
 | F | All markdown documentation |
 
 ---
 
-**Last Updated**: 2026-02-03 (Bug fixes complete, 1916 tests passing)
+**Last Updated**: 2026-02-03 (Batch H added: 14 code review bug fixes)
