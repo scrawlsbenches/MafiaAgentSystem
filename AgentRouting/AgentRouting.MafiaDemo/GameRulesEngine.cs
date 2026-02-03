@@ -1306,4 +1306,160 @@ public class GameRulesEngine
 
         return sb.ToString();
     }
+
+    // =========================================================================
+    // DYNAMIC RULE FACTORY - Configurable/Moddable Agent Rules
+    // =========================================================================
+
+    /// <summary>
+    /// Register agent rules dynamically from configuration definitions.
+    /// This enables modding and external configuration of game behavior.
+    /// </summary>
+    /// <param name="definitions">Rule definitions with their associated actions</param>
+    /// <returns>Number of rules registered</returns>
+    public int RegisterDynamicAgentRules(IEnumerable<AgentRuleDefinition> definitions)
+    {
+        int count = 0;
+        foreach (var def in definitions)
+        {
+            var rule = CreateDynamicAgentRule(def);
+            _agentRules.RegisterRule(rule);
+            count++;
+        }
+        return count;
+    }
+
+    /// <summary>
+    /// Creates a single agent rule from a definition using DynamicRuleFactory
+    /// </summary>
+    private Rule<AgentDecisionContext> CreateDynamicAgentRule(AgentRuleDefinition definition)
+    {
+        // Use DynamicRuleFactory to build the rule from property conditions
+        var rules = DynamicRuleFactory.CreateRulesFromDefinitions<AgentDecisionContext>(
+            new[] { definition.ToRuleDefinition() }
+        );
+
+        var baseRule = rules.First();
+
+        // Add the action that sets the recommended action
+        return baseRule.WithAction(ctx => ctx.RecommendedAction = definition.RecommendedAction);
+    }
+
+    /// <summary>
+    /// Load example configurable rules that demonstrate DynamicRuleFactory usage.
+    /// In a real game, these could be loaded from JSON/XML config files.
+    /// </summary>
+    public void LoadExampleConfigurableRules()
+    {
+        var configurableRules = new List<AgentRuleDefinition>
+        {
+            // Example 1: Simple boolean condition rule
+            // "When in survival mode with dangerous heat, always lay low"
+            new AgentRuleDefinition
+            {
+                Id = "CONFIG_EMERGENCY_LAYLOW",
+                Name = "Configurable Emergency LayLow",
+                Description = "Loaded from configuration: Emergency heat management",
+                Priority = 999, // Highest priority - overrides other rules
+                Conditions = new List<ConditionDefinition>
+                {
+                    new ConditionDefinition { PropertyName = "InSurvivalMode", Operator = "==", Value = true },
+                    new ConditionDefinition { PropertyName = "HeatIsCritical", Operator = "==", Value = true }
+                },
+                RecommendedAction = "laylow"
+            },
+
+            // Example 2: Multi-condition expansion rule
+            // "When wealth is growing and heat is manageable, expand"
+            new AgentRuleDefinition
+            {
+                Id = "CONFIG_SMART_EXPAND",
+                Name = "Configurable Smart Expansion",
+                Description = "Loaded from configuration: Opportunistic expansion",
+                Priority = 400,
+                Conditions = new List<ConditionDefinition>
+                {
+                    new ConditionDefinition { PropertyName = "GoodTimeToExpand", Operator = "==", Value = true },
+                    new ConditionDefinition { PropertyName = "InGrowthMode", Operator = "==", Value = true }
+                },
+                RecommendedAction = "expand"
+            },
+
+            // Example 3: Defensive recruitment
+            // "When rivals are threatening and we need soldiers, recruit"
+            new AgentRuleDefinition
+            {
+                Id = "CONFIG_DEFENSIVE_RECRUIT",
+                Name = "Configurable Defensive Recruitment",
+                Description = "Loaded from configuration: Build forces when threatened",
+                Priority = 600,
+                Conditions = new List<ConditionDefinition>
+                {
+                    new ConditionDefinition { PropertyName = "RivalIsThreatening", Operator = "==", Value = true },
+                    new ConditionDefinition { PropertyName = "NeedsMoreSoldiers", Operator = "==", Value = true }
+                },
+                RecommendedAction = "recruit"
+            }
+        };
+
+        RegisterDynamicAgentRules(configurableRules);
+    }
+
+    /// <summary>
+    /// Get all registered dynamic rule IDs (useful for debugging/mod management)
+    /// </summary>
+    public IEnumerable<string> GetDynamicRuleIds()
+    {
+        return _agentRules.GetAllMetrics()
+            .Keys
+            .Where(id => id.StartsWith("CONFIG_"));
+    }
+}
+
+// =============================================================================
+// AGENT RULE DEFINITION - Configuration model for moddable rules
+// =============================================================================
+
+/// <summary>
+/// Definition for creating agent decision rules from configuration.
+/// This extends the base RuleDefinition with an action to execute.
+/// Can be serialized to/from JSON/XML for modding support.
+/// </summary>
+public class AgentRuleDefinition
+{
+    /// <summary>Rule ID - should start with "CONFIG_" for configurable rules</summary>
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+
+    /// <summary>Human-readable rule name</summary>
+    public string Name { get; set; } = "";
+
+    /// <summary>Description of what this rule does</summary>
+    public string Description { get; set; } = "";
+
+    /// <summary>Priority (higher = evaluated first)</summary>
+    public int Priority { get; set; } = 0;
+
+    /// <summary>Conditions that must all be true for the rule to match</summary>
+    public List<ConditionDefinition> Conditions { get; set; } = new();
+
+    /// <summary>
+    /// The action to recommend when this rule matches.
+    /// Valid values: "collect", "expand", "recruit", "attack", "laylow", "bribe", "negotiate"
+    /// </summary>
+    public string RecommendedAction { get; set; } = "";
+
+    /// <summary>
+    /// Converts this to a base RuleDefinition for DynamicRuleFactory
+    /// </summary>
+    public RuleDefinition ToRuleDefinition()
+    {
+        return new RuleDefinition
+        {
+            Id = Id,
+            Name = Name,
+            Description = Description,
+            Priority = Priority,
+            Conditions = Conditions
+        };
+    }
 }

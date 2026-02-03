@@ -1427,5 +1427,148 @@ public class AutonomousGameTests
             $"Ambitious agent should recruit/collect/wait but got {action}");
     }
 
+    [Test]
+    public void GameRulesEngine_DynamicRuleFactory_IntegrationTest()
+    {
+        // Test that DynamicRuleFactory-created rules work correctly
+        var state = new GameState
+        {
+            FamilyWealth = 30000m,  // Low wealth - survival mode
+            HeatLevel = 90,         // Critical heat
+            PreviousHeatLevel = 85, // Heat rising
+            SoldierCount = 20
+        };
+        state.RivalFamilies["test"] = new RivalFamily { Hostility = 30 };
+
+        var engine = new GameRulesEngine(state);
+
+        // Load the configurable rules (includes CONFIG_EMERGENCY_LAYLOW at priority 999)
+        engine.LoadExampleConfigurableRules();
+
+        // Create an agent in survival mode with critical heat
+        var agent = new GameAgentData
+        {
+            AgentId = "test",
+            Personality = new AgentPersonality
+            {
+                Aggression = 80,  // Very aggressive - would normally attack
+                Greed = 80,
+                Loyalty = 50,
+                Ambition = 80
+            }
+        };
+
+        var action = engine.GetAgentAction(agent);
+
+        // The CONFIG_EMERGENCY_LAYLOW rule should override normal behavior
+        // because it has priority 999 and matches (InSurvivalMode && HeatIsCritical)
+        Assert.Equal("laylow", action);
+    }
+
+    [Test]
+    public void GameRulesEngine_RegisterDynamicAgentRules_CreatesWorkingRules()
+    {
+        var state = new GameState
+        {
+            FamilyWealth = 100000m,
+            HeatLevel = 30,
+            SoldierCount = 10
+        };
+        state.RivalFamilies["test"] = new RivalFamily { Hostility = 80, Strength = 70 };
+
+        var engine = new GameRulesEngine(state);
+
+        // Register a custom dynamic rule
+        var customRules = new List<AgentRuleDefinition>
+        {
+            new AgentRuleDefinition
+            {
+                Id = "CONFIG_CUSTOM_NEGOTIATE",
+                Name = "Custom Negotiation Rule",
+                Priority = 950,
+                Conditions = new List<ConditionDefinition>
+                {
+                    new ConditionDefinition { PropertyName = "RivalIsThreatening", Operator = "==", Value = true }
+                },
+                RecommendedAction = "negotiate"
+            }
+        };
+
+        int registered = engine.RegisterDynamicAgentRules(customRules);
+
+        Assert.Equal(1, registered);
+
+        // Create agent
+        var agent = new GameAgentData
+        {
+            AgentId = "test",
+            Personality = new AgentPersonality
+            {
+                Aggression = 50,
+                Greed = 50,
+                Loyalty = 50,
+                Ambition = 50
+            }
+        };
+
+        var action = engine.GetAgentAction(agent);
+
+        // The custom negotiate rule should trigger due to high rival hostility
+        Assert.Equal("negotiate", action);
+    }
+
+    [Test]
+    public void GameRulesEngine_DynamicRules_CollectedInMetrics()
+    {
+        var state = new GameState
+        {
+            FamilyWealth = 200000m,
+            HeatLevel = 20,
+            PreviousHeatLevel = 20,
+            SoldierCount = 20
+        };
+        state.RivalFamilies["test"] = new RivalFamily { Hostility = 20 };
+
+        var engine = new GameRulesEngine(state);
+
+        // Register a dynamic rule with trackable ID
+        var customRules = new List<AgentRuleDefinition>
+        {
+            new AgentRuleDefinition
+            {
+                Id = "CONFIG_ALWAYS_COLLECT",
+                Name = "Always Collect Test Rule",
+                Priority = 1000,  // Highest priority
+                Conditions = new List<ConditionDefinition>
+                {
+                    new ConditionDefinition { PropertyName = "CanAffordExpensive", Operator = "==", Value = true }
+                },
+                RecommendedAction = "collection"
+            }
+        };
+
+        engine.RegisterDynamicAgentRules(customRules);
+
+        var agent = new GameAgentData
+        {
+            AgentId = "test",
+            Personality = new AgentPersonality { Aggression = 50, Greed = 50, Loyalty = 50, Ambition = 50 }
+        };
+
+        // Execute multiple times
+        for (int i = 0; i < 5; i++)
+        {
+            engine.GetAgentAction(agent);
+        }
+
+        // Check metrics include the dynamic rule
+        var metrics = engine.GetAgentRuleMetrics();
+        Assert.True(metrics.ContainsKey("CONFIG_ALWAYS_COLLECT"),
+            "Dynamic rule should appear in metrics");
+
+        var ruleMetrics = metrics["CONFIG_ALWAYS_COLLECT"];
+        Assert.Equal(5, ruleMetrics.ExecutionCount);
+    }
+
     #endregion
 }
