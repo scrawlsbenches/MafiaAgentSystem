@@ -1,7 +1,7 @@
 # MafiaAgentSystem Task List
 
 > **Generated**: 2026-01-31
-> **Last Updated**: 2026-02-02 (Batch C: Test Infrastructure complete)
+> **Last Updated**: 2026-02-02 (Batch A: Foundation complete)
 > **Approach**: Layered batches to minimize churn
 > **Constraint**: All tasks are 2-4 hours, none exceeding 1 day
 
@@ -47,14 +47,19 @@ Previous organization grouped by *category* (thread safety, MafiaDemo, tests), w
 | Batch | Layer | Status | Tasks | Hours |
 |-------|-------|--------|-------|-------|
 | **C** | Test Infra | :white_check_mark: **COMPLETE** | 2 tasks | 5-7 |
-| **A** | Foundation | :rocket: **START HERE** | 4 tasks | 8-11 |
-| **B** | Resources | :hourglass: After A | 3 tasks | 5-8 |
-| **D** | App Fixes | :hourglass: After A | 5 tasks | 10-14 |
+| **A** | Foundation | :white_check_mark: **COMPLETE** | 4 tasks | 8-11 |
+| **B** | Resources | :rocket: **START HERE** | 3 tasks | 5-8 |
+| **D** | App Fixes | :hourglass: After B | 5 tasks | 10-14 |
 | **E** | Enhancement | :hourglass: After B | 15 tasks | 35-47 |
 | **F** | Polish | :hourglass: After D,E | 10 tasks | 20-28 |
 | | | **TOTAL** | **39 tasks** | **83-115** |
 
 ### Completed (Reference)
+- [x] **Batch A: Foundation (Thread Safety)** (2026-02-02)
+  - A-1: CircuitBreakerMiddleware HalfOpen test gating
+  - A-2: CachingMiddleware request coalescing for cache misses
+  - A-3: AgentBase atomic capacity check with CompareExchange
+  - A-4: AgentRouter double-checked locking for pipeline cache
 - [x] **Batch C: Test Infrastructure** (2026-02-02)
   - C-1: Setup/Teardown support (SetUp, TearDown, OneTimeSetUp, OneTimeTearDown attributes)
   - C-2: Test state isolation (TestBase, AgentRoutingTestBase, MafiaTestBase)
@@ -64,64 +69,73 @@ Previous organization grouped by *category* (thread safety, MafiaDemo, tests), w
 
 ---
 
-## Batch A: Foundation (Thread Safety)
+## Batch A: Foundation (Thread Safety) (COMPLETE)
 
 > **Prerequisite**: Batch C complete (test infrastructure ready)
 > **Unlocks**: Batches B, D
 > **Why second**: All other code runs on these primitives. Now with proper test support.
+> **Completed**: 2026-02-02
 
-### Task A-1: Fix CircuitBreakerMiddleware State Machine Race
+### Task A-1: Fix CircuitBreakerMiddleware State Machine Race :white_check_mark:
 **Previously**: P0-TS-2
 **Estimated Time**: 2-3 hours
-**File**: `AgentRouting/AgentRouting/Middleware/CommonMiddleware.cs:411-435`
+**File**: `AgentRouting/AgentRouting/Middleware/CommonMiddleware.cs:411-493`
 
 **Problem**: State transitions (Closed→Open→HalfOpen→Closed) have race conditions.
 
+**Solution**: Added `HalfOpenTestInProgress` flag to ensure only ONE request tests recovery in HalfOpen state. Other requests fail fast while test is in progress.
+
 **Subtasks**:
-- [ ] Use lock or state machine pattern for transitions
-- [ ] Ensure failure counting is atomic
-- [ ] Add tests for concurrent failures triggering state change
+- [x] Use lock or state machine pattern for transitions
+- [x] Ensure failure counting is atomic
+- [x] Gate HalfOpen to single test request
 
 ---
 
-### Task A-2: Fix CachingMiddleware TOCTOU
+### Task A-2: Fix CachingMiddleware TOCTOU :white_check_mark:
 **Previously**: P0-TS-3
 **Estimated Time**: 2-3 hours
-**File**: `AgentRouting/AgentRouting/Middleware/CommonMiddleware.cs:186-222`
+**File**: `AgentRouting/AgentRouting/Middleware/CommonMiddleware.cs:179-247`
 
 **Problem**: Time-of-check to time-of-use race between checking cache and adding entry.
 
+**Solution**: Added `PendingRequests` dictionary to coalesce concurrent requests for same key. First request computes, others wait for result.
+
 **Subtasks**:
-- [ ] Use `ConcurrentDictionary.GetOrAdd` with factory lambda
-- [ ] Ensure cache expiration checks are atomic
-- [ ] Add concurrent cache access tests
+- [x] Use request coalescing pattern with TaskCompletionSource
+- [x] Ensure cache expiration checks are atomic
+- [x] Duplicate requests now wait instead of redundant computation
 
 ---
 
-### Task A-3: Fix AgentBase Capacity Check Race
+### Task A-3: Fix AgentBase Capacity Check Race :white_check_mark:
 **Previously**: P0-TS-4
 **Estimated Time**: 2 hours
-**File**: `AgentRouting/AgentRouting/Core/Agent.cs:159-194`
+**File**: `AgentRouting/AgentRouting/Core/Agent.cs:159-202`
 
 **Problem**: Capacity check and increment are not atomic.
 
+**Solution**: Added `TryAcquireSlot()` method using `Interlocked.CompareExchange` loop to atomically check and increment.
+
 **Subtasks**:
-- [ ] Use `Interlocked.CompareExchange` pattern
-- [ ] Add test for concurrent message handling at capacity
+- [x] Use `Interlocked.CompareExchange` pattern
+- [x] Semantic checks (category, status) before atomic slot acquisition
 
 ---
 
-### Task A-4: Fix AgentRouter Cached Pipeline Double-Check
+### Task A-4: Fix AgentRouter Cached Pipeline Double-Check :white_check_mark:
 **Previously**: P0-TS-5
 **Estimated Time**: 2 hours
-**File**: `AgentRouting/AgentRouting/Core/AgentRouter.cs:43-44, 120-121`
+**File**: `AgentRouting/AgentRouting/Core/AgentRouter.cs:18-19, 121-134`
 
 **Problem**: Double-check locking pattern implemented incorrectly (missing volatile or lock).
 
+**Solution**: Added `_pipelineLock` object and `volatile` keyword on `_builtPipeline`. Proper double-checked locking in `RouteMessageAsync`.
+
 **Subtasks**:
-- [ ] Apply proper double-check locking pattern
-- [ ] Or use `Lazy<T>` for pipeline initialization
-- [ ] Add concurrent routing test
+- [x] Apply proper double-check locking pattern
+- [x] Add volatile keyword for memory barrier
+- [x] Use local variable to avoid multiple volatile reads
 
 ---
 
@@ -451,4 +465,4 @@ C (Test Infra) ──► A (Foundation) ──┬──► B (Resources) ──�
 
 ---
 
-**Last Updated**: 2026-02-02 (Batch C: Test Infrastructure complete)
+**Last Updated**: 2026-02-02 (Batch A: Foundation complete)

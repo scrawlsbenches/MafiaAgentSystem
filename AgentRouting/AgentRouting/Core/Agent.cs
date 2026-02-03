@@ -134,43 +134,77 @@ public abstract class AgentBase : IAgent
     public virtual bool CanHandle(AgentMessage message)
     {
         // Check if we support this category
-        if (!string.IsNullOrEmpty(message.Category) && 
+        if (!string.IsNullOrEmpty(message.Category) &&
             Capabilities.SupportedCategories.Any() &&
             !Capabilities.SupportsCategory(message.Category))
         {
             return false;
         }
-        
-        // Check if we're at capacity
+
+        // Check if we're at capacity (advisory - actual enforcement is in ProcessMessageAsync)
         if (_activeMessages >= Capabilities.MaxConcurrentMessages)
         {
             return false;
         }
-        
+
         // Check if offline
         if (Status == AgentStatus.Offline || Status == AgentStatus.Error)
         {
             return false;
         }
-        
+
         return true;
     }
-    
+
+    /// <summary>
+    /// Atomically tries to acquire a processing slot.
+    /// Returns true if slot acquired, false if at capacity.
+    /// </summary>
+    private bool TryAcquireSlot()
+    {
+        while (true)
+        {
+            int current = _activeMessages;
+            if (current >= Capabilities.MaxConcurrentMessages)
+            {
+                return false;
+            }
+
+            if (Interlocked.CompareExchange(ref _activeMessages, current + 1, current) == current)
+            {
+                return true;
+            }
+            // CAS failed, another thread modified _activeMessages, retry
+        }
+    }
+
     public async Task<MessageResult> ProcessMessageAsync(
-        AgentMessage message, 
+        AgentMessage message,
         CancellationToken ct = default)
     {
-        if (!CanHandle(message))
+        // Check semantic constraints first (category, status)
+        if (!string.IsNullOrEmpty(message.Category) &&
+            Capabilities.SupportedCategories.Any() &&
+            !Capabilities.SupportsCategory(message.Category))
         {
-            return MessageResult.Fail($"Agent {Name} cannot handle this message");
+            return MessageResult.Fail($"Agent {Name} does not support category: {message.Category}");
         }
-        
-        Interlocked.Increment(ref _activeMessages);
-        
+
+        if (Status == AgentStatus.Offline || Status == AgentStatus.Error)
+        {
+            return MessageResult.Fail($"Agent {Name} is {Status}");
+        }
+
+        // Atomically acquire a slot (enforces capacity)
+        if (!TryAcquireSlot())
+        {
+            return MessageResult.Fail($"Agent {Name} is at capacity");
+        }
+
         try
         {
-            Status = _activeMessages >= Capabilities.MaxConcurrentMessages 
-                ? AgentStatus.Busy 
+            Status = _activeMessages >= Capabilities.MaxConcurrentMessages
+                ? AgentStatus.Busy
                 : AgentStatus.Available;
             
             Logger.LogMessageReceived(this, message);
