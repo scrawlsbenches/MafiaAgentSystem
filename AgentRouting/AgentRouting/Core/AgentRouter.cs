@@ -15,7 +15,8 @@ public class AgentRouter
     private readonly IAgentLogger _logger;
     private readonly Dictionary<string, IAgent> _agentById = new();
     private readonly IMiddlewarePipeline _pipeline;
-    private MessageDelegate? _builtPipeline;
+    private readonly object _pipelineLock = new();
+    private volatile MessageDelegate? _builtPipeline;
 
     /// <summary>
     /// Creates a new AgentRouter with explicit dependencies.
@@ -117,8 +118,20 @@ public class AgentRouter
         // If middleware is configured, route through the pipeline
         if (_pipeline.HasMiddleware)
         {
-            _builtPipeline ??= _pipeline.Build(CoreRouteAsync);
-            return await _builtPipeline(message, ct);
+            var pipeline = _builtPipeline;
+            if (pipeline == null)
+            {
+                lock (_pipelineLock)
+                {
+                    pipeline = _builtPipeline;
+                    if (pipeline == null)
+                    {
+                        pipeline = _pipeline.Build(CoreRouteAsync);
+                        _builtPipeline = pipeline;
+                    }
+                }
+            }
+            return await pipeline(message, ct);
         }
 
         // No middleware - route directly

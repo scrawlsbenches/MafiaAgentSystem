@@ -184,7 +184,7 @@ public class CachingMiddleware : MiddlewareBase
         var key = GenerateCacheKey(message);
         var cacheState = GetCacheState();
 
-        // Check cache
+        // Check cache first
         if (cacheState.Cache.TryGetValue(key, out var entry))
         {
             // Check expiration
@@ -199,26 +199,51 @@ public class CachingMiddleware : MiddlewareBase
             cacheState.Cache.TryRemove(key, out _);
         }
 
-        Console.WriteLine($"[Cache] MISS: {message.Subject}");
+        // Cache miss - check if there's already a pending request for this key
+        var tcs = new TaskCompletionSource<MessageResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var pendingTask = cacheState.PendingRequests.GetOrAdd(key, tcs.Task);
 
-        // Process and cache
-        var result = await next(message, ct);
-
-        if (result.Success)
+        if (pendingTask != tcs.Task)
         {
-            var now = _clock.UtcNow;
-            cacheState.Cache[key] = new CacheEntry
-            {
-                Result = result,
-                CachedAt = now,
-                LastAccessedAt = now
-            };
-
-            // Evict if cache exceeds max size
-            EvictIfNeeded(cacheState);
+            // Another request is already computing this - wait for it
+            Console.WriteLine($"[Cache] COALESCE: {message.Subject}");
+            return await pendingTask;
         }
 
-        return result;
+        // We're responsible for computing the result
+        Console.WriteLine($"[Cache] MISS: {message.Subject}");
+
+        try
+        {
+            var result = await next(message, ct);
+
+            if (result.Success)
+            {
+                var now = _clock.UtcNow;
+                cacheState.Cache[key] = new CacheEntry
+                {
+                    Result = result,
+                    CachedAt = now,
+                    LastAccessedAt = now
+                };
+
+                // Evict if cache exceeds max size
+                EvictIfNeeded(cacheState);
+            }
+
+            tcs.SetResult(result);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            tcs.SetException(ex);
+            throw;
+        }
+        finally
+        {
+            // Remove from pending requests
+            cacheState.PendingRequests.TryRemove(key, out _);
+        }
     }
 
     /// <summary>
@@ -274,6 +299,7 @@ public class CachingMiddleware : MiddlewareBase
     private class CacheState
     {
         public ConcurrentDictionary<string, CacheEntry> Cache { get; } = new();
+        public ConcurrentDictionary<string, Task<MessageResult>> PendingRequests { get; } = new();
     }
 
     private class CacheEntry
@@ -414,16 +440,19 @@ public class CircuitBreakerMiddleware : MiddlewareBase
         CancellationToken ct)
     {
         var state = GetState();
+        bool isHalfOpenTest = false;
 
-        // Check if we should transition from Open to HalfOpen
+        // Check circuit state and acquire test slot if HalfOpen
         lock (state.Lock)
         {
+            // Check if we should transition from Open to HalfOpen
             if (state.State == CircuitState.Open && state.OpenedAt.HasValue)
             {
                 if (_clock.UtcNow - state.OpenedAt.Value > _resetTimeout)
                 {
                     Console.WriteLine("[Circuit] Attempting to close circuit (half-open state)");
                     state.State = CircuitState.HalfOpen;
+                    state.HalfOpenTestInProgress = false; // Reset for new HalfOpen period
                 }
             }
 
@@ -431,6 +460,19 @@ public class CircuitBreakerMiddleware : MiddlewareBase
             if (state.State == CircuitState.Open)
             {
                 return ShortCircuit("Circuit breaker is OPEN - service unavailable");
+            }
+
+            // If circuit is half-open, only allow ONE request through to test recovery
+            if (state.State == CircuitState.HalfOpen)
+            {
+                if (state.HalfOpenTestInProgress)
+                {
+                    // Another request is already testing - fail fast
+                    return ShortCircuit("Circuit breaker is HALF-OPEN - test in progress");
+                }
+                // We're the test request
+                state.HalfOpenTestInProgress = true;
+                isHalfOpenTest = true;
             }
         }
 
@@ -447,12 +489,17 @@ public class CircuitBreakerMiddleware : MiddlewareBase
                         Console.WriteLine("[Circuit] Closing circuit - service recovered");
                         state.State = CircuitState.Closed;
                         state.FailureTimestamps.Clear();
+                        state.HalfOpenTestInProgress = false;
                     }
                     return result;
                 }
                 else
                 {
                     RecordFailure(state);
+                    if (isHalfOpenTest)
+                    {
+                        state.HalfOpenTestInProgress = false;
+                    }
                     return result;
                 }
             }
@@ -462,6 +509,10 @@ public class CircuitBreakerMiddleware : MiddlewareBase
             lock (state.Lock)
             {
                 RecordFailure(state);
+                if (isHalfOpenTest)
+                {
+                    state.HalfOpenTestInProgress = false;
+                }
             }
             return MessageResult.Fail($"Circuit breaker caught exception: {ex.Message}");
         }
@@ -512,6 +563,7 @@ public class CircuitBreakerMiddleware : MiddlewareBase
         public Queue<DateTime> FailureTimestamps { get; } = new();
         public CircuitState State { get; set; } = CircuitState.Closed;
         public DateTime? OpenedAt { get; set; }
+        public bool HalfOpenTestInProgress { get; set; }
         public object Lock { get; } = new();
     }
 }

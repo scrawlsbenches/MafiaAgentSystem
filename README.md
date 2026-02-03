@@ -375,15 +375,143 @@ MafiaAgentSystem/
 
 ### MafiaDemo
 
-- **Hierarchical Agents**: Godfather → Underboss → Capos → Soldiers
-- **Autonomous Decisions**: Personality-driven agent behavior
-- **Player Mode**: Interactive gameplay with missions
-- **Rules Integration**: Game logic via RulesEngine
+A text-based mafia family simulation that serves as a **proving ground** for both RulesEngine and AgentRouting. The game isn't just a demo—it's designed to stress-test the core libraries and uncover API gaps through real-world usage patterns.
+
+#### Vision
+
+The mafia hierarchy is a perfect metaphor for enterprise agent communication:
+- **Chain of command** = Message routing (orders flow down, reports flow up)
+- **Decision making** = Rules engine (personality traits → actions)
+- **Cross-cutting concerns** = Middleware (logging, timing, validation)
+
+#### Play Modes
+
+| Mode | Description | Purpose |
+|------|-------------|---------|
+| **Player Mode** | Interactive gameplay with missions and progression | Test human-agent interaction |
+| **Autonomous Mode** | Self-playing simulation with personality-driven NPCs | Stress-test agent decisions |
+| **AI Career Mode** | AI plays from Associate to Don using rules | Validate rules-driven behavior |
+| **Scripted Scenarios** | 8 pre-built demos (favor requests, territory disputes, hits) | Showcase specific interactions |
+
+#### Game Mechanics
+
+**Family Hierarchy**: Each rank has distinct responsibilities and message categories:
+- **Godfather**: Final decisions, major disputes, strategy
+- **Underboss**: Daily operations, crew management
+- **Consigliere**: Legal advice, negotiations
+- **Capo**: Territory control, soldier management
+- **Soldier**: Enforcement, collections
+- **Associate**: Entry-level, information gathering, small jobs (player starting rank)
+
+**Personality Traits** (1-10 scale): Ambition, Loyalty, Aggression—these drive autonomous decisions.
+
+**Game State**:
+- **FamilyWealth**: Starting $100,000
+- **Reputation**: 0-100, starting at 50
+- **HeatLevel**: 0-100, police attention
+- **Week**: Turn counter
+
+**Win Condition**: Week ≥ 52 AND Wealth ≥ $1,000,000 AND Reputation ≥ 80
+
+**Loss Conditions**:
+- Wealth ≤ $0 (bankruptcy)
+- Heat = 100 (RICO prosecution)
+- Reputation ≤ 10 (internal betrayal)
+
+**Territories**: Protection, gambling, smuggling, loan sharking—each generates revenue and heat.
+
+**Rival Families**: Hostility levels determine if they attack; war affects all metrics.
+
+#### Design Goals
+
+1. **Demonstrate RulesEngine**: Agents evaluate conditions using expression trees, not hardcoded if-else
+2. **Demonstrate AgentRouting**: Messages flow through middleware pipeline before reaching agents
+3. **Find API Gaps**: Real usage reveals missing features in core libraries
+4. **Prove Extensibility**: Adding new agents/rules shouldn't require modifying existing code (Open/Closed)
+
+#### Rules Engines
+
+The game uses 7 specialized `RulesEngineCore<T>` instances, each managing a different aspect:
+
+| Engine | Context Type | Purpose |
+|--------|--------------|---------|
+| Game Rules | `GameRuleContext` | Victory/defeat conditions, warnings |
+| Agent Rules | `AgentDecisionContext` | Personality-driven agent decisions |
+| Event Rules | `EventContext` | Random event generation |
+| Valuation | `TerritoryValueContext` | Territory economic analysis |
+| Difficulty | `DifficultyContext` | Dynamic difficulty adjustment |
+| Strategy | `RivalStrategyContext` | Rival family AI decisions |
+| Chain Reactions | `ChainReactionContext` | Event cascades and crises |
+
+#### Roadmap
+
+**Phase 1: Core Integration** (Mostly Complete)
+- [x] Wire RulesBasedGameEngine to MafiaGameEngine (7 rule engines integrated)
+- [x] Connect agent message handling to routing pipeline
+- [ ] Replace remaining probability-based agent decisions with rules (hybrid approach in use)
+
+**Phase 2: Enhanced Gameplay** (Current Focus)
+- [x] Event generation rules (implemented in `_eventRules` engine)
+- [ ] Inter-agent relationships and loyalty dynamics
+- [ ] Territory disputes with rival families
+- [ ] Save/load game state
+
+**Phase 3: AI & Automation**
+- [x] Rules-driven AI autopilot mode (AI Career Mode implemented)
+- [ ] Async rule support for I/O-bound decisions
+- [ ] Performance profiling under load
+
+#### Design Decisions (Resolved)
+
+These questions have been answered through implementation:
+
+| Question | Resolution |
+|----------|------------|
+| RulesBasedGameEngine vs MafiaGameEngine? | **Coexist**: GameRulesEngine is used BY MafiaGameEngine |
+| Personality traits → rule priorities? | **Context-based**: Traits feed into context objects; rules have explicit priorities (500-1000) |
+| Randomness vs deterministic rules? | **Hybrid**: Rules evaluate conditions, random selects among valid actions |
+| Direct communication vs router? | **Both**: Agents can forward messages directly OR use router pipeline |
+
+## Origins
+
+> The story of how a deep dive into expression trees led to a production-ready rules engine and agent communication platform.
+
+This project began as an exploration of **C# expression trees** - a powerful but often overlooked feature of the .NET framework. What started as a learning exercise evolved into a comprehensive agent-to-agent communication system.
+
+### The Journey
+
+**Expression Trees → Rules Engine → Agent Routing → MafiaDemo**
+
+1. **Expression Trees**: Unlike compiled delegates (opaque black boxes), expression trees represent **code as data** - enabling inspection, modification, and composition of logic at runtime.
+
+2. **The "Aha" Moment**: Expression trees are perfect for building a **rules engine** where business rules become first-class data that can be inspected, prioritized, and tested in isolation.
+
+3. **Agent Communication**: Rules engines make decisions. Agents make decisions. This led to **AgentRouting** - a message routing system where agents use rules to decide how to handle, forward, or escalate messages.
+
+4. **MafiaDemo**: To stress-test both systems, we built a mafia family simulation where hierarchy = routing, decisions = rules, and communication = message passing.
+
+### Key Insight
+
+> **Expression trees unlock a fundamental shift: rules become first-class data.**
+
+```csharp
+// Regular delegate - opaque, can only execute
+Func<Order, bool> isLarge = order => order.Total > 1000;
+
+// Expression tree - inspectable AND executable
+Expression<Func<Order, bool>> isLarge = order => order.Total > 1000;
+// Can examine: body.NodeType == GreaterThan, body.Left == order.Total, body.Right == 1000
+```
+
+This separation of rule definitions from execution logic enables dynamic business rules, configurable workflows, intelligent agent routing, and auditable decision-making.
+
+For the full story, see [ORIGINS.md](ORIGINS.md).
 
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
+| [ORIGINS.md](ORIGINS.md) | How expression trees led to this architecture |
 | [CLAUDE.md](CLAUDE.md) | Development guide and commands |
 | [RulesEngine/README.md](RulesEngine/README.md) | RulesEngine documentation |
 | [AgentRouting/README.md](AgentRouting/README.md) | AgentRouting documentation |
