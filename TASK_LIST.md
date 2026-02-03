@@ -23,7 +23,7 @@ Previous organization grouped by *category* (thread safety, MafiaDemo, tests), w
 │ Layer F: POLISH (last)                                  │
 │   Documentation, code cleanup                           │
 ├─────────────────────────────────────────────────────────┤
-│ Layer H: CODE REVIEW BUG FIXES (NEW)     ◄── NEXT       │
+│ Layer H: CODE REVIEW BUG FIXES          ✅ COMPLETE    │
 │   Heat balance, event timing, null safety, defeat logic │
 ├─────────────────────────────────────────────────────────┤
 │ Layer G: CRITICAL INTEGRATION            ✅ COMPLETE    │
@@ -58,7 +58,7 @@ Previous organization grouped by *category* (thread safety, MafiaDemo, tests), w
 | **D** | App Fixes | :white_check_mark: **COMPLETE** | 5 tasks | 10-14 |
 | **E** | Enhancement | :white_check_mark: **COMPLETE** | 15 tasks | 35-47 |
 | **G** | Critical Integration | :white_check_mark: **COMPLETE** | 5 tasks | 11-16 |
-| **H** | **Code Review Bug Fixes** | :construction: **13/14 DONE** | 14 tasks | 20-30 |
+| **H** | **Code Review Bug Fixes** | :white_check_mark: **COMPLETE** | 14 tasks | 20-30 |
 | **F** | Polish | :hourglass: Pending | 9 tasks remaining | 18-26 |
 | | | **TOTAL** | **58 tasks** | **114-161** |
 
@@ -503,7 +503,7 @@ Completed 2026-02-03. Added 63 new tests (1842 → 1905 total).
 > **Priority**: HIGH - Bugs found during comprehensive code review
 > **Source**: Code review 2026-02-03 (see MAFIA_DEMO_CODE_REVIEW.md)
 > **Full Report**: `/MAFIA_DEMO_CODE_REVIEW.md`
-> **Progress**: 13 of 14 tasks completed (2026-02-03)
+> **Progress**: **ALL 14 TASKS COMPLETE** (2026-02-03)
 
 ### H-1: Fix Heat Balance (Critical - Game Unwinnable) :white_check_mark:
 **Priority**: CRITICAL
@@ -868,4 +868,4 @@ C (Test Infra) ──► A (Foundation) ──┬──► B (Resources) ──�
 
 ---
 
-**Last Updated**: 2026-02-03 (Batch H: 13/14 fixes complete)
+**Last Updated**: 2026-02-03 (Batch H: COMPLETE - all 14 code review fixes done)
