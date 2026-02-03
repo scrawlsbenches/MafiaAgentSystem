@@ -153,6 +153,12 @@ public class AgentDecision
 /// </summary>
 public class MafiaGameEngine
 {
+    /// <summary>
+    /// Maximum number of events to keep in the event log.
+    /// Oldest events are evicted when this limit is exceeded.
+    /// </summary>
+    private const int MaxEventLogSize = 1000;
+
     private readonly GameState _state;
     private readonly AgentRouter? _router;
     private readonly IAgentLogger _logger;
@@ -229,21 +235,30 @@ public class MafiaGameEngine
 
         Console.WriteLine("\n🎮 Game started! Press Ctrl+C to stop.\n");
 
-        while (_running && !_state.GameOver && !_cts.Token.IsCancellationRequested)
+        try
         {
-            var events = await ExecuteTurnAsync();
-            foreach (var evt in events)
+            while (_running && !_state.GameOver && !_cts.Token.IsCancellationRequested)
             {
-                Console.WriteLine(evt);
-            }
+                var events = await ExecuteTurnAsync();
+                foreach (var evt in events)
+                {
+                    Console.WriteLine(evt);
+                }
 
-            if (_state.GameOver)
-            {
-                Console.WriteLine($"\n🎬 GAME OVER: {_state.GameOverReason}");
-                break;
-            }
+                if (_state.GameOver)
+                {
+                    Console.WriteLine($"\n🎬 GAME OVER: {_state.GameOverReason}");
+                    break;
+                }
 
-            await GameTimingOptions.DelayAsync(GameTimingOptions.Current.TurnDelayMs, _cts.Token);
+                await GameTimingOptions.DelayAsync(GameTimingOptions.Current.TurnDelayMs, _cts.Token);
+            }
+        }
+        finally
+        {
+            // Dispose the CancellationTokenSource to prevent resource leaks
+            _cts?.Dispose();
+            _cts = null;
         }
     }
 
@@ -253,7 +268,12 @@ public class MafiaGameEngine
     public void StopGame()
     {
         _running = false;
-        _cts?.Cancel();
+        if (_cts != null)
+        {
+            _cts.Cancel();
+            _cts.Dispose();
+            _cts = null;
+        }
     }
 
     private void InitializeGame()
@@ -652,6 +672,12 @@ public class MafiaGameEngine
 
     private void LogEvent(string type, string description, string agent)
     {
+        // Evict oldest events if at capacity (prevents unbounded growth)
+        while (_state.EventLog.Count >= MaxEventLogSize)
+        {
+            _state.EventLog.RemoveAt(0);
+        }
+
         _state.EventLog.Add(new GameEvent
         {
             Type = type,
