@@ -10,7 +10,7 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │                        MafiaGameEngine                          │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
-│  │  GameState   │  │ AgentRouter  │  │ RulesBasedGameEngine │  │
+│  │  GameState   │  │ AgentRouter  │  │   GameRulesEngine    │  │
 │  │  - Wealth    │  │  - Routing   │  │  - GameRules         │  │
 │  │  - Heat      │  │  - Middleware│  │  - AgentRules        │  │
 │  │  - Reputation│  │              │  │  - EventRules        │  │
@@ -176,7 +176,7 @@ public class RivalFamily
 
 ## Rules Integration Points
 
-The game uses **8 specialized `RulesEngineCore<T>` instances** with ~98 total rules:
+The game uses **8 specialized `RulesEngineCore<T>` instances** with **105 rules total**:
 
 ### 1. Game Rules (`_gameRules` - `RulesEngineCore<GameRuleContext>`)
 
@@ -192,7 +192,19 @@ engine.AddRule("POLICE_RAID", "Police raid when heat is critical",
 
 ### 2. Agent Rules (`_agentRules` - `RulesEngineCore<AgentDecisionContext>`)
 
-Drive agent decisions with ~45 personality-driven rules:
+Drive agent decisions with **47 personality-driven rules** across categories:
+- Emergency rules (4): Highest priority, override everything
+- Phase-based strategic rules (8): Adapt to economic situation
+- Defensive rules (4): React to threats
+- Personality rules (12): Character affects decisions
+- Rival-response rules (4): React to rival family situations
+- Heat-management rules (4): Respond to heat levels
+- Economic-strategy rules (4): Respond to wealth trends
+- Opportunistic rules (3): Take advantage of good situations
+- Composite rules (2): Multi-strategy decisions
+- Default rules (2): Fallback behavior
+
+Example:
 
 ```csharp
 // Example: Aggressive agent attacks when family is threatened
@@ -313,16 +325,17 @@ var investigation = new AsyncRuleBuilder<AsyncEventContext>()
 - [x] GameState tracking
 - [x] Territory and rival systems
 - [x] Player command interface
-- [x] Message routing setup
-- [x] RulesBasedGameEngine scaffolding
-- [x] Context classes (GameRuleContext, AgentDecisionContext, EventContext)
-- [x] Wire RulesBasedGameEngine to MafiaGameEngine (`GetAgentAction()` called in turn loop)
-- [x] Replace hardcoded agent decisions with rules (~45 personality-driven rules)
-- [x] Sophisticated event generation rules (7+ event rules with probability)
-- [x] Connect agent message handling to routing pipeline (AgentRouter in GameEngine)
+- [x] GameRulesEngine with 8 rule engines
+- [x] Context classes (GameRuleContext, AgentDecisionContext, EventContext, etc.)
+- [x] Wire GameRulesEngine to MafiaGameEngine (`GetAgentAction()` called in turn loop)
+- [x] Sophisticated event generation rules (7 event rules with probability)
 - [x] Async rule support for I/O-bound decisions (3 async rules: police investigation, informant network, business deals)
 - [x] AI Autopilot mode using rules (AI Career Mode - Option 1 in Program.cs)
 - [x] Personality effects on decisions (rules check Aggression, Loyalty, Ambition traits)
+
+### Recently Completed (2026-02-03)
+- [x] **Agent personality rules**: 47 rules implemented (exceeds target of 45)
+- [x] **AgentRouter game loop integration**: `RouteAgentActionAsync()` now routes all agent actions through middleware pipeline during `ProcessAutonomousActions()`
 
 ### Enhancement Opportunities
 - [ ] Save/load game state persistence
@@ -337,16 +350,15 @@ var investigation = new AsyncRuleBuilder<AsyncEventContext>()
 AgentRouting.MafiaDemo/
 ├── Game/
 │   └── GameEngine.cs          # MafiaGameEngine, GameState, AutonomousAgent base
-├── AutonomousAgents.cs        # Godfather, Underboss, Consigliere, Capo, Soldier
-├── MafiaAgents.cs             # Basic agent implementations
-├── PlayerAgent.cs             # Player-controlled agent
-├── RulesBasedEngine.cs        # RulesEngine integration (needs wiring)
-├── AdvancedRulesEngine.cs     # Additional rules and contexts
-├── MissionSystem.cs           # Mission/quest system
+├── MafiaAgents.cs             # All agent implementations (Godfather, Underboss, etc.)
+├── PlayerAgent.cs             # Player-controlled agent with decision rules
+├── GameRulesEngine.cs         # Unified rules engine (8 engines, 105 rules)
+├── MissionSystem.cs           # Mission/quest system with difficulty rules
 ├── GameTimingOptions.cs       # Centralized delay configuration
 ├── AutonomousPlaythrough.cs   # Demo/test scenarios
 ├── Program.cs                 # Entry point and command loop
-└── ARCHITECTURE.md            # This document
+├── ARCHITECTURE.md            # This document
+└── *.md                       # Additional documentation files
 ```
 
 ---

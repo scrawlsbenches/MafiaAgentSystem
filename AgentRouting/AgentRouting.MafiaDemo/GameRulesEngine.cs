@@ -710,6 +710,244 @@ public class GameRulesEngine
         );
 
         // =====================================================================
+        // ADDITIONAL PERSONALITY RULES - Expanded personality coverage
+        // =====================================================================
+
+        // Cautious agents avoid risks when heat is building
+        _agentRules.AddRule(
+            "CAUTIOUS_AVOID_RISK",
+            "Cautious Risk Avoidance",
+            ctx => ctx.IsCautious && ctx.HeatIsRising && !ctx.InSurvivalMode,
+            ctx => { ctx.RecommendedAction = "laylow"; },
+            priority: 780
+        );
+
+        // Cautious agents prefer safe collections only when situation is stable
+        _agentRules.AddRule(
+            "CAUTIOUS_SAFE_COLLECT",
+            "Cautious Collection",
+            ctx => ctx.IsCautious && ctx.HeatIsFalling && ctx.RivalsArePeaceful,
+            ctx => { ctx.RecommendedAction = "collection"; },
+            priority: 720
+        );
+
+        // Cautious agents recruit only when absolutely necessary
+        var cautiousRecruit = new RuleBuilder<AgentDecisionContext>()
+            .WithId("CAUTIOUS_RECRUIT")
+            .WithName("Cautious Recruitment")
+            .WithPriority(710)
+            .When(ctx => ctx.IsCautious)
+            .And(ctx => ctx.GameState.SoldierCount < 5)
+            .And(ctx => ctx.RivalIsThreatening)
+            .And(ctx => ctx.GameState.FamilyWealth > 100000)
+            .Then(ctx => ctx.RecommendedAction = "recruit")
+            .Build();
+        _agentRules.RegisterRule(cautiousRecruit);
+
+        // Family-first agents always prioritize stability
+        _agentRules.AddRule(
+            "FAMILY_FIRST_STABILITY",
+            "Family First Stability",
+            ctx => ctx.IsFamilyFirst && ctx.HeatIsRising,
+            ctx => { ctx.RecommendedAction = "bribe"; },
+            priority: 840
+        );
+
+        // Family-first agents recruit when family is weak
+        _agentRules.AddRule(
+            "FAMILY_FIRST_STRENGTHEN",
+            "Family First Strengthening",
+            ctx => ctx.IsFamilyFirst && ctx.NeedsMoreSoldiers && ctx.GameState.FamilyWealth > 30000,
+            ctx => { ctx.RecommendedAction = "recruit"; },
+            priority: 820
+        );
+
+        // Hot-headed agents take unnecessary risks
+        _agentRules.AddRule(
+            "HOTHEADED_RECKLESS",
+            "Hot-headed Recklessness",
+            ctx => ctx.IsHotHeaded && !ctx.HeatIsCritical && ctx.GameState.FamilyWealth > 50000,
+            ctx => { ctx.RecommendedAction = "intimidate"; },
+            priority: 680
+        );
+
+        // Hot-headed agents refuse to back down even when they should
+        _agentRules.AddRule(
+            "HOTHEADED_DEFIANT",
+            "Hot-headed Defiance",
+            ctx => ctx.IsHotHeaded && ctx.RivalIsThreatening && !ctx.HeatIsCritical,
+            ctx => { ctx.RecommendedAction = "intimidate"; },
+            priority: 760
+        );
+
+        // =====================================================================
+        // PHASE-PERSONALITY HYBRID RULES - Personality modifies phase behavior
+        // =====================================================================
+
+        // Survival mode + aggressive personality = fight to survive
+        _agentRules.AddRule(
+            "SURVIVAL_AGGRESSIVE",
+            "Aggressive Survival",
+            ctx => ctx.InSurvivalMode && ctx.IsAggressive && ctx.RivalIsWeak,
+            ctx => { ctx.RecommendedAction = "intimidate"; },
+            priority: 970
+        );
+
+        // Survival mode + cautious personality = extra careful
+        _agentRules.AddRule(
+            "SURVIVAL_CAUTIOUS",
+            "Cautious Survival",
+            ctx => ctx.InSurvivalMode && ctx.IsCautious,
+            ctx => { ctx.RecommendedAction = "laylow"; },
+            priority: 975
+        );
+
+        // Growth mode + cautious personality = measured expansion
+        var growthCautious = new RuleBuilder<AgentDecisionContext>()
+            .WithId("GROWTH_CAUTIOUS")
+            .WithName("Cautious Growth")
+            .WithPriority(905)
+            .When(ctx => ctx.InGrowthMode)
+            .And(ctx => ctx.IsCautious)
+            .And(ctx => ctx.HasHeatBudget)
+            .And(ctx => ctx.GameState.FamilyWealth > 200000)
+            .Then(ctx => ctx.RecommendedAction = "expand")
+            .Build();
+        _agentRules.RegisterRule(growthCautious);
+
+        // Dominance mode + greedy personality = maximize extraction
+        _agentRules.AddRule(
+            "DOMINANCE_GREEDY",
+            "Greedy Dominance",
+            ctx => ctx.InDominanceMode && ctx.IsGreedy && ctx.HasHeatBudget,
+            ctx => { ctx.RecommendedAction = "collection"; },
+            priority: 915
+        );
+
+        // =====================================================================
+        // RIVAL-RESPONSE RULES - React to rival family situations
+        // =====================================================================
+
+        // Weak rival + ambitious agent = seize opportunity
+        _agentRules.AddRule(
+            "RIVAL_WEAK_AMBITIOUS",
+            "Seize Weak Rival Opportunity",
+            ctx => ctx.RivalIsWeak && ctx.IsAmbitious && ctx.CanTakeRisks,
+            ctx => { ctx.RecommendedAction = "expand"; },
+            priority: 640
+        );
+
+        // Weak rival + aggressive agent = attack
+        _agentRules.AddRule(
+            "RIVAL_WEAK_AGGRESSIVE",
+            "Attack Weak Rival",
+            ctx => ctx.RivalIsWeak && ctx.IsAggressive && ctx.HasHeatBudget,
+            ctx => { ctx.RecommendedAction = "intimidate"; },
+            priority: 660
+        );
+
+        // Threatening rival + loyal agent = protect family
+        _agentRules.AddRule(
+            "RIVAL_THREATENING_LOYAL",
+            "Loyal Defense Against Threat",
+            ctx => ctx.RivalIsThreatening && ctx.IsLoyal && ctx.NeedsMoreSoldiers,
+            ctx => { ctx.RecommendedAction = "recruit"; },
+            priority: 830
+        );
+
+        // Threatening rival + calculating agent = strategic response
+        var rivalThreateningCalculating = new RuleBuilder<AgentDecisionContext>()
+            .WithId("RIVAL_THREATENING_CALCULATING")
+            .WithName("Strategic Threat Response")
+            .WithPriority(810)
+            .When(ctx => ctx.RivalIsThreatening)
+            .And(ctx => ctx.IsCalculating)
+            .And(ctx => ctx.GameState.HeatLevel < 60)
+            .Then(ctx => ctx.RecommendedAction = "bribe")
+            .Build();
+        _agentRules.RegisterRule(rivalThreateningCalculating);
+
+        // =====================================================================
+        // HEAT-MANAGEMENT RULES - Respond to heat levels
+        // =====================================================================
+
+        // Heat rising + wealthy = bribe proactively
+        _agentRules.AddRule(
+            "HEAT_RISING_WEALTHY",
+            "Proactive Wealthy Bribe",
+            ctx => ctx.HeatIsRising && ctx.GameState.FamilyWealth > 100000 && !ctx.IsAggressive,
+            ctx => { ctx.RecommendedAction = "bribe"; },
+            priority: 870
+        );
+
+        // Heat rising + aggressive = ignore and push forward
+        _agentRules.AddRule(
+            "HEAT_RISING_AGGRESSIVE",
+            "Aggressive Heat Ignore",
+            ctx => ctx.HeatIsRising && ctx.IsAggressive && !ctx.HeatIsDangerous,
+            ctx => { ctx.RecommendedAction = "collection"; },
+            priority: 740
+        );
+
+        // Heat falling = safe to be productive
+        _agentRules.AddRule(
+            "HEAT_FALLING_PRODUCTIVE",
+            "Productive Low Heat Period",
+            ctx => ctx.HeatIsFalling && ctx.HasHeatBudget && !ctx.InSurvivalMode,
+            ctx => { ctx.RecommendedAction = "collection"; },
+            priority: 580
+        );
+
+        // Heat critical + any personality = emergency measures
+        _agentRules.AddRule(
+            "HEAT_CRITICAL_EMERGENCY",
+            "Critical Heat Emergency",
+            ctx => ctx.HeatIsCritical && ctx.GameState.FamilyWealth < 20000,
+            ctx => { ctx.RecommendedAction = "laylow"; },
+            priority: 990
+        );
+
+        // =====================================================================
+        // ECONOMIC-STRATEGY RULES - Respond to wealth trends
+        // =====================================================================
+
+        // Wealth growing + ambitious = expand aggressively
+        _agentRules.AddRule(
+            "WEALTH_GROWING_AMBITIOUS",
+            "Ambitious Wealth Growth",
+            ctx => ctx.GameState.WealthIsGrowing && ctx.IsAmbitious && ctx.CanTakeRisks,
+            ctx => { ctx.RecommendedAction = "expand"; },
+            priority: 630
+        );
+
+        // Wealth growing + greedy = maximize collections
+        _agentRules.AddRule(
+            "WEALTH_GROWING_GREEDY",
+            "Greedy Wealth Maximization",
+            ctx => ctx.GameState.WealthIsGrowing && ctx.IsGreedy && ctx.HasHeatBudget,
+            ctx => { ctx.RecommendedAction = "collection"; },
+            priority: 620
+        );
+
+        // Wealth shrinking + cautious = conserve
+        _agentRules.AddRule(
+            "WEALTH_SHRINKING_CAUTIOUS",
+            "Cautious Wealth Conservation",
+            ctx => ctx.GameState.WealthIsShrinking && ctx.IsCautious,
+            ctx => { ctx.RecommendedAction = "laylow"; },
+            priority: 860
+        );
+
+        // Wealth shrinking + greedy = desperate collection
+        _agentRules.AddRule(
+            "WEALTH_SHRINKING_GREEDY",
+            "Desperate Greedy Collection",
+            ctx => ctx.GameState.WealthIsShrinking && ctx.IsGreedy && !ctx.HeatIsDangerous,
+            ctx => { ctx.RecommendedAction = "collection"; },
+            priority: 855
+        );
+
+        // =====================================================================
         // OPPORTUNISTIC RULES - Take advantage of good situations
         // =====================================================================
 
