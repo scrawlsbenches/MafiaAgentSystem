@@ -101,9 +101,10 @@ public partial class GameRulesEngine
         _gameRules.AddRule(
             "CONSEQUENCE_VULNERABLE",
             "Vulnerable Position",
-            ctx => ctx.IsVulnerable && !ctx.State.Territories.Values.Any(t => t.UnderDispute),
+            ctx => ctx.IsVulnerable && ctx.State.Territories.Any() && !ctx.State.Territories.Values.Any(t => t.UnderDispute),
             ctx => {
-                var territory = ctx.State.Territories.Values.First();
+                var territory = ctx.State.Territories.Values.FirstOrDefault();
+                if (territory == null) return;  // Safety check
                 territory.UnderDispute = true;
                 Console.WriteLine($"Rivals sense weakness! {territory.Name} is under dispute!");
             },
@@ -1139,7 +1140,8 @@ public partial class GameRulesEngine
             "Hit Escalates to War",
             ctx => ctx.WasHit && ctx.HighTension,
             ctx => {
-                var rival = ctx.State.RivalFamilies.Values.First(r => r.Hostility > 80);
+                var rival = ctx.State.RivalFamilies.Values.FirstOrDefault(r => r.Hostility > 80);
+                if (rival == null) return;  // Safety check - no rival with hostility > 80
                 rival.AtWar = true;
                 rival.Hostility = 100;
                 Console.WriteLine($"  The hit has started a war with {rival.Name}!");

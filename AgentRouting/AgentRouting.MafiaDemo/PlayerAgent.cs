@@ -342,7 +342,8 @@ public class PlayerAgent
         else
         {
             var topRule = matchedRules.First(); // Already sorted by priority
-            var accept = !topRule.RuleName.Contains("REJECT");
+            // Use RuleId (uppercase) for consistent rejection check, matching DecideMission behavior
+            var accept = !topRule.RuleId.Contains("REJECT", StringComparison.OrdinalIgnoreCase);
 
             trace.FinalDecision = accept ? "ACCEPT" : "REJECT";
             trace.DecisionReason = topRule.RuleName;

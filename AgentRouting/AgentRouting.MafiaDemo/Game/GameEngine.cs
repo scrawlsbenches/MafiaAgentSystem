@@ -105,6 +105,7 @@ public class RivalFamily
 public class GameEvent
 {
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    public int GameWeek { get; set; } = 0;  // Track which game week event occurred (for proper timing checks)
     public string Type { get; set; } = ""; // Collection, Hit, War, etc.
     public string Description { get; set; } = "";
     public string InvolvedAgent { get; set; } = "";
@@ -384,12 +385,15 @@ public class MafiaGameEngine
     private void InitializeGame()
     {
         // Initialize territories
+        // Heat balance: Total heat from territories = 11/week
+        // With natural decay of 8/week, net = +3/week (manageable)
+        // Bribe (-15) or laylow (-5) can control heat effectively
         _state.Territories["little-italy"] = new Territory
         {
             Name = "Little Italy",
             ControlledBy = "capo-001",
             WeeklyRevenue = 15000,
-            HeatGeneration = 5,
+            HeatGeneration = 2,  // Reduced from 5 (protection is low-profile)
             Type = "Protection"
         };
 
@@ -398,7 +402,7 @@ public class MafiaGameEngine
             Name = "Brooklyn Docks",
             ControlledBy = "capo-001",
             WeeklyRevenue = 20000,
-            HeatGeneration = 10,
+            HeatGeneration = 5,  // Reduced from 10 (still highest - smuggling is risky)
             Type = "Smuggling"
         };
 
@@ -407,7 +411,7 @@ public class MafiaGameEngine
             Name = "Bronx Gambling",
             ControlledBy = "capo-001",
             WeeklyRevenue = 12000,
-            HeatGeneration = 8,
+            HeatGeneration = 4,  // Reduced from 8 (gambling is semi-legal)
             Type = "Gambling"
         };
 
@@ -888,10 +892,10 @@ public class MafiaGameEngine
                 LogEvent("RivalAttack", $"{rival.Name} attacked", "system");
             }
 
-            // Hostility slowly decreases over time
+            // Hostility slowly decreases over time (clamped to prevent negative values)
             if (rival.Hostility > 0)
             {
-                rival.Hostility -= Random.Shared.Next(1, 3);
+                rival.Hostility = Math.Max(0, rival.Hostility - Random.Shared.Next(1, 3));
             }
         }
 
@@ -900,10 +904,12 @@ public class MafiaGameEngine
 
     private void UpdateGameState()
     {
-        // Heat naturally decreases (balanced: 5/week allows recovery from hit in ~5 weeks)
+        // Heat naturally decreases (balanced: 8/week)
+        // With territory heat generation of 11/week, net = +3/week
+        // This makes the game winnable with occasional heat management
         if (_state.HeatLevel > 0)
         {
-            _state.HeatLevel -= 5;
+            _state.HeatLevel -= 8;
         }
 
         _state.HeatLevel = Math.Max(0, Math.Min(100, _state.HeatLevel));
@@ -950,7 +956,8 @@ public class MafiaGameEngine
         {
             Type = type,
             Description = description,
-            InvolvedAgent = agent
+            InvolvedAgent = agent,
+            GameWeek = _state.Week  // Track when event occurred for proper timing checks
         });
     }
 

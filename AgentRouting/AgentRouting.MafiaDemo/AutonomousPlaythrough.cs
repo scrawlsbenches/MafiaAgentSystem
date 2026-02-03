@@ -263,7 +263,8 @@ class AutonomousPlaythroughDemo
         Console.WriteLine($"║    {missionResult.Message}");
         Console.WriteLine($"║");
         Console.WriteLine($"║    Respect: {(missionResult.RespectGained >= 0 ? "+" : "")}{missionResult.RespectGained}");
-        Console.WriteLine($"║    Money: {(missionResult.MoneyGained >= 0 ? "+" : "")}{missionResult.MoneyGained:C0}");
+        // Use explicit $ format instead of :C0 which can show ¤ in non-US locales
+        Console.WriteLine($"║    Money: {(missionResult.MoneyGained >= 0 ? "+$" : "-$")}{Math.Abs(missionResult.MoneyGained):N0}");
         Console.WriteLine($"║    Heat: +{missionResult.HeatGained}");
         
         if (result.NewSkills.Any())
