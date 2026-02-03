@@ -867,6 +867,953 @@ public class IntelRegistry
 
 #endregion
 
+#region Persona System
+
+/// <summary>
+/// Personality traits that influence how an agent/NPC behaves and communicates.
+/// Personas make characters feel distinct and drive emergent behavior.
+///
+/// DESIGN DECISION: Using a trait-based system with normalized values (0-100).
+/// This allows for:
+/// - Rules engine conditions based on traits
+/// - Blending traits for nuanced behavior
+/// - Character evolution over time
+/// </summary>
+public class Persona
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";              // "The Cautious Advisor"
+
+    // === Core Personality Traits (0-100) ===
+
+    // How they approach risk and opportunity
+    public int Ambition { get; set; } = 50;             // Drive for power/wealth
+    public int Caution { get; set; } = 50;              // Risk aversion
+    public int Aggression { get; set; } = 50;           // Tendency toward violence
+
+    // How they relate to others
+    public int Loyalty { get; set; } = 50;              // Commitment to allies
+    public int Trust { get; set; } = 50;                // Willingness to trust others
+    public int Empathy { get; set; } = 50;              // Concern for others' welfare
+
+    // How they operate
+    public int Cunning { get; set; } = 50;              // Strategic thinking
+    public int Patience { get; set; } = 50;             // Long-term vs short-term focus
+    public int Pride { get; set; } = 50;                // Sensitivity to disrespect
+
+    // === Communication Style ===
+    public CommunicationStyle Style { get; set; } = CommunicationStyle.Neutral;
+    public int Verbosity { get; set; } = 50;            // How much they talk (0=terse, 100=verbose)
+    public int Honesty { get; set; } = 50;              // How truthful in communications
+
+    // === Goals and Motivations ===
+    public List<Goal> Goals { get; set; } = new();
+    public List<string> Fears { get; set; } = new();    // What they want to avoid
+    public List<string> Values { get; set; } = new();   // What they care about
+
+    // === Biases (affect how they perceive others) ===
+    public Dictionary<string, int> FactionBiases { get; set; } = new();  // Faction ID -> bias
+    public Dictionary<string, int> RoleBiases { get; set; } = new();     // Role -> bias
+
+    // === Computed Traits ===
+    public bool IsAmbitious => Ambition > 70;
+    public bool IsCautious => Caution > 70;
+    public bool IsAggressive => Aggression > 70;
+    public bool IsLoyal => Loyalty > 70;
+    public bool IsTrusting => Trust > 70;
+    public bool IsCunning => Cunning > 70;
+    public bool IsPatient => Patience > 70;
+    public bool IsProud => Pride > 70;
+
+    /// <summary>
+    /// Calculate how this persona would react to a situation.
+    /// Returns a bias value that can modify rule evaluations.
+    /// </summary>
+    public float GetReactionBias(string situationType)
+    {
+        return situationType switch
+        {
+            "opportunity" => (Ambition - Caution) / 100f,
+            "threat" => (Aggression - Patience) / 100f,
+            "betrayal" => (Pride + (100 - Trust)) / 200f,
+            "alliance" => (Loyalty + Trust) / 200f,
+            "negotiation" => (Cunning + Patience) / 200f,
+            _ => 0f
+        };
+    }
+
+    /// <summary>
+    /// Modify persona traits based on significant events.
+    /// Characters evolve over time.
+    /// </summary>
+    public void ApplyExperience(string experienceType, int intensity)
+    {
+        switch (experienceType)
+        {
+            case "betrayed":
+                Trust = Math.Max(0, Trust - intensity);
+                Caution = Math.Min(100, Caution + intensity / 2);
+                break;
+            case "success":
+                Ambition = Math.Min(100, Ambition + intensity / 3);
+                break;
+            case "failure":
+                Caution = Math.Min(100, Caution + intensity / 2);
+                Pride = Math.Max(0, Pride - intensity / 3);
+                break;
+            case "helped":
+                Trust = Math.Min(100, Trust + intensity / 2);
+                Loyalty = Math.Min(100, Loyalty + intensity / 3);
+                break;
+            case "threatened":
+                Aggression = Math.Min(100, Aggression + intensity / 2);
+                Trust = Math.Max(0, Trust - intensity / 2);
+                break;
+        }
+    }
+}
+
+public enum CommunicationStyle
+{
+    Neutral,          // Default balanced style
+    Formal,           // Professional, respectful
+    Casual,           // Relaxed, friendly
+    Threatening,      // Intimidating, aggressive
+    Diplomatic,       // Careful, measured
+    Cryptic,          // Indirect, mysterious
+    Blunt             // Direct, no nonsense
+}
+
+public class Goal
+{
+    public string Id { get; set; } = "";
+    public string Description { get; set; } = "";
+    public GoalType Type { get; set; }
+    public int Priority { get; set; } = 50;             // 0-100
+    public string? TargetId { get; set; }               // Optional target entity
+    public bool IsAchieved { get; set; }
+    public bool IsFailed { get; set; }
+}
+
+public enum GoalType
+{
+    Survive,          // Stay alive
+    Prosper,          // Gain wealth
+    Power,            // Gain influence/rank
+    Revenge,          // Hurt specific target
+    Protect,          // Keep someone safe
+    Escape,           // Leave current situation
+    Loyalty,          // Serve a master
+    Justice,          // Right a wrong
+    Knowledge         // Learn something
+}
+
+#endregion
+
+#region Memory System
+
+/// <summary>
+/// A single memory representing something an agent/NPC knows or experienced.
+///
+/// DESIGN DECISION: Memories are typed and have salience (importance).
+/// High-salience memories persist longer and influence behavior more.
+/// This mimics how humans remember significant events better.
+/// </summary>
+public class Memory
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public MemoryType Type { get; set; }
+
+    // Content
+    public string Summary { get; set; } = "";           // Human-readable summary
+    public Dictionary<string, object> Data { get; set; } = new();
+
+    // Context
+    public int CreatedWeek { get; set; }
+    public string? LocationId { get; set; }
+    public string? InvolvesEntityId { get; set; }       // Who/what is this about
+    public string? SourceAgentId { get; set; }          // Who told us (if learned)
+
+    // Importance and decay
+    public int Salience { get; set; } = 50;             // 0-100, how important
+    public int AccessCount { get; set; }                // Times recalled
+    public int? LastAccessedWeek { get; set; }
+
+    // Emotional coloring
+    public EmotionalValence Emotion { get; set; } = EmotionalValence.Neutral;
+    public int EmotionalIntensity { get; set; } = 50;   // 0-100
+
+    // Reliability
+    public bool IsFirsthand { get; set; }               // Did we witness it?
+    public int Confidence { get; set; } = 100;          // How sure are we?
+
+    /// <summary>
+    /// Calculate effective salience considering recency and access.
+    /// </summary>
+    public float GetEffectiveSalience(int currentWeek)
+    {
+        float base_salience = Salience / 100f;
+
+        // Recency bonus (recent memories more accessible)
+        int weeksSince = currentWeek - CreatedWeek;
+        float recencyFactor = 1f / (1f + weeksSince * 0.1f);
+
+        // Access bonus (frequently recalled memories stronger)
+        float accessFactor = 1f + Math.Min(AccessCount * 0.1f, 0.5f);
+
+        // Emotional memories persist better
+        float emotionFactor = 1f + (EmotionalIntensity / 200f);
+
+        return base_salience * recencyFactor * accessFactor * emotionFactor;
+    }
+
+    /// <summary>
+    /// Should this memory be forgotten (pruned)?
+    /// </summary>
+    public bool ShouldForget(int currentWeek)
+    {
+        // High salience memories never forgotten
+        if (Salience > 80) return false;
+
+        // Emotional memories persist longer
+        if (EmotionalIntensity > 70) return false;
+
+        // Calculate effective salience
+        float effective = GetEffectiveSalience(currentWeek);
+
+        // Forget if effective salience drops too low
+        return effective < 0.1f;
+    }
+}
+
+public enum MemoryType
+{
+    // Episodic - specific events witnessed or experienced
+    Interaction,      // Met/talked with someone
+    Event,            // Something happened
+    Mission,          // Completed a task
+    Betrayal,         // Someone betrayed us
+    Gift,             // Received something valuable
+    Threat,           // Were threatened
+    Violence,         // Witnessed/experienced violence
+
+    // Semantic - facts and knowledge
+    Fact,             // Learned information
+    Location,         // Know about a place
+    Person,           // Know about someone
+    Relationship,     // Know about a relationship
+    Secret,           // Confidential information
+
+    // Procedural - how to do things
+    Skill,            // Learned ability
+    Contact,          // Know how to reach someone
+    Route             // Know how to get somewhere
+}
+
+public enum EmotionalValence
+{
+    VeryNegative = -2,
+    Negative = -1,
+    Neutral = 0,
+    Positive = 1,
+    VeryPositive = 2
+}
+
+/// <summary>
+/// Manages memories for an agent or NPC.
+/// Supports recall, learning, and natural forgetting.
+///
+/// ALGORITHM NOTES:
+/// - Recall uses salience-weighted retrieval
+/// - Learning strengthens related memories
+/// - Forgetting uses threshold-based pruning
+/// </summary>
+public class MemoryBank
+{
+    private readonly List<Memory> _memories = new();
+    private readonly Dictionary<string, List<Memory>> _byEntity = new();
+    private readonly Dictionary<string, List<Memory>> _byLocation = new();
+    private readonly Dictionary<MemoryType, List<Memory>> _byType = new();
+
+    public int Capacity { get; set; } = 100;            // Max memories before forced pruning
+
+    #region Learning (Adding Memories)
+
+    public void Remember(Memory memory)
+    {
+        _memories.Add(memory);
+
+        // Index by entity
+        if (memory.InvolvesEntityId != null)
+        {
+            if (!_byEntity.ContainsKey(memory.InvolvesEntityId))
+                _byEntity[memory.InvolvesEntityId] = new List<Memory>();
+            _byEntity[memory.InvolvesEntityId].Add(memory);
+        }
+
+        // Index by location
+        if (memory.LocationId != null)
+        {
+            if (!_byLocation.ContainsKey(memory.LocationId))
+                _byLocation[memory.LocationId] = new List<Memory>();
+            _byLocation[memory.LocationId].Add(memory);
+        }
+
+        // Index by type
+        if (!_byType.ContainsKey(memory.Type))
+            _byType[memory.Type] = new List<Memory>();
+        _byType[memory.Type].Add(memory);
+
+        // Prune if over capacity
+        if (_memories.Count > Capacity)
+            PruneLeastImportant(1);
+    }
+
+    /// <summary>
+    /// Learn a fact from another agent (secondhand memory).
+    /// </summary>
+    public void LearnFrom(Memory sourceMemory, string sourceAgentId, int currentWeek)
+    {
+        var learned = new Memory
+        {
+            Type = sourceMemory.Type,
+            Summary = sourceMemory.Summary,
+            Data = new Dictionary<string, object>(sourceMemory.Data),
+            CreatedWeek = currentWeek,
+            LocationId = sourceMemory.LocationId,
+            InvolvesEntityId = sourceMemory.InvolvesEntityId,
+            SourceAgentId = sourceAgentId,
+            Salience = sourceMemory.Salience / 2,       // Secondhand less salient
+            IsFirsthand = false,
+            Confidence = sourceMemory.Confidence - 20,  // Less confident in secondhand
+            Emotion = EmotionalValence.Neutral          // Secondhand less emotional
+        };
+
+        Remember(learned);
+    }
+
+    #endregion
+
+    #region Recall (Retrieving Memories)
+
+    /// <summary>
+    /// Recall memories about a specific entity, sorted by relevance.
+    /// </summary>
+    public IEnumerable<Memory> RecallAbout(string entityId, int currentWeek, int limit = 5)
+    {
+        if (!_byEntity.TryGetValue(entityId, out var memories))
+            return Enumerable.Empty<Memory>();
+
+        return memories
+            .OrderByDescending(m => m.GetEffectiveSalience(currentWeek))
+            .Take(limit)
+            .Select(m => {
+                m.AccessCount++;
+                m.LastAccessedWeek = currentWeek;
+                return m;
+            });
+    }
+
+    /// <summary>
+    /// Recall memories at a specific location.
+    /// </summary>
+    public IEnumerable<Memory> RecallAtLocation(string locationId, int currentWeek, int limit = 5)
+    {
+        if (!_byLocation.TryGetValue(locationId, out var memories))
+            return Enumerable.Empty<Memory>();
+
+        return memories
+            .OrderByDescending(m => m.GetEffectiveSalience(currentWeek))
+            .Take(limit)
+            .Select(m => {
+                m.AccessCount++;
+                m.LastAccessedWeek = currentWeek;
+                return m;
+            });
+    }
+
+    /// <summary>
+    /// Recall memories of a specific type.
+    /// </summary>
+    public IEnumerable<Memory> RecallByType(MemoryType type, int currentWeek, int limit = 5)
+    {
+        if (!_byType.TryGetValue(type, out var memories))
+            return Enumerable.Empty<Memory>();
+
+        return memories
+            .OrderByDescending(m => m.GetEffectiveSalience(currentWeek))
+            .Take(limit);
+    }
+
+    /// <summary>
+    /// Search memories by keyword in summary.
+    /// </summary>
+    public IEnumerable<Memory> Search(string keyword, int currentWeek, int limit = 5)
+    {
+        return _memories
+            .Where(m => m.Summary.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(m => m.GetEffectiveSalience(currentWeek))
+            .Take(limit);
+    }
+
+    /// <summary>
+    /// Get the most emotionally significant memories.
+    /// </summary>
+    public IEnumerable<Memory> RecallEmotional(int currentWeek, int limit = 5)
+    {
+        return _memories
+            .Where(m => m.EmotionalIntensity > 50)
+            .OrderByDescending(m => m.EmotionalIntensity * m.GetEffectiveSalience(currentWeek))
+            .Take(limit);
+    }
+
+    /// <summary>
+    /// Check if we have any memory about an entity.
+    /// </summary>
+    public bool KnowsAbout(string entityId) => _byEntity.ContainsKey(entityId);
+
+    /// <summary>
+    /// Get overall sentiment toward an entity based on memories.
+    /// </summary>
+    public int GetSentiment(string entityId, int currentWeek)
+    {
+        if (!_byEntity.TryGetValue(entityId, out var memories))
+            return 0;
+
+        float totalSentiment = 0;
+        float totalWeight = 0;
+
+        foreach (var memory in memories)
+        {
+            float weight = memory.GetEffectiveSalience(currentWeek);
+            float sentiment = (int)memory.Emotion * (memory.EmotionalIntensity / 50f);
+            totalSentiment += sentiment * weight;
+            totalWeight += weight;
+        }
+
+        return totalWeight > 0 ? (int)(totalSentiment / totalWeight * 25) : 0;
+    }
+
+    #endregion
+
+    #region Forgetting (Pruning)
+
+    /// <summary>
+    /// Forget old, low-salience memories.
+    /// </summary>
+    public void Forget(int currentWeek)
+    {
+        var toForget = _memories.Where(m => m.ShouldForget(currentWeek)).ToList();
+        foreach (var memory in toForget)
+            RemoveMemory(memory);
+    }
+
+    private void PruneLeastImportant(int count)
+    {
+        var toPrune = _memories
+            .OrderBy(m => m.Salience)
+            .ThenBy(m => m.CreatedWeek)
+            .Take(count)
+            .ToList();
+
+        foreach (var memory in toPrune)
+            RemoveMemory(memory);
+    }
+
+    private void RemoveMemory(Memory memory)
+    {
+        _memories.Remove(memory);
+
+        if (memory.InvolvesEntityId != null && _byEntity.TryGetValue(memory.InvolvesEntityId, out var byEntity))
+            byEntity.Remove(memory);
+
+        if (memory.LocationId != null && _byLocation.TryGetValue(memory.LocationId, out var byLocation))
+            byLocation.Remove(memory);
+
+        if (_byType.TryGetValue(memory.Type, out var byType))
+            byType.Remove(memory);
+    }
+
+    #endregion
+}
+
+#endregion
+
+#region Agent Communication Protocol (Q&A)
+
+/// <summary>
+/// Represents a question one agent asks another.
+/// Questions can seek information, request action, or test loyalty.
+///
+/// DESIGN DECISION: Questions are typed and carry context.
+/// The respondent uses their persona, memories, and relationship
+/// to craft an appropriate response.
+/// </summary>
+public class AgentQuestion
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string AskerId { get; set; } = "";
+    public string ResponderId { get; set; } = "";
+    public QuestionType Type { get; set; }
+
+    // Content
+    public string Topic { get; set; } = "";             // What's being asked about
+    public string? SubjectEntityId { get; set; }        // Entity the question is about
+    public string? SubjectLocationId { get; set; }      // Location the question is about
+    public Dictionary<string, object> Context { get; set; } = new();
+
+    // Metadata
+    public int AskedWeek { get; set; }
+    public QuestionUrgency Urgency { get; set; } = QuestionUrgency.Normal;
+    public bool RequiresHonesty { get; set; }           // Is lying risky?
+}
+
+public enum QuestionType
+{
+    // Information seeking
+    WhatDoYouKnow,        // "What do you know about [entity]?"
+    WhereIs,              // "Where is [entity]?"
+    WhoControls,          // "Who controls [location]?"
+    WhatHappened,         // "What happened at [location]?"
+    HowIsRelationship,    // "How are things with [entity]?"
+
+    // Opinion seeking
+    WhatDoYouThink,       // "What do you think about [entity]?"
+    ShouldWe,             // "Should we [action]?"
+    CanWeTrust,           // "Can we trust [entity]?"
+
+    // Action requests
+    WillYouHelp,          // "Will you help with [action]?"
+    CanYouFind,           // "Can you find out about [topic]?"
+    WillYouTell,          // "Will you tell [entity] about [topic]?"
+
+    // Loyalty tests
+    WhereDoYouStand,      // "Where do your loyalties lie?"
+    WouldYouBetray,       // Testing if they'd betray someone
+    WhatWouldYouDo        // Hypothetical situation test
+}
+
+public enum QuestionUrgency
+{
+    Low,                  // Casual inquiry
+    Normal,               // Standard question
+    High,                 // Important, needs quick answer
+    Critical              // Urgent, immediate response needed
+}
+
+/// <summary>
+/// Response to a question, crafted based on persona and knowledge.
+/// </summary>
+public class AgentResponse
+{
+    public string QuestionId { get; set; } = "";
+    public string ResponderId { get; set; } = "";
+    public ResponseType Type { get; set; }
+
+    // Content
+    public string Content { get; set; } = "";           // The actual response
+    public bool IsHonest { get; set; } = true;          // Is this truthful?
+    public int ConfidenceLevel { get; set; } = 100;     // How confident in the info
+
+    // Shared information
+    public List<Memory> SharedMemories { get; set; } = new();
+    public Intel? SharedIntel { get; set; }
+
+    // Relationship effects
+    public int RelationshipChange { get; set; }         // How this affects relationship
+    public bool RefusedToAnswer { get; set; }
+    public string? RefusalReason { get; set; }
+
+    // Story effects
+    public List<string> UnlockedNodeIds { get; set; } = new();   // Story nodes unlocked
+    public List<string> TriggeredEvents { get; set; } = new();    // Events triggered
+}
+
+public enum ResponseType
+{
+    Answer,               // Direct answer to the question
+    Partial,              // Incomplete information
+    Redirect,             // "Ask someone else"
+    Refuse,               // Won't answer
+    Lie,                  // Deliberate misinformation
+    Counter,              // Answers with a question
+    Bargain               // "I'll tell you if..."
+}
+
+/// <summary>
+/// Handles the Q&A protocol between agents.
+/// Uses persona and memories to generate contextual responses.
+///
+/// ALGORITHM:
+/// 1. Receive question
+/// 2. Check relationship with asker (trust level)
+/// 3. Search memories for relevant information
+/// 4. Apply persona to decide response style
+/// 5. Generate response (honest, partial, lie, refuse)
+/// 6. Update memories and relationships
+/// </summary>
+public class ConversationEngine
+{
+    private readonly WorldState _world;
+    private readonly StoryGraph _graph;
+
+    public ConversationEngine(WorldState world, StoryGraph graph)
+    {
+        _world = world;
+        _graph = graph;
+    }
+
+    /// <summary>
+    /// Process a question and generate a response.
+    /// </summary>
+    public AgentResponse ProcessQuestion(
+        AgentQuestion question,
+        Persona responderPersona,
+        MemoryBank responderMemories,
+        int relationshipWithAsker)
+    {
+        var response = new AgentResponse
+        {
+            QuestionId = question.Id,
+            ResponderId = question.ResponderId
+        };
+
+        // 1. Decide if we'll answer at all
+        var willAnswer = DecideToAnswer(question, responderPersona, relationshipWithAsker);
+        if (!willAnswer.answer)
+        {
+            response.Type = ResponseType.Refuse;
+            response.RefusedToAnswer = true;
+            response.RefusalReason = willAnswer.reason;
+            response.Content = GenerateRefusal(responderPersona, willAnswer.reason);
+            response.RelationshipChange = -5;  // Refusal hurts relationship
+            return response;
+        }
+
+        // 2. Gather relevant information from memories
+        var relevantMemories = GatherRelevantMemories(
+            question,
+            responderMemories,
+            _world.CurrentWeek);
+
+        // 3. Decide honesty level based on persona and relationship
+        var honestyDecision = DecideHonesty(
+            question,
+            responderPersona,
+            relationshipWithAsker,
+            relevantMemories.Any());
+
+        // 4. Generate the response
+        if (honestyDecision.willLie)
+        {
+            response = GenerateLie(question, responderPersona, honestyDecision.lieReason);
+        }
+        else if (relevantMemories.Any())
+        {
+            response = GenerateHonestAnswer(question, responderPersona, relevantMemories);
+        }
+        else
+        {
+            response = GenerateUnknownResponse(question, responderPersona);
+        }
+
+        // 5. Apply relationship effects
+        response.RelationshipChange = CalculateRelationshipChange(
+            question,
+            response,
+            responderPersona);
+
+        // 6. Check for story triggers
+        CheckStoryTriggers(question, response);
+
+        return response;
+    }
+
+    private (bool answer, string? reason) DecideToAnswer(
+        AgentQuestion question,
+        Persona persona,
+        int relationship)
+    {
+        // Low trust + sensitive question = refuse
+        if (relationship < -30 && question.Type == QuestionType.CanWeTrust)
+            return (false, "I don't discuss such matters with you.");
+
+        // Proud persona refuses to answer demands
+        if (persona.IsProud && question.Urgency == QuestionUrgency.Critical)
+            return (false, "Don't presume to demand answers from me.");
+
+        // Cautious persona refuses to share dangerous info
+        if (persona.IsCautious && question.RequiresHonesty)
+        {
+            if (question.Type == QuestionType.WhoControls ||
+                question.Type == QuestionType.WhereDoYouStand)
+                return (false, "Some things are better left unsaid.");
+        }
+
+        // Low relationship + loyalty questions
+        if (relationship < 0 && question.Type == QuestionType.WillYouHelp)
+            return (false, "Why would I help you?");
+
+        return (true, null);
+    }
+
+    private List<Memory> GatherRelevantMemories(
+        AgentQuestion question,
+        MemoryBank memories,
+        int currentWeek)
+    {
+        var relevant = new List<Memory>();
+
+        // Search by entity
+        if (question.SubjectEntityId != null)
+        {
+            relevant.AddRange(memories.RecallAbout(question.SubjectEntityId, currentWeek, 3));
+        }
+
+        // Search by location
+        if (question.SubjectLocationId != null)
+        {
+            relevant.AddRange(memories.RecallAtLocation(question.SubjectLocationId, currentWeek, 3));
+        }
+
+        // Search by topic keyword
+        if (!string.IsNullOrEmpty(question.Topic))
+        {
+            relevant.AddRange(memories.Search(question.Topic, currentWeek, 2));
+        }
+
+        return relevant.Distinct().ToList();
+    }
+
+    private (bool willLie, string? lieReason) DecideHonesty(
+        AgentQuestion question,
+        Persona persona,
+        int relationship,
+        bool hasInformation)
+    {
+        // Very low honesty trait = likely to lie
+        if (persona.Honesty < 30 && hasInformation)
+        {
+            // Cunning persona lies strategically
+            if (persona.IsCunning)
+                return (true, "strategic_advantage");
+        }
+
+        // Negative relationship + sensitive topic = might lie
+        if (relationship < -20 && question.Type == QuestionType.WhatDoYouKnow)
+        {
+            // Roll against honesty
+            var lieChance = (100 - persona.Honesty) / 100f * (Math.Abs(relationship) / 100f);
+            if (Random.Shared.NextDouble() < lieChance)
+                return (true, "distrust");
+        }
+
+        // Loyalty to someone else might cause lies
+        if (persona.IsLoyal && question.SubjectEntityId != null)
+        {
+            // Check if subject is someone we're loyal to
+            var factionBias = persona.FactionBiases.GetValueOrDefault(question.SubjectEntityId);
+            if (factionBias > 50 && relationship < 30)
+                return (true, "protecting_ally");
+        }
+
+        return (false, null);
+    }
+
+    private AgentResponse GenerateHonestAnswer(
+        AgentQuestion question,
+        Persona persona,
+        List<Memory> memories)
+    {
+        var response = new AgentResponse
+        {
+            QuestionId = question.Id,
+            ResponderId = question.AskerId,  // Will be fixed by caller
+            Type = ResponseType.Answer,
+            IsHonest = true,
+            SharedMemories = memories,
+            ConfidenceLevel = memories.Max(m => m.Confidence)
+        };
+
+        // Generate content based on persona style
+        response.Content = FormatResponse(question, memories, persona);
+
+        return response;
+    }
+
+    private AgentResponse GenerateLie(
+        AgentQuestion question,
+        Persona persona,
+        string? lieReason)
+    {
+        return new AgentResponse
+        {
+            QuestionId = question.Id,
+            Type = ResponseType.Lie,
+            IsHonest = false,
+            Content = GenerateMisinformation(question, persona),
+            ConfidenceLevel = 80  // Lies are delivered confidently
+        };
+    }
+
+    private AgentResponse GenerateUnknownResponse(
+        AgentQuestion question,
+        Persona persona)
+    {
+        var response = new AgentResponse
+        {
+            QuestionId = question.Id,
+            Type = ResponseType.Partial,
+            IsHonest = true,
+            ConfidenceLevel = 0
+        };
+
+        response.Content = persona.Style switch
+        {
+            CommunicationStyle.Blunt => "I don't know.",
+            CommunicationStyle.Formal => "I regret that I have no information on this matter.",
+            CommunicationStyle.Diplomatic => "That's not something I have insight into, I'm afraid.",
+            CommunicationStyle.Cryptic => "Some things remain hidden, even from me.",
+            _ => "I'm not sure about that."
+        };
+
+        return response;
+    }
+
+    private string GenerateRefusal(Persona persona, string? reason)
+    {
+        return persona.Style switch
+        {
+            CommunicationStyle.Threatening => "You don't want to keep asking questions like that.",
+            CommunicationStyle.Formal => "I must decline to discuss this matter.",
+            CommunicationStyle.Blunt => "No.",
+            CommunicationStyle.Cryptic => "Not all questions deserve answers.",
+            _ => reason ?? "I'd rather not say."
+        };
+    }
+
+    private string GenerateMisinformation(AgentQuestion question, Persona persona)
+    {
+        // Generate plausible but false information
+        return question.Type switch
+        {
+            QuestionType.WhereIs => "Last I heard, they were in Brooklyn.",
+            QuestionType.WhoControls => "The Barzinis have that territory now.",
+            QuestionType.WhatHappened => "Nothing unusual that I know of.",
+            QuestionType.CanWeTrust => "Absolutely, they're completely reliable.",
+            _ => "I've heard differently, but I can't say more."
+        };
+    }
+
+    private string FormatResponse(AgentQuestion question, List<Memory> memories, Persona persona)
+    {
+        // Build response from memories, styled by persona
+        var info = memories.FirstOrDefault();
+        if (info == null) return "I'm not certain.";
+
+        var prefix = persona.Style switch
+        {
+            CommunicationStyle.Formal => "I can confirm that ",
+            CommunicationStyle.Casual => "Yeah, so ",
+            CommunicationStyle.Cryptic => "What I can tell you is ",
+            CommunicationStyle.Blunt => "",
+            _ => ""
+        };
+
+        return prefix + info.Summary;
+    }
+
+    private int CalculateRelationshipChange(
+        AgentQuestion question,
+        AgentResponse response,
+        Persona persona)
+    {
+        int change = 0;
+
+        // Honest helpful answers improve relationship
+        if (response.IsHonest && response.Type == ResponseType.Answer)
+            change += 5;
+
+        // Lies damage relationship if discovered (handled elsewhere)
+
+        // High urgency questions answered = bigger impact
+        if (question.Urgency == QuestionUrgency.Critical && response.Type == ResponseType.Answer)
+            change += 10;
+
+        return change;
+    }
+
+    private void CheckStoryTriggers(AgentQuestion question, AgentResponse response)
+    {
+        // Certain Q&A combinations unlock story nodes
+
+        // Example: Asking about the informant reveals the "rat hunt" plot
+        if (question.Type == QuestionType.WhatDoYouKnow &&
+            response.IsHonest &&
+            response.SharedMemories.Any(m => m.Type == MemoryType.Secret))
+        {
+            // Could trigger story events
+            var secretMemory = response.SharedMemories.First(m => m.Type == MemoryType.Secret);
+            if (secretMemory.Summary.Contains("informant", StringComparison.OrdinalIgnoreCase))
+            {
+                response.TriggeredEvents.Add("informant_discovered");
+            }
+        }
+    }
+}
+
+/// <summary>
+/// Extension to WorldState to support personas and memories for all entities.
+/// </summary>
+public class EntityMind
+{
+    public string EntityId { get; set; } = "";
+    public Persona Persona { get; set; } = new();
+    public MemoryBank Memories { get; set; } = new();
+
+    /// <summary>
+    /// Record an interaction with another entity.
+    /// </summary>
+    public void RecordInteraction(string otherEntityId, string summary,
+        EmotionalValence emotion, int emotionalIntensity, int week, string? locationId = null)
+    {
+        Memories.Remember(new Memory
+        {
+            Type = MemoryType.Interaction,
+            Summary = summary,
+            InvolvesEntityId = otherEntityId,
+            LocationId = locationId,
+            CreatedWeek = week,
+            Salience = 50 + emotionalIntensity / 2,
+            Emotion = emotion,
+            EmotionalIntensity = emotionalIntensity,
+            IsFirsthand = true,
+            Confidence = 100
+        });
+    }
+
+    /// <summary>
+    /// Learn a fact from another source.
+    /// </summary>
+    public void LearnFact(string fact, string? aboutEntityId, int week,
+        string? sourceAgentId = null, int confidence = 80)
+    {
+        Memories.Remember(new Memory
+        {
+            Type = MemoryType.Fact,
+            Summary = fact,
+            InvolvesEntityId = aboutEntityId,
+            CreatedWeek = week,
+            SourceAgentId = sourceAgentId,
+            Salience = 40,
+            IsFirsthand = sourceAgentId == null,
+            Confidence = confidence
+        });
+    }
+}
+
+#endregion
+
 #region Consequence System
 
 /// <summary>
