@@ -1076,7 +1076,7 @@ public static class MissionConsequenceHandler
 
             intel = new Intel
             {
-                Type = IntelType.NpcActivity,
+                Type = IntelType.NPCStatus,
                 SubjectId = npc.Id,
                 SubjectType = "npc",
                 Summary = $"Information gathered about {npc.Name}",
@@ -1111,7 +1111,7 @@ public static class MissionConsequenceHandler
 
             intel = new Intel
             {
-                Type = IntelType.LocationStatus,
+                Type = IntelType.LocationHeat,
                 SubjectId = location.Id,
                 SubjectType = "location",
                 Summary = $"Information gathered about {location.Name}",
@@ -1133,7 +1133,7 @@ public static class MissionConsequenceHandler
             // Generic intel without specific target
             intel = new Intel
             {
-                Type = IntelType.Rumor,
+                Type = IntelType.ThreatWarning,
                 SubjectId = "general",
                 SubjectType = "general",
                 Summary = $"General intelligence gathered: {mission.Description}",

@@ -57,7 +57,7 @@ See `TASK_LIST.md` for full details.
 | **I** | Story System Integration | ⏳ **14/16 done** | 16 | In Progress |
 | **F** | Polish | ⏳ Pending | 11 | - |
 
-**Test count: ~1,765 tests (346 RulesEngine + 823 AgentRouting + 596 MafiaDemo)**
+**Test count: ~1,800+ tests (346 RulesEngine + 823 AgentRouting + 693 MafiaDemo)**
 
 ---
 
@@ -84,7 +84,10 @@ See `TASK_LIST.md` for full details.
 - [x] I-5a: HybridMissionGenerator Integration
 - [x] I-5b: Apply ConsequenceRules After Missions (MissionConsequenceHandler.ApplyConsequenceRules)
 - [x] I-5c: Intel Recording for Information Missions (MissionConsequenceHandler.RecordIntelFromMission)
-- [x] I-7a-d: Integration Tests (37+ tests in StorySystemIntegrationTests.cs)
+- [x] I-7a-d: Integration Tests (44 tests in StorySystemIntegrationTests.cs)
+  - GameWorldBridge (5), GameState/Week (3), HybridMissionGenerator (5), MissionAdapter (3)
+  - PlotThread (4), MissionConsequenceHandler (11), GameEngine (6), MissionHistory (3)
+  - **PlayerAgent Story System E2E** (4 tests: consequence rules, intel recording, backward compat)
 
 **Remaining (2 tasks - Moved to Batch F)**:
 - [ ] F-2a: Basic NPC Conversation Command (was I-6a)
