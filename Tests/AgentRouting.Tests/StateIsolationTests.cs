@@ -1,5 +1,6 @@
 using TestRunner.Framework;
 using AgentRouting.Infrastructure;
+using TestUtilities;
 
 namespace AgentRouting.Tests;
 
@@ -8,21 +9,6 @@ namespace AgentRouting.Tests;
 /// </summary>
 public class SystemClockIsolationTests : AgentRoutingTestBase
 {
-    /// <summary>
-    /// Custom clock for testing that returns a fixed time.
-    /// </summary>
-    private class FixedClock : ISystemClock
-    {
-        private readonly DateTime _fixedTime;
-
-        public FixedClock(DateTime fixedTime)
-        {
-            _fixedTime = fixedTime;
-        }
-
-        public DateTime UtcNow => _fixedTime;
-    }
-
     [Test]
     public void Test1_ModifySystemClock()
     {
@@ -61,21 +47,6 @@ public class SystemClockIsolationTests : AgentRoutingTestBase
 public class ManualClockResetTests
 {
     private ISystemClock? _originalClock;
-
-    /// <summary>
-    /// Custom clock for testing that returns a fixed time.
-    /// </summary>
-    private class FixedClock : ISystemClock
-    {
-        private readonly DateTime _fixedTime;
-
-        public FixedClock(DateTime fixedTime)
-        {
-            _fixedTime = fixedTime;
-        }
-
-        public DateTime UtcNow => _fixedTime;
-    }
 
     [SetUp]
     public void SetUp()

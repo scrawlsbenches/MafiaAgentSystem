@@ -1,6 +1,7 @@
 using TestRunner.Framework;
 using AgentRouting.Core;
 using AgentRouting.Middleware;
+using TestUtilities;
 
 namespace TestRunner.Tests;
 
@@ -50,7 +51,7 @@ public class MiddlewarePipelineTests
         var pipeline = new MiddlewarePipeline();
         var executionLog = new List<string>();
 
-        pipeline.Use(new CallbackMiddleware(
+        pipeline.Use(new SimpleCallbackMiddleware(
             before: () => executionLog.Add("Before"),
             after: () => executionLog.Add("After")
         ));
@@ -106,9 +107,9 @@ public class MiddlewarePipelineTests
         var pipeline = new MiddlewarePipeline();
         var reached = new List<string>();
 
-        pipeline.Use(new CallbackMiddleware(before: () => reached.Add("M1")));
+        pipeline.Use(new SimpleCallbackMiddleware(before: () => reached.Add("M1")));
         pipeline.Use(new ShortCircuitMiddleware("Blocked"));
-        pipeline.Use(new CallbackMiddleware(before: () => reached.Add("M3")));
+        pipeline.Use(new SimpleCallbackMiddleware(before: () => reached.Add("M3")));
 
         MessageDelegate handler = (msg, ct) =>
         {
@@ -185,112 +186,6 @@ public class MiddlewarePipelineTests
         Assert.Equal("Important Subject", capturedSubject);
     }
 
-    // Helper middleware classes for testing
-
-    private class MessageCapturingMiddleware : MiddlewareBase
-    {
-        private readonly Action<AgentMessage> _capture;
-
-        public MessageCapturingMiddleware(Action<AgentMessage> capture)
-        {
-            _capture = capture;
-        }
-
-        public override async Task<MessageResult> InvokeAsync(
-            AgentMessage message, MessageDelegate next, CancellationToken ct)
-        {
-            _capture(message);
-            return await next(message, ct);
-        }
-    }
-
-    private class CallbackMiddleware : MiddlewareBase
-    {
-        private readonly Action? _before;
-        private readonly Action? _after;
-
-        public CallbackMiddleware(Action? before = null, Action? after = null)
-        {
-            _before = before;
-            _after = after;
-        }
-
-        public override async Task<MessageResult> InvokeAsync(
-            AgentMessage message, MessageDelegate next, CancellationToken ct)
-        {
-            _before?.Invoke();
-            var result = await next(message, ct);
-            _after?.Invoke();
-            return result;
-        }
-    }
-
-    private class OrderTrackingMiddleware : MiddlewareBase
-    {
-        private readonly int _id;
-        private readonly List<int> _log;
-
-        public OrderTrackingMiddleware(int id, List<int> log)
-        {
-            _id = id;
-            _log = log;
-        }
-
-        public override async Task<MessageResult> InvokeAsync(
-            AgentMessage message, MessageDelegate next, CancellationToken ct)
-        {
-            _log.Add(_id); // Before
-            var result = await next(message, ct);
-            _log.Add(-_id); // After (negative to distinguish)
-            return result;
-        }
-    }
-
-    private class ShortCircuitMiddleware : MiddlewareBase
-    {
-        private readonly string _error;
-
-        public ShortCircuitMiddleware(string error)
-        {
-            _error = error;
-        }
-
-        public override Task<MessageResult> InvokeAsync(
-            AgentMessage message, MessageDelegate next, CancellationToken ct)
-        {
-            return Task.FromResult(ShortCircuit(_error));
-        }
-    }
-
-    private class ThrowingMiddleware : MiddlewareBase
-    {
-        public override Task<MessageResult> InvokeAsync(
-            AgentMessage message, MessageDelegate next, CancellationToken ct)
-        {
-            throw new InvalidOperationException("Middleware exception");
-        }
-    }
-
-    private class ResultModifyingMiddleware : MiddlewareBase
-    {
-        private readonly string _newResponse;
-
-        public ResultModifyingMiddleware(string newResponse)
-        {
-            _newResponse = newResponse;
-        }
-
-        public override async Task<MessageResult> InvokeAsync(
-            AgentMessage message, MessageDelegate next, CancellationToken ct)
-        {
-            var result = await next(message, ct);
-            result.Response = _newResponse;
-            return result;
-        }
-    }
-
-    // ==================== Additional Pipeline Tests ====================
-
     [Test]
     public async Task CancellationToken_Respected_ThrowsOperationCanceled()
     {
@@ -329,7 +224,7 @@ public class MiddlewarePipelineTests
         var pipeline = new MiddlewarePipeline();
         var executionCount = 0;
 
-        pipeline.Use(new CallbackMiddleware(before: () => Interlocked.Increment(ref executionCount)));
+        pipeline.Use(new SimpleCallbackMiddleware(before: () => Interlocked.Increment(ref executionCount)));
 
         MessageDelegate handler = (msg, ct) => Task.FromResult(MessageResult.Ok("Done"));
 
@@ -378,7 +273,7 @@ public class MiddlewarePipelineTests
         var pipeline = new MiddlewarePipeline();
         var callCount = 0;
 
-        pipeline.Use(new CallbackMiddleware(before: () => callCount++));
+        pipeline.Use(new SimpleCallbackMiddleware(before: () => callCount++));
 
         MessageDelegate handler = (msg, ct) => Task.FromResult(MessageResult.Ok("Done"));
 
@@ -448,7 +343,7 @@ public class MiddlewarePipelineTests
         var pipeline = new MiddlewarePipeline();
         var afterExecuted = false;
 
-        pipeline.Use(new CallbackMiddleware(after: () => afterExecuted = true));
+        pipeline.Use(new SimpleCallbackMiddleware(after: () => afterExecuted = true));
         pipeline.Use(new AfterThrowingMiddleware());
 
         MessageDelegate handler = (msg, ct) => Task.FromResult(MessageResult.Ok("Done"));
@@ -477,7 +372,7 @@ public class MiddlewarePipelineTests
         var executed = false;
 
         // Add middleware that only executes for high priority
-        pipeline.Use(new ConditionalMiddleware(
+        pipeline.Use(new ConditionalActionMiddleware(
             msg => msg.Priority == MessagePriority.High,
             () => executed = true));
 
@@ -495,106 +390,5 @@ public class MiddlewarePipelineTests
         highMessage.Priority = MessagePriority.High;
         await executor(highMessage, CancellationToken.None);
         Assert.True(executed);
-    }
-
-    // Additional helper middleware classes
-
-    private class CancellationCheckingMiddleware : MiddlewareBase
-    {
-        public override Task<MessageResult> InvokeAsync(
-            AgentMessage message, MessageDelegate next, CancellationToken ct)
-        {
-            ct.ThrowIfCancellationRequested();
-            return next(message, ct);
-        }
-    }
-
-    private class ContextSettingMiddleware : MiddlewareBase
-    {
-        private readonly string _key;
-        private readonly object _value;
-
-        public ContextSettingMiddleware(string key, object value)
-        {
-            _key = key;
-            _value = value;
-        }
-
-        public override async Task<MessageResult> InvokeAsync(
-            AgentMessage message, MessageDelegate next, CancellationToken ct)
-        {
-            message.Metadata[_key] = _value;
-            return await next(message, ct);
-        }
-    }
-
-    private class ContextReadingMiddleware : MiddlewareBase
-    {
-        private readonly string _key;
-
-        public ContextReadingMiddleware(string key)
-        {
-            _key = key;
-        }
-
-        public override async Task<MessageResult> InvokeAsync(
-            AgentMessage message, MessageDelegate next, CancellationToken ct)
-        {
-            var exists = message.Metadata.ContainsKey(_key);
-            var result = await next(message, ct);
-            result.Data["context_key_exists"] = exists;
-            return result;
-        }
-    }
-
-    private class MetadataAddingMiddleware : MiddlewareBase
-    {
-        private readonly string _key;
-        private readonly object _value;
-
-        public MetadataAddingMiddleware(string key, object value)
-        {
-            _key = key;
-            _value = value;
-        }
-
-        public override async Task<MessageResult> InvokeAsync(
-            AgentMessage message, MessageDelegate next, CancellationToken ct)
-        {
-            message.Metadata[_key] = _value;
-            return await next(message, ct);
-        }
-    }
-
-    private class AfterThrowingMiddleware : MiddlewareBase
-    {
-        public override async Task<MessageResult> InvokeAsync(
-            AgentMessage message, MessageDelegate next, CancellationToken ct)
-        {
-            var result = await next(message, ct);
-            throw new InvalidOperationException("After phase exception");
-        }
-    }
-
-    private class ConditionalMiddleware : MiddlewareBase
-    {
-        private readonly Func<AgentMessage, bool> _condition;
-        private readonly Action _action;
-
-        public ConditionalMiddleware(Func<AgentMessage, bool> condition, Action action)
-        {
-            _condition = condition;
-            _action = action;
-        }
-
-        public override async Task<MessageResult> InvokeAsync(
-            AgentMessage message, MessageDelegate next, CancellationToken ct)
-        {
-            if (_condition(message))
-            {
-                _action();
-            }
-            return await next(message, ct);
-        }
     }
 }

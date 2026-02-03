@@ -3,6 +3,7 @@ using AgentRouting.Configuration;
 using AgentRouting.Core;
 using AgentRouting.Infrastructure;
 using AgentRouting.Middleware;
+using TestUtilities;
 
 namespace TestRunner.Tests;
 
@@ -60,62 +61,6 @@ public class MiddlewareCoverageTests
         };
     }
 
-    /// <summary>
-    /// A fake clock for testing time-dependent behavior.
-    /// </summary>
-    private class FakeClock : ISystemClock
-    {
-        private DateTime _utcNow;
-
-        public FakeClock(DateTime utcNow)
-        {
-            _utcNow = utcNow;
-        }
-
-        public DateTime UtcNow => _utcNow;
-
-        public void Advance(TimeSpan duration)
-        {
-            _utcNow = _utcNow.Add(duration);
-        }
-
-        public void SetTime(DateTime utcNow)
-        {
-            _utcNow = utcNow;
-        }
-    }
-
-    /// <summary>
-    /// A fake logger that captures log output for verification.
-    /// </summary>
-    private class FakeAgentLogger : IAgentLogger
-    {
-        public List<string> ReceivedLogs { get; } = new();
-        public List<string> ProcessedLogs { get; } = new();
-        public List<string> RoutedLogs { get; } = new();
-        public List<string> ErrorLogs { get; } = new();
-
-        public void LogMessageReceived(IAgent agent, AgentMessage message)
-        {
-            ReceivedLogs.Add($"{agent.Name} received: {message.Subject}");
-        }
-
-        public void LogMessageProcessed(IAgent agent, AgentMessage message, MessageResult result)
-        {
-            ProcessedLogs.Add($"{agent.Name} processed: {message.Subject} - {(result.Success ? "SUCCESS" : "FAILED")}");
-        }
-
-        public void LogMessageRouted(AgentMessage message, IAgent? fromAgent, IAgent toAgent)
-        {
-            RoutedLogs.Add($"Routed: {message.Subject} from {fromAgent?.Name ?? "Router"} to {toAgent.Name}");
-        }
-
-        public void LogError(IAgent agent, AgentMessage message, Exception ex)
-        {
-            ErrorLogs.Add($"ERROR in {agent.Name}: {ex.Message}");
-        }
-    }
-
     #endregion
 
     #region LoggingMiddleware Tests
@@ -123,7 +68,7 @@ public class MiddlewareCoverageTests
     [Test]
     public async Task LoggingMiddleware_ProcessesMessage_AndCallsNext()
     {
-        var logger = new FakeAgentLogger();
+        var logger = new CapturingAgentLogger();
         var middleware = new LoggingMiddleware(logger);
         var nextCalled = false;
 
@@ -143,7 +88,7 @@ public class MiddlewareCoverageTests
     [Test]
     public async Task LoggingMiddleware_ReturnsResultFromNext()
     {
-        var logger = new FakeAgentLogger();
+        var logger = new CapturingAgentLogger();
         var middleware = new LoggingMiddleware(logger);
 
         var expectedResult = MessageResult.Ok("Expected response");
@@ -162,7 +107,7 @@ public class MiddlewareCoverageTests
     [Test]
     public async Task LoggingMiddleware_HandlesFailureResult()
     {
-        var logger = new FakeAgentLogger();
+        var logger = new CapturingAgentLogger();
         var middleware = new LoggingMiddleware(logger);
 
         var result = await middleware.InvokeAsync(
@@ -177,7 +122,7 @@ public class MiddlewareCoverageTests
     [Test]
     public async Task LoggingMiddleware_ProcessesMessageWithDifferentSubjects()
     {
-        var logger = new FakeAgentLogger();
+        var logger = new CapturingAgentLogger();
         var middleware = new LoggingMiddleware(logger);
 
         // Test with various subjects
@@ -198,7 +143,7 @@ public class MiddlewareCoverageTests
     [Test]
     public async Task LoggingMiddleware_PreservesMessageIntegrity()
     {
-        var logger = new FakeAgentLogger();
+        var logger = new CapturingAgentLogger();
         var middleware = new LoggingMiddleware(logger);
         var originalMessage = CreateTestMessage(
             senderId: "sender-123",
@@ -246,7 +191,7 @@ public class MiddlewareCoverageTests
     [Test]
     public async Task CachingMiddleware_ExpiredEntry_CallsHandlerAgain()
     {
-        var fakeClock = new FakeClock(DateTime.UtcNow);
+        var fakeClock = new AdvanceableClock(DateTime.UtcNow);
         var ttl = TimeSpan.FromMinutes(5);
         var middleware = new CachingMiddleware(new InMemoryStateStore(), ttl, 100, fakeClock);
         var callCount = 0;
@@ -297,7 +242,7 @@ public class MiddlewareCoverageTests
     [Test]
     public async Task CachingMiddleware_ExpiredEntryRemoved_FromCache()
     {
-        var fakeClock = new FakeClock(DateTime.UtcNow);
+        var fakeClock = new AdvanceableClock(DateTime.UtcNow);
         var ttl = TimeSpan.FromMinutes(1);
         var middleware = new CachingMiddleware(new InMemoryStateStore(), ttl, 100, fakeClock);
 
@@ -329,7 +274,7 @@ public class MiddlewareCoverageTests
     [Test]
     public async Task CachingMiddleware_ExceedsMaxEntries_EvictsLRU()
     {
-        var fakeClock = new FakeClock(DateTime.UtcNow);
+        var fakeClock = new AdvanceableClock(DateTime.UtcNow);
         var maxEntries = 10;
         var middleware = new CachingMiddleware(new InMemoryStateStore(), TimeSpan.FromHours(1), maxEntries, fakeClock);
 
@@ -359,7 +304,7 @@ public class MiddlewareCoverageTests
     [Test]
     public async Task CachingMiddleware_LRUEviction_RemovesOldestAccessedFirst()
     {
-        var fakeClock = new FakeClock(DateTime.UtcNow);
+        var fakeClock = new AdvanceableClock(DateTime.UtcNow);
         var maxEntries = 5;
         var middleware = new CachingMiddleware(new InMemoryStateStore(), TimeSpan.FromHours(1), maxEntries, fakeClock);
 
@@ -422,7 +367,7 @@ public class MiddlewareCoverageTests
     [Test]
     public async Task CachingMiddleware_CleanupExpired_RemovesExpiredEntries()
     {
-        var fakeClock = new FakeClock(DateTime.UtcNow);
+        var fakeClock = new AdvanceableClock(DateTime.UtcNow);
         var ttl = TimeSpan.FromMinutes(5);
         var middleware = new CachingMiddleware(new InMemoryStateStore(), ttl, 100, fakeClock);
 
@@ -449,7 +394,7 @@ public class MiddlewareCoverageTests
     [Test]
     public async Task CachingMiddleware_CleanupExpired_RemovesAllExpired()
     {
-        var fakeClock = new FakeClock(DateTime.UtcNow);
+        var fakeClock = new AdvanceableClock(DateTime.UtcNow);
         var ttl = TimeSpan.FromMinutes(1);
         var middleware = new CachingMiddleware(new InMemoryStateStore(), ttl, 100, fakeClock);
 
@@ -926,7 +871,7 @@ public class MiddlewareCoverageTests
     [Test]
     public async Task CachingAndRetry_Integration_CachesAfterSuccessfulRetry()
     {
-        var fakeClock = new FakeClock(DateTime.UtcNow);
+        var fakeClock = new AdvanceableClock(DateTime.UtcNow);
         var cachingMiddleware = new CachingMiddleware(new InMemoryStateStore(), TimeSpan.FromMinutes(5), 100, fakeClock);
         var retryMiddleware = new RetryMiddleware(maxAttempts: 3, delay: TimeSpan.FromMilliseconds(1));
 
@@ -960,7 +905,7 @@ public class MiddlewareCoverageTests
     [Test]
     public async Task LoggingAndCaching_Integration_LogsCacheHits()
     {
-        var logger = new FakeAgentLogger();
+        var logger = new CapturingAgentLogger();
         var loggingMiddleware = new LoggingMiddleware(logger);
         var cachingMiddleware = new CachingMiddleware(new InMemoryStateStore(), TimeSpan.FromMinutes(5), 100, SystemClock.Instance);
 

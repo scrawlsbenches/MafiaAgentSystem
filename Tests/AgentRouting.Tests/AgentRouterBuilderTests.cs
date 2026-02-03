@@ -2,6 +2,7 @@ using TestRunner.Framework;
 using AgentRouting.Core;
 using AgentRouting.Middleware;
 using RulesEngine.Core;
+using TestUtilities;
 
 namespace TestRunner.Tests;
 
@@ -10,59 +11,7 @@ namespace TestRunner.Tests;
 /// </summary>
 public class AgentRouterBuilderTests
 {
-    #region Helper Classes
-
-    private class TestLogger : IAgentLogger
-    {
-        public List<string> Logs { get; } = new();
-
-        public void LogMessageReceived(IAgent agent, AgentMessage message)
-            => Logs.Add($"Received: {message.Subject}");
-
-        public void LogMessageProcessed(IAgent agent, AgentMessage message, MessageResult result)
-            => Logs.Add($"Processed: {message.Subject} - {result.Success}");
-
-        public void LogMessageRouted(AgentMessage message, IAgent? fromAgent, IAgent toAgent)
-            => Logs.Add($"Routed: {message.Subject} to {toAgent.Name}");
-
-        public void LogError(IAgent agent, AgentMessage message, Exception ex)
-            => Logs.Add($"Error: {ex.Message}");
-    }
-
-    private class TestAgent : IAgent
-    {
-        public string Id { get; }
-        public string Name { get; }
-        public AgentCapabilities Capabilities { get; } = new();
-        public AgentStatus Status { get; set; } = AgentStatus.Available;
-
-        public TestAgent(string id, string name, params string[] categories)
-        {
-            Id = id;
-            Name = name;
-            Capabilities.SupportedCategories.AddRange(categories);
-        }
-
-        public bool CanHandle(AgentMessage message) =>
-            Capabilities.SupportedCategories.Contains(message.Category);
-
-        public Task<MessageResult> ProcessMessageAsync(AgentMessage message, CancellationToken ct)
-            => Task.FromResult(MessageResult.Ok($"Processed by {Name}"));
-    }
-
-    private class CountingMiddleware : MiddlewareBase
-    {
-        public int InvokeCount { get; private set; }
-
-        public override async Task<MessageResult> InvokeAsync(
-            AgentMessage message,
-            MessageDelegate next,
-            CancellationToken ct)
-        {
-            InvokeCount++;
-            return await next(message, ct);
-        }
-    }
+    #region Helper Methods
 
     private static AgentMessage CreateTestMessage(string category = "Test")
     {
@@ -96,7 +45,7 @@ public class AgentRouterBuilderTests
         var router = builder.Build();
 
         // Register an agent directly
-        router.RegisterAgent(new TestAgent("test-1", "Test Agent", "Test"));
+        router.RegisterAgent(new SimpleTestAgent("test-1", "Test Agent", "Test"));
 
         var message = CreateTestMessage();
         var result = await router.RouteMessageAsync(message, CancellationToken.None);
@@ -126,7 +75,7 @@ public class AgentRouterBuilderTests
         var logger = new TestLogger();
         var builder = new AgentRouterBuilder()
             .WithLogger(logger)
-            .RegisterAgent(new TestAgent("test-1", "Test Agent", "Test"));
+            .RegisterAgent(new SimpleTestAgent("test-1", "Test Agent", "Test"));
 
         var router = builder.Build();
         var message = CreateTestMessage();
@@ -179,7 +128,7 @@ public class AgentRouterBuilderTests
 
         var builder = new AgentRouterBuilder()
             .WithPipeline(pipeline)
-            .RegisterAgent(new TestAgent("test-1", "Test Agent", "Test"));
+            .RegisterAgent(new SimpleTestAgent("test-1", "Test Agent", "Test"));
 
         var router = builder.Build();
         await router.RouteMessageAsync(CreateTestMessage(), CancellationToken.None);
@@ -243,7 +192,7 @@ public class AgentRouterBuilderTests
         var middleware = new CountingMiddleware();
         var builder = new AgentRouterBuilder()
             .UseMiddleware(middleware)
-            .RegisterAgent(new TestAgent("test-1", "Test Agent", "Test"));
+            .RegisterAgent(new SimpleTestAgent("test-1", "Test Agent", "Test"));
 
         var router = builder.Build();
         await router.RouteMessageAsync(CreateTestMessage(), CancellationToken.None);
@@ -255,41 +204,18 @@ public class AgentRouterBuilderTests
     public async Task UseMiddleware_MultipleMiddleware_InvokedInOrder()
     {
         var order = new List<string>();
-        var middleware1 = new TrackingMiddleware("First", order);
-        var middleware2 = new TrackingMiddleware("Second", order);
+        var middleware1 = new NamedTrackingMiddleware("First", order);
+        var middleware2 = new NamedTrackingMiddleware("Second", order);
 
         var builder = new AgentRouterBuilder()
             .UseMiddleware(middleware1)
             .UseMiddleware(middleware2)
-            .RegisterAgent(new TestAgent("test-1", "Test Agent", "Test"));
+            .RegisterAgent(new SimpleTestAgent("test-1", "Test Agent", "Test"));
 
         var router = builder.Build();
         await router.RouteMessageAsync(CreateTestMessage(), CancellationToken.None);
 
         Assert.True(order.IndexOf("First-Before") < order.IndexOf("Second-Before"));
-    }
-
-    private class TrackingMiddleware : MiddlewareBase
-    {
-        private readonly string _name;
-        private readonly List<string> _order;
-
-        public TrackingMiddleware(string name, List<string> order)
-        {
-            _name = name;
-            _order = order;
-        }
-
-        public override async Task<MessageResult> InvokeAsync(
-            AgentMessage message,
-            MessageDelegate next,
-            CancellationToken ct)
-        {
-            _order.Add($"{_name}-Before");
-            var result = await next(message, ct);
-            _order.Add($"{_name}-After");
-            return result;
-        }
     }
 
     #endregion
@@ -299,7 +225,7 @@ public class AgentRouterBuilderTests
     [Test]
     public void RegisterAgent_AddsAgentToRouter()
     {
-        var agent = new TestAgent("test-1", "Test Agent", "Test");
+        var agent = new SimpleTestAgent("test-1", "Test Agent", "Test");
         var builder = new AgentRouterBuilder()
             .RegisterAgent(agent);
 
@@ -314,7 +240,7 @@ public class AgentRouterBuilderTests
     public void RegisterAgent_ReturnsBuilderForChaining()
     {
         var builder = new AgentRouterBuilder();
-        var result = builder.RegisterAgent(new TestAgent("test-1", "Test", "Test"));
+        var result = builder.RegisterAgent(new SimpleTestAgent("test-1", "Test", "Test"));
 
         Assert.Same(builder, result);
     }
@@ -323,9 +249,9 @@ public class AgentRouterBuilderTests
     public void RegisterAgent_MultipleAgents_AllRegistered()
     {
         var builder = new AgentRouterBuilder()
-            .RegisterAgent(new TestAgent("agent-1", "Agent 1", "Category1"))
-            .RegisterAgent(new TestAgent("agent-2", "Agent 2", "Category2"))
-            .RegisterAgent(new TestAgent("agent-3", "Agent 3", "Category3"));
+            .RegisterAgent(new SimpleTestAgent("agent-1", "Agent 1", "Category1"))
+            .RegisterAgent(new SimpleTestAgent("agent-2", "Agent 2", "Category2"))
+            .RegisterAgent(new SimpleTestAgent("agent-3", "Agent 3", "Category3"));
 
         var router = builder.Build();
 
@@ -335,7 +261,7 @@ public class AgentRouterBuilderTests
     [Test]
     public async Task RegisterAgent_AgentCanProcessMessages()
     {
-        var agent = new TestAgent("test-1", "Test Agent", "Test");
+        var agent = new SimpleTestAgent("test-1", "Test Agent", "Test");
         var builder = new AgentRouterBuilder()
             .RegisterAgent(agent);
 
@@ -354,7 +280,7 @@ public class AgentRouterBuilderTests
     public void AddRoutingRule_AddsRuleToEngine()
     {
         var builder = new AgentRouterBuilder()
-            .RegisterAgent(new TestAgent("billing-agent", "Billing", "Billing"))
+            .RegisterAgent(new SimpleTestAgent("billing-agent", "Billing", "Billing"))
             .AddRoutingRule(
                 "rule-1",
                 "Route Billing",
@@ -384,7 +310,7 @@ public class AgentRouterBuilderTests
     public void AddRoutingRule_WithDefaultPriority_SetsZeroPriority()
     {
         var builder = new AgentRouterBuilder()
-            .RegisterAgent(new TestAgent("test-agent", "Test", "Test"))
+            .RegisterAgent(new SimpleTestAgent("test-agent", "Test", "Test"))
             .AddRoutingRule(
                 "rule-1",
                 "Test Rule",
@@ -400,9 +326,9 @@ public class AgentRouterBuilderTests
     public void AddRoutingRule_MultipleRules_AllAdded()
     {
         var builder = new AgentRouterBuilder()
-            .RegisterAgent(new TestAgent("billing", "Billing", "Billing"))
-            .RegisterAgent(new TestAgent("support", "Support", "Support"))
-            .RegisterAgent(new TestAgent("sales", "Sales", "Sales"))
+            .RegisterAgent(new SimpleTestAgent("billing", "Billing", "Billing"))
+            .RegisterAgent(new SimpleTestAgent("support", "Support", "Support"))
+            .RegisterAgent(new SimpleTestAgent("sales", "Sales", "Sales"))
             .AddRoutingRule("r1", "Billing Route", ctx => ctx.Category == "Billing", "billing", 100)
             .AddRoutingRule("r2", "Support Route", ctx => ctx.Category == "Support", "support", 90)
             .AddRoutingRule("r3", "Sales Route", ctx => ctx.Category == "Sales", "sales", 80);
@@ -425,8 +351,8 @@ public class AgentRouterBuilderTests
         var builder = new AgentRouterBuilder()
             .WithLogger(logger)
             .UseMiddleware(middleware)
-            .RegisterAgent(new TestAgent("billing", "Billing Agent", "Billing"))
-            .RegisterAgent(new TestAgent("support", "Support Agent", "Support"))
+            .RegisterAgent(new SimpleTestAgent("billing", "Billing Agent", "Billing"))
+            .RegisterAgent(new SimpleTestAgent("support", "Support Agent", "Support"))
             .AddRoutingRule("r1", "Billing Route", ctx => ctx.Category == "Billing", "billing", 100)
             .AddRoutingRule("r2", "Support Route", ctx => ctx.Category == "Support", "support", 90);
 
@@ -447,8 +373,8 @@ public class AgentRouterBuilderTests
             .WithLogger(new TestLogger())
             .UseMiddleware(new ValidationMiddleware())
             .UseMiddleware(new TimingMiddleware())
-            .RegisterAgent(new TestAgent("agent-1", "Agent 1", "Cat1"))
-            .RegisterAgent(new TestAgent("agent-2", "Agent 2", "Cat2"))
+            .RegisterAgent(new SimpleTestAgent("agent-1", "Agent 1", "Cat1"))
+            .RegisterAgent(new SimpleTestAgent("agent-2", "Agent 2", "Cat2"))
             .AddRoutingRule("r1", "Rule 1", ctx => ctx.Category == "Cat1", "agent-1")
             .AddRoutingRule("r2", "Rule 2", ctx => ctx.Category == "Cat2", "agent-2")
             .Build();
@@ -465,7 +391,7 @@ public class AgentRouterBuilderTests
     public void Build_CalledMultipleTimes_CreatesNewRouterEachTime()
     {
         var builder = new AgentRouterBuilder()
-            .RegisterAgent(new TestAgent("test-1", "Test", "Test"));
+            .RegisterAgent(new SimpleTestAgent("test-1", "Test", "Test"));
 
         var router1 = builder.Build();
         var router2 = builder.Build();

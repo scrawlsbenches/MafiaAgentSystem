@@ -4,6 +4,7 @@ using AgentRouting.Core;
 using AgentRouting.Infrastructure;
 using AgentRouting.Middleware;
 using System.Diagnostics;
+using TestUtilities;
 
 namespace TestRunner.Tests;
 
@@ -454,7 +455,7 @@ public class BenchmarkTests
         var logger = new ConsoleAgentLogger();
         var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
-        var agent = new BenchmarkAgent("benchmark-agent", "Benchmark Agent");
+        var agent = new BenchmarkTestAgent("benchmark-agent", "Benchmark Agent");
         router.RegisterAgent(agent);
         router.AddRoutingRule("DEFAULT", "Default Route", ctx => true, "benchmark-agent");
 
@@ -562,7 +563,7 @@ public class BenchmarkTests
         var logger = new ConsoleAgentLogger();
         var router = new AgentRouterBuilder().WithLogger(logger).Build();
 
-        var agent = new BenchmarkAgent("benchmark-agent", "Benchmark Agent");
+        var agent = new BenchmarkTestAgent("benchmark-agent", "Benchmark Agent");
         router.RegisterAgent(agent);
         router.AddRoutingRule("DEFAULT", "Default Route", ctx => true, "benchmark-agent");
 
@@ -596,16 +597,6 @@ public class BenchmarkTests
     }
 
     // Helper classes for benchmarks
-
-    private class BenchmarkAgent : AgentBase
-    {
-        public BenchmarkAgent(string id, string name) : base(id, name, new ConsoleAgentLogger()) { }
-
-        protected override Task<MessageResult> HandleMessageAsync(AgentMessage message, CancellationToken ct)
-        {
-            return Task.FromResult(MessageResult.Ok("Handled"));
-        }
-    }
 
     private class NoOpMiddleware : MiddlewareBase
     {

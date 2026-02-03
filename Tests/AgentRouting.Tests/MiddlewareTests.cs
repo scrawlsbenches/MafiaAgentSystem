@@ -3,6 +3,7 @@ using AgentRouting.Configuration;
 using AgentRouting.Core;
 using AgentRouting.Infrastructure;
 using AgentRouting.Middleware;
+using TestUtilities;
 
 namespace TestRunner.Tests;
 
@@ -38,7 +39,7 @@ public class MiddlewareTests
         var pipeline = new MiddlewarePipeline();
         var executionOrder = new List<string>();
 
-        pipeline.Use(new TrackingMiddleware("First", executionOrder));
+        pipeline.Use(new NamedTrackingMiddleware("First", executionOrder));
 
         var builtPipeline = pipeline.Build((msg, ct) =>
         {
@@ -60,9 +61,9 @@ public class MiddlewareTests
         var pipeline = new MiddlewarePipeline();
         var executionOrder = new List<string>();
 
-        pipeline.Use(new TrackingMiddleware("First", executionOrder));
-        pipeline.Use(new TrackingMiddleware("Second", executionOrder));
-        pipeline.Use(new TrackingMiddleware("Third", executionOrder));
+        pipeline.Use(new NamedTrackingMiddleware("First", executionOrder));
+        pipeline.Use(new NamedTrackingMiddleware("Second", executionOrder));
+        pipeline.Use(new NamedTrackingMiddleware("Third", executionOrder));
 
         var builtPipeline = pipeline.Build((msg, ct) =>
         {
@@ -843,7 +844,7 @@ public class MiddlewareTests
 
     #endregion
 
-    #region Helper Methods and Classes
+    #region Helper Methods
 
     private static AgentMessage CreateTestMessage(string senderId = "test-sender")
     {
@@ -854,47 +855,6 @@ public class MiddlewareTests
             Content = "Test Content",
             Category = "Test"
         };
-    }
-
-    private class TrackingMiddleware : MiddlewareBase
-    {
-        private readonly string _name;
-        private readonly List<string> _executionOrder;
-
-        public TrackingMiddleware(string name, List<string> executionOrder)
-        {
-            _name = name;
-            _executionOrder = executionOrder;
-        }
-
-        public override async Task<MessageResult> InvokeAsync(
-            AgentMessage message,
-            MessageDelegate next,
-            CancellationToken ct)
-        {
-            _executionOrder.Add($"{_name}-Before");
-            var result = await next(message, ct);
-            _executionOrder.Add($"{_name}-After");
-            return result;
-        }
-    }
-
-    private class ShortCircuitMiddleware : MiddlewareBase
-    {
-        private readonly string _reason;
-
-        public ShortCircuitMiddleware(string reason)
-        {
-            _reason = reason;
-        }
-
-        public override Task<MessageResult> InvokeAsync(
-            AgentMessage message,
-            MessageDelegate next,
-            CancellationToken ct)
-        {
-            return Task.FromResult(ShortCircuit(_reason));
-        }
     }
 
     #endregion
