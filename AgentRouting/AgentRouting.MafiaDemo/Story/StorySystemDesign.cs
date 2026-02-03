@@ -87,6 +87,52 @@ public enum StoryEdgeType
 
 #endregion
 
+#region Constants and Thresholds
+
+/// <summary>
+/// Centralized thresholds for relationship and trait checks.
+/// Using constants prevents magic numbers scattered throughout the codebase.
+/// </summary>
+public static class Thresholds
+{
+    // Relationship levels
+    public const int Enemy = -30;
+    public const int Hostile = -50;
+    public const int DeepEnemy = -75;
+    public const int Stranger = 0;
+    public const int Acquaintance = 30;
+    public const int Friend = 50;
+    public const int CloseFriend = 70;
+    public const int Ally = 100;
+
+    // Trait thresholds (when a trait is considered "high")
+    public const int TraitHigh = 70;
+    public const int TraitLow = 30;
+    public const int TraitVeryHigh = 80;
+    public const int TraitVeryLow = 20;
+
+    // Memory thresholds
+    public const int HighSalience = 80;
+    public const int ModerateSalience = 50;
+    public const float MinRelevanceScore = 0.2f;
+    public const float ForgetThreshold = 0.1f;
+
+    // Intel reliability
+    public const int ReliableIntel = 75;
+    public const int SuspectIntel = 50;
+
+    // Location thresholds
+    public const int HighHeat = 50;
+    public const int DangerousHeat = 75;
+
+    // Timing
+    public const int RecentWeeks = 3;
+    public const int StaleWeeks = 4;
+    public const int AncientWeeks = 20;
+}
+
+#endregion
+
 #region World State - Core Data Structures
 
 /// <summary>
@@ -120,12 +166,12 @@ public class Location
     public decimal WeeklyValue { get; set; } = 500m;
     public decimal ProtectionCut { get; set; } = 0.4m;  // Our percentage
 
-    // Computed properties for rules engine
-    public bool IsHot => LocalHeat > 50;
+    // Computed properties for rules engine (using centralized thresholds)
+    public bool IsHot => LocalHeat > Thresholds.HighHeat;
     public bool IsOurs => OwnerId == "player";
     public bool IsContested => State == LocationState.Contested;
     public bool WasRecentlyVisited(int currentWeek) =>
-        LastVisitedWeek.HasValue && (currentWeek - LastVisitedWeek.Value) < 3;
+        LastVisitedWeek.HasValue && (currentWeek - LastVisitedWeek.Value) < Thresholds.RecentWeeks;
 }
 
 /// <summary>
@@ -160,12 +206,12 @@ public class NPC
     // Knowledge - which agents know about this NPC
     public HashSet<string> KnownByAgents { get; set; } = new();
 
-    // Computed properties
-    public bool IsAlly => Relationship > 50;
-    public bool IsEnemy => Relationship < -50;
-    public bool IsNeutral => Relationship >= -50 && Relationship <= 50;
-    public bool CanBeIntimidated => Status == NPCStatus.Active && Relationship > -75;
-    public bool WillResist => Status == NPCStatus.Hostile || Relationship < -25;
+    // Computed properties (using centralized thresholds)
+    public bool IsAlly => Relationship > Thresholds.Friend;
+    public bool IsEnemy => Relationship < Thresholds.Hostile;
+    public bool IsNeutral => Relationship >= Thresholds.Hostile && Relationship <= Thresholds.Friend;
+    public bool CanBeIntimidated => Status == NPCStatus.Active && Relationship > Thresholds.DeepEnemy;
+    public bool WillResist => Status == NPCStatus.Hostile || Relationship < Thresholds.Enemy;
 
     // For display
     public string DisplayName => Title ?? Name;
@@ -219,8 +265,48 @@ public class WorldState
     private Dictionary<string, List<string>> _npcsByLocation = new();
     private Dictionary<string, List<string>> _locationsByFaction = new();
 
+    // Personas and memories for all entities (NPCs, player, agents)
+    private readonly Dictionary<string, EntityMind> _minds = new();
+
     // Game time
     public int CurrentWeek { get; set; } = 1;
+
+    #region EntityMind Registry
+
+    /// <summary>
+    /// Get or create an EntityMind for any entity (NPC, player, agent).
+    /// Ensures every entity can have a persona and memories.
+    /// </summary>
+    public EntityMind GetMind(string entityId)
+    {
+        if (!_minds.TryGetValue(entityId, out var mind))
+        {
+            mind = new EntityMind { EntityId = entityId };
+            _minds[entityId] = mind;
+        }
+        return mind;
+    }
+
+    /// <summary>
+    /// Register an entity with a pre-configured mind.
+    /// </summary>
+    public void RegisterMind(string entityId, EntityMind mind)
+    {
+        mind.EntityId = entityId;
+        _minds[entityId] = mind;
+    }
+
+    /// <summary>
+    /// Check if an entity has a registered mind.
+    /// </summary>
+    public bool HasMind(string entityId) => _minds.ContainsKey(entityId);
+
+    /// <summary>
+    /// Get all entity minds (for serialization, iteration, etc.)
+    /// </summary>
+    public IEnumerable<EntityMind> GetAllMinds() => _minds.Values;
+
+    #endregion
 
     #region Query Methods
 
@@ -915,15 +1001,15 @@ public class Persona
     public Dictionary<string, int> FactionBiases { get; set; } = new();  // Faction ID -> bias
     public Dictionary<string, int> RoleBiases { get; set; } = new();     // Role -> bias
 
-    // === Computed Traits ===
-    public bool IsAmbitious => Ambition > 70;
-    public bool IsCautious => Caution > 70;
-    public bool IsAggressive => Aggression > 70;
-    public bool IsLoyal => Loyalty > 70;
-    public bool IsTrusting => Trust > 70;
-    public bool IsCunning => Cunning > 70;
-    public bool IsPatient => Patience > 70;
-    public bool IsProud => Pride > 70;
+    // === Computed Traits (using centralized thresholds) ===
+    public bool IsAmbitious => Ambition > Thresholds.TraitHigh;
+    public bool IsCautious => Caution > Thresholds.TraitHigh;
+    public bool IsAggressive => Aggression > Thresholds.TraitHigh;
+    public bool IsLoyal => Loyalty > Thresholds.TraitHigh;
+    public bool IsTrusting => Trust > Thresholds.TraitHigh;
+    public bool IsCunning => Cunning > Thresholds.TraitHigh;
+    public bool IsPatient => Patience > Thresholds.TraitHigh;
+    public bool IsProud => Pride > Thresholds.TraitHigh;
 
     /// <summary>
     /// Calculate how this persona would react to a situation.
@@ -1073,16 +1159,16 @@ public class Memory
     public bool ShouldForget(int currentWeek)
     {
         // High salience memories never forgotten
-        if (Salience > 80) return false;
+        if (Salience > Thresholds.HighSalience) return false;
 
         // Emotional memories persist longer
-        if (EmotionalIntensity > 70) return false;
+        if (EmotionalIntensity > Thresholds.TraitHigh) return false;
 
         // Calculate effective salience
         float effective = GetEffectiveSalience(currentWeek);
 
         // Forget if effective salience drops too low
-        return effective < 0.1f;
+        return effective < Thresholds.ForgetThreshold;
     }
 }
 
@@ -1262,7 +1348,7 @@ public class MemoryBank
     public IEnumerable<Memory> RecallEmotional(int currentWeek, int limit = 5)
     {
         return _memories
-            .Where(m => m.EmotionalIntensity > 50)
+            .Where(m => m.EmotionalIntensity > Thresholds.ModerateSalience)
             .OrderByDescending(m => m.EmotionalIntensity * m.GetEffectiveSalience(currentWeek))
             .Take(limit);
     }
@@ -1440,327 +1526,8 @@ public enum ResponseType
     Bargain               // "I'll tell you if..."
 }
 
-/// <summary>
-/// Handles the Q&A protocol between agents.
-/// Uses persona and memories to generate contextual responses.
-///
-/// ALGORITHM:
-/// 1. Receive question
-/// 2. Check relationship with asker (trust level)
-/// 3. Search memories for relevant information
-/// 4. Apply persona to decide response style
-/// 5. Generate response (honest, partial, lie, refuse)
-/// 6. Update memories and relationships
-/// </summary>
-public class ConversationEngine
-{
-    private readonly WorldState _world;
-    private readonly StoryGraph _graph;
-
-    public ConversationEngine(WorldState world, StoryGraph graph)
-    {
-        _world = world;
-        _graph = graph;
-    }
-
-    /// <summary>
-    /// Process a question and generate a response.
-    /// </summary>
-    public AgentResponse ProcessQuestion(
-        AgentQuestion question,
-        Persona responderPersona,
-        MemoryBank responderMemories,
-        int relationshipWithAsker)
-    {
-        var response = new AgentResponse
-        {
-            QuestionId = question.Id,
-            ResponderId = question.ResponderId
-        };
-
-        // 1. Decide if we'll answer at all
-        var willAnswer = DecideToAnswer(question, responderPersona, relationshipWithAsker);
-        if (!willAnswer.answer)
-        {
-            response.Type = ResponseType.Refuse;
-            response.RefusedToAnswer = true;
-            response.RefusalReason = willAnswer.reason;
-            response.Content = GenerateRefusal(responderPersona, willAnswer.reason);
-            response.RelationshipChange = -5;  // Refusal hurts relationship
-            return response;
-        }
-
-        // 2. Gather relevant information from memories
-        var relevantMemories = GatherRelevantMemories(
-            question,
-            responderMemories,
-            _world.CurrentWeek);
-
-        // 3. Decide honesty level based on persona and relationship
-        var honestyDecision = DecideHonesty(
-            question,
-            responderPersona,
-            relationshipWithAsker,
-            relevantMemories.Any());
-
-        // 4. Generate the response
-        if (honestyDecision.willLie)
-        {
-            response = GenerateLie(question, responderPersona, honestyDecision.lieReason);
-        }
-        else if (relevantMemories.Any())
-        {
-            response = GenerateHonestAnswer(question, responderPersona, relevantMemories);
-        }
-        else
-        {
-            response = GenerateUnknownResponse(question, responderPersona);
-        }
-
-        // 5. Apply relationship effects
-        response.RelationshipChange = CalculateRelationshipChange(
-            question,
-            response,
-            responderPersona);
-
-        // 6. Check for story triggers
-        CheckStoryTriggers(question, response);
-
-        return response;
-    }
-
-    private (bool answer, string? reason) DecideToAnswer(
-        AgentQuestion question,
-        Persona persona,
-        int relationship)
-    {
-        // Low trust + sensitive question = refuse
-        if (relationship < -30 && question.Type == QuestionType.CanWeTrust)
-            return (false, "I don't discuss such matters with you.");
-
-        // Proud persona refuses to answer demands
-        if (persona.IsProud && question.Urgency == QuestionUrgency.Critical)
-            return (false, "Don't presume to demand answers from me.");
-
-        // Cautious persona refuses to share dangerous info
-        if (persona.IsCautious && question.RequiresHonesty)
-        {
-            if (question.Type == QuestionType.WhoControls ||
-                question.Type == QuestionType.WhereDoYouStand)
-                return (false, "Some things are better left unsaid.");
-        }
-
-        // Low relationship + loyalty questions
-        if (relationship < 0 && question.Type == QuestionType.WillYouHelp)
-            return (false, "Why would I help you?");
-
-        return (true, null);
-    }
-
-    private List<Memory> GatherRelevantMemories(
-        AgentQuestion question,
-        MemoryBank memories,
-        int currentWeek)
-    {
-        var relevant = new List<Memory>();
-
-        // Search by entity
-        if (question.SubjectEntityId != null)
-        {
-            relevant.AddRange(memories.RecallAbout(question.SubjectEntityId, currentWeek, 3));
-        }
-
-        // Search by location
-        if (question.SubjectLocationId != null)
-        {
-            relevant.AddRange(memories.RecallAtLocation(question.SubjectLocationId, currentWeek, 3));
-        }
-
-        // Search by topic keyword
-        if (!string.IsNullOrEmpty(question.Topic))
-        {
-            relevant.AddRange(memories.Search(question.Topic, currentWeek, 2));
-        }
-
-        return relevant.Distinct().ToList();
-    }
-
-    private (bool willLie, string? lieReason) DecideHonesty(
-        AgentQuestion question,
-        Persona persona,
-        int relationship,
-        bool hasInformation)
-    {
-        // Very low honesty trait = likely to lie
-        if (persona.Honesty < 30 && hasInformation)
-        {
-            // Cunning persona lies strategically
-            if (persona.IsCunning)
-                return (true, "strategic_advantage");
-        }
-
-        // Negative relationship + sensitive topic = might lie
-        if (relationship < -20 && question.Type == QuestionType.WhatDoYouKnow)
-        {
-            // Roll against honesty
-            var lieChance = (100 - persona.Honesty) / 100f * (Math.Abs(relationship) / 100f);
-            if (Random.Shared.NextDouble() < lieChance)
-                return (true, "distrust");
-        }
-
-        // Loyalty to someone else might cause lies
-        if (persona.IsLoyal && question.SubjectEntityId != null)
-        {
-            // Check if subject is someone we're loyal to
-            var factionBias = persona.FactionBiases.GetValueOrDefault(question.SubjectEntityId);
-            if (factionBias > 50 && relationship < 30)
-                return (true, "protecting_ally");
-        }
-
-        return (false, null);
-    }
-
-    private AgentResponse GenerateHonestAnswer(
-        AgentQuestion question,
-        Persona persona,
-        List<Memory> memories)
-    {
-        var response = new AgentResponse
-        {
-            QuestionId = question.Id,
-            ResponderId = question.AskerId,  // Will be fixed by caller
-            Type = ResponseType.Answer,
-            IsHonest = true,
-            SharedMemories = memories,
-            ConfidenceLevel = memories.Max(m => m.Confidence)
-        };
-
-        // Generate content based on persona style
-        response.Content = FormatResponse(question, memories, persona);
-
-        return response;
-    }
-
-    private AgentResponse GenerateLie(
-        AgentQuestion question,
-        Persona persona,
-        string? lieReason)
-    {
-        return new AgentResponse
-        {
-            QuestionId = question.Id,
-            Type = ResponseType.Lie,
-            IsHonest = false,
-            Content = GenerateMisinformation(question, persona),
-            ConfidenceLevel = 80  // Lies are delivered confidently
-        };
-    }
-
-    private AgentResponse GenerateUnknownResponse(
-        AgentQuestion question,
-        Persona persona)
-    {
-        var response = new AgentResponse
-        {
-            QuestionId = question.Id,
-            Type = ResponseType.Partial,
-            IsHonest = true,
-            ConfidenceLevel = 0
-        };
-
-        response.Content = persona.Style switch
-        {
-            CommunicationStyle.Blunt => "I don't know.",
-            CommunicationStyle.Formal => "I regret that I have no information on this matter.",
-            CommunicationStyle.Diplomatic => "That's not something I have insight into, I'm afraid.",
-            CommunicationStyle.Cryptic => "Some things remain hidden, even from me.",
-            _ => "I'm not sure about that."
-        };
-
-        return response;
-    }
-
-    private string GenerateRefusal(Persona persona, string? reason)
-    {
-        return persona.Style switch
-        {
-            CommunicationStyle.Threatening => "You don't want to keep asking questions like that.",
-            CommunicationStyle.Formal => "I must decline to discuss this matter.",
-            CommunicationStyle.Blunt => "No.",
-            CommunicationStyle.Cryptic => "Not all questions deserve answers.",
-            _ => reason ?? "I'd rather not say."
-        };
-    }
-
-    private string GenerateMisinformation(AgentQuestion question, Persona persona)
-    {
-        // Generate plausible but false information
-        return question.Type switch
-        {
-            QuestionType.WhereIs => "Last I heard, they were in Brooklyn.",
-            QuestionType.WhoControls => "The Barzinis have that territory now.",
-            QuestionType.WhatHappened => "Nothing unusual that I know of.",
-            QuestionType.CanWeTrust => "Absolutely, they're completely reliable.",
-            _ => "I've heard differently, but I can't say more."
-        };
-    }
-
-    private string FormatResponse(AgentQuestion question, List<Memory> memories, Persona persona)
-    {
-        // Build response from memories, styled by persona
-        var info = memories.FirstOrDefault();
-        if (info == null) return "I'm not certain.";
-
-        var prefix = persona.Style switch
-        {
-            CommunicationStyle.Formal => "I can confirm that ",
-            CommunicationStyle.Casual => "Yeah, so ",
-            CommunicationStyle.Cryptic => "What I can tell you is ",
-            CommunicationStyle.Blunt => "",
-            _ => ""
-        };
-
-        return prefix + info.Summary;
-    }
-
-    private int CalculateRelationshipChange(
-        AgentQuestion question,
-        AgentResponse response,
-        Persona persona)
-    {
-        int change = 0;
-
-        // Honest helpful answers improve relationship
-        if (response.IsHonest && response.Type == ResponseType.Answer)
-            change += 5;
-
-        // Lies damage relationship if discovered (handled elsewhere)
-
-        // High urgency questions answered = bigger impact
-        if (question.Urgency == QuestionUrgency.Critical && response.Type == ResponseType.Answer)
-            change += 10;
-
-        return change;
-    }
-
-    private void CheckStoryTriggers(AgentQuestion question, AgentResponse response)
-    {
-        // Certain Q&A combinations unlock story nodes
-
-        // Example: Asking about the informant reveals the "rat hunt" plot
-        if (question.Type == QuestionType.WhatDoYouKnow &&
-            response.IsHonest &&
-            response.SharedMemories.Any(m => m.Type == MemoryType.Secret))
-        {
-            // Could trigger story events
-            var secretMemory = response.SharedMemories.First(m => m.Type == MemoryType.Secret);
-            if (secretMemory.Summary.Contains("informant", StringComparison.OrdinalIgnoreCase))
-            {
-                response.TriggeredEvents.Add("informant_discovered");
-            }
-        }
-    }
-}
+// NOTE: ConversationEngine with hardcoded if/else logic was removed.
+// Use RulesBasedConversationEngine instead (see below).
 
 // =============================================================================
 // RULES-BASED DECISION ENGINES
@@ -1792,20 +1559,20 @@ public class ConversationContext
     public MemoryBank Memories { get; set; } = null!;
     public int RelationshipWithAsker { get; set; }
 
-    // Computed persona properties for rules
-    public bool IsProud => Persona.Pride > 70;
-    public bool IsCautious => Persona.Caution > 70;
-    public bool IsLoyal => Persona.Loyalty > 70;
-    public bool IsCunning => Persona.Cunning > 70;
-    public bool IsTrusting => Persona.Trust > 70;
-    public bool IsAggressive => Persona.Aggression > 70;
+    // Computed persona properties for rules (delegates to Persona)
+    public bool IsProud => Persona.IsProud;
+    public bool IsCautious => Persona.IsCautious;
+    public bool IsLoyal => Persona.IsLoyal;
+    public bool IsCunning => Persona.IsCunning;
+    public bool IsTrusting => Persona.IsTrusting;
+    public bool IsAggressive => Persona.IsAggressive;
     public int Honesty => Persona.Honesty;
 
-    // Relationship categories
-    public bool IsEnemy => RelationshipWithAsker < -30;
-    public bool IsStranger => RelationshipWithAsker >= -30 && RelationshipWithAsker <= 30;
-    public bool IsFriend => RelationshipWithAsker > 30;
-    public bool IsCloseFriend => RelationshipWithAsker > 70;
+    // Relationship categories (using centralized thresholds)
+    public bool IsEnemy => RelationshipWithAsker < Thresholds.Enemy;
+    public bool IsStranger => RelationshipWithAsker >= Thresholds.Enemy && RelationshipWithAsker <= Thresholds.Acquaintance;
+    public bool IsFriend => RelationshipWithAsker > Thresholds.Acquaintance;
+    public bool IsCloseFriend => RelationshipWithAsker > Thresholds.CloseFriend;
 
     // Memory state
     public List<Memory> RelevantMemories { get; set; } = new();
@@ -2713,13 +2480,101 @@ public class RulesBasedConversationEngine
 
     private string GenerateMisinformation(AgentQuestion question, Persona persona)
     {
+        // Generate contextual lies based on the question subject
+        var subjectName = GetSubjectName(question);
+
         return question.Type switch
         {
-            QuestionType.WhereIs => "Last I heard, they were in Brooklyn.",
-            QuestionType.WhoControls => "The Barzinis have that territory now.",
-            QuestionType.WhatHappened => "Nothing unusual that I know of.",
-            QuestionType.CanWeTrust => "Absolutely, they're completely reliable.",
+            QuestionType.WhereIs => GenerateLocationLie(subjectName, persona),
+            QuestionType.WhoControls => GenerateControlLie(question.SubjectLocationId, persona),
+            QuestionType.WhatHappened => GenerateEventLie(subjectName, persona),
+            QuestionType.CanWeTrust => GenerateTrustLie(subjectName, persona),
+            QuestionType.WhatDoYouKnow => GenerateKnowledgeLie(subjectName, persona),
+            QuestionType.HowIsRelationship => $"Things are fine with {subjectName ?? "them"}. No problems.",
             _ => "I've heard differently, but I can't say more."
+        };
+    }
+
+    private string? GetSubjectName(AgentQuestion question)
+    {
+        if (question.SubjectEntityId != null)
+        {
+            var npc = _world.GetNPC(question.SubjectEntityId);
+            return npc?.Name ?? question.SubjectEntityId;
+        }
+        if (question.SubjectLocationId != null)
+        {
+            var loc = _world.GetLocation(question.SubjectLocationId);
+            return loc?.Name ?? question.SubjectLocationId;
+        }
+        return !string.IsNullOrEmpty(question.Topic) ? question.Topic : null;
+    }
+
+    private string GenerateLocationLie(string? subjectName, Persona persona)
+    {
+        // Pick a random misleading location
+        var locations = _world.Locations.Values.ToList();
+        if (locations.Count > 0)
+        {
+            var fakeLoc = locations[Random.Shared.Next(locations.Count)];
+            return persona.Style switch
+            {
+                CommunicationStyle.Casual => $"Pretty sure {subjectName ?? "they"}'re over at {fakeLoc.Name}.",
+                CommunicationStyle.Formal => $"My understanding is that {subjectName ?? "the individual"} was last seen near {fakeLoc.Name}.",
+                CommunicationStyle.Cryptic => $"The winds blow toward {fakeLoc.Name}...",
+                _ => $"Last I heard, {subjectName ?? "they"} were at {fakeLoc.Name}."
+            };
+        }
+        return $"Last I heard, {subjectName ?? "they"} were in Brooklyn.";
+    }
+
+    private string GenerateControlLie(string? locationId, Persona persona)
+    {
+        // Attribute control to a random faction
+        var factions = _world.Factions.Values.ToList();
+        if (factions.Count > 0)
+        {
+            var fakeFaction = factions[Random.Shared.Next(factions.Count)];
+            var locName = locationId != null ? _world.GetLocation(locationId)?.Name ?? "that area" : "that territory";
+            return persona.Style switch
+            {
+                CommunicationStyle.Casual => $"The {fakeFaction.Name} run {locName} now, far as I know.",
+                CommunicationStyle.Formal => $"I believe {locName} is under the jurisdiction of the {fakeFaction.Name}.",
+                _ => $"The {fakeFaction.Name} have {locName} now."
+            };
+        }
+        return "The Barzinis have that territory now.";
+    }
+
+    private string GenerateEventLie(string? subjectName, Persona persona)
+    {
+        return persona.Style switch
+        {
+            CommunicationStyle.Casual => $"Nah, nothing going on with {subjectName ?? "that"}. Quiet as always.",
+            CommunicationStyle.Formal => $"I have no reports of anything unusual regarding {subjectName ?? "the matter"}.",
+            CommunicationStyle.Cryptic => "The calm before the storm... or perhaps just calm.",
+            _ => $"Nothing unusual with {subjectName ?? "that"}, far as I know."
+        };
+    }
+
+    private string GenerateTrustLie(string? subjectName, Persona persona)
+    {
+        return persona.Style switch
+        {
+            CommunicationStyle.Casual => $"Oh yeah, {subjectName ?? "they"}'re solid. Good people.",
+            CommunicationStyle.Formal => $"I would vouch for {subjectName ?? "them"} without reservation.",
+            CommunicationStyle.Threatening => $"You questioning {subjectName ?? "them"}? They're fine. Trust me.",
+            _ => $"Absolutely, {subjectName ?? "they"}'re completely reliable."
+        };
+    }
+
+    private string GenerateKnowledgeLie(string? subjectName, Persona persona)
+    {
+        return persona.Style switch
+        {
+            CommunicationStyle.Casual => $"Don't know much about {subjectName ?? "that"}. Pretty clean.",
+            CommunicationStyle.Cryptic => $"What is there to know about {subjectName ?? "shadows"}?",
+            _ => $"Not much to tell about {subjectName ?? "that"}. Nothing interesting."
         };
     }
 
@@ -2738,16 +2593,10 @@ public class RulesBasedConversationEngine
 
         _evolutionRules.EvaluateAll(context);
 
-        // Apply trait changes
+        // Apply trait changes using direct property access (no reflection)
         foreach (var (trait, change) in context.TraitChanges)
         {
-            var prop = typeof(Persona).GetProperty(trait);
-            if (prop != null)
-            {
-                int current = (int)prop.GetValue(mind.Persona)!;
-                int newValue = Math.Clamp(current + change, 0, 100);
-                prop.SetValue(mind.Persona, newValue);
-            }
+            ApplyTraitChange(mind.Persona, trait, change);
         }
 
         // Add new goals/fears
@@ -2765,6 +2614,50 @@ public class RulesBasedConversationEngine
         if (context.NewFear != null && !mind.Persona.Fears.Contains(context.NewFear))
         {
             mind.Persona.Fears.Add(context.NewFear);
+        }
+    }
+
+    /// <summary>
+    /// Apply a trait change without reflection. Uses switch for O(1) dispatch.
+    /// </summary>
+    private static void ApplyTraitChange(Persona persona, string trait, int change)
+    {
+        switch (trait)
+        {
+            case "Ambition":
+                persona.Ambition = Math.Clamp(persona.Ambition + change, 0, 100);
+                break;
+            case "Caution":
+                persona.Caution = Math.Clamp(persona.Caution + change, 0, 100);
+                break;
+            case "Aggression":
+                persona.Aggression = Math.Clamp(persona.Aggression + change, 0, 100);
+                break;
+            case "Loyalty":
+                persona.Loyalty = Math.Clamp(persona.Loyalty + change, 0, 100);
+                break;
+            case "Trust":
+                persona.Trust = Math.Clamp(persona.Trust + change, 0, 100);
+                break;
+            case "Empathy":
+                persona.Empathy = Math.Clamp(persona.Empathy + change, 0, 100);
+                break;
+            case "Cunning":
+                persona.Cunning = Math.Clamp(persona.Cunning + change, 0, 100);
+                break;
+            case "Patience":
+                persona.Patience = Math.Clamp(persona.Patience + change, 0, 100);
+                break;
+            case "Pride":
+                persona.Pride = Math.Clamp(persona.Pride + change, 0, 100);
+                break;
+            case "Honesty":
+                persona.Honesty = Math.Clamp(persona.Honesty + change, 0, 100);
+                break;
+            case "Verbosity":
+                persona.Verbosity = Math.Clamp(persona.Verbosity + change, 0, 100);
+                break;
+            // Unknown traits are silently ignored (safe default)
         }
     }
 }
