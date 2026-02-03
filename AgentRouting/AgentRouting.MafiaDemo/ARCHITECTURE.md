@@ -176,9 +176,11 @@ public class RivalFamily
 
 ## Rules Integration Points
 
-### 1. Game Rules (`RulesEngineCore<GameRuleContext>`)
+The game uses **8 specialized `RulesEngineCore<T>` instances** with ~98 total rules:
 
-Evaluate game state and trigger effects:
+### 1. Game Rules (`_gameRules` - `RulesEngineCore<GameRuleContext>`)
+
+Evaluate game state, trigger victory/defeat conditions and warnings:
 
 ```csharp
 // Example: High heat triggers police raid
@@ -188,19 +190,19 @@ engine.AddRule("POLICE_RAID", "Police raid when heat is critical",
     priority: 100);
 ```
 
-### 2. Agent Rules (`RulesEngineCore<AgentDecisionContext>`)
+### 2. Agent Rules (`_agentRules` - `RulesEngineCore<AgentDecisionContext>`)
 
-Drive agent decisions:
+Drive agent decisions with ~45 personality-driven rules:
 
 ```csharp
 // Example: Aggressive agent attacks when family is threatened
 engine.AddRule("AGGRESSIVE_RESPONSE", "Attack when threatened",
     ctx => ctx.IsAggressive && ctx.FamilyUnderThreat,
-    ctx => OrderHit(),
+    ctx => ctx.RecommendedAction = "intimidate",
     priority: 80);
 ```
 
-### 3. Event Rules (`RulesEngineCore<EventContext>`)
+### 3. Event Rules (`_eventRules` - `RulesEngineCore<EventContext>`)
 
 Generate random events based on state:
 
@@ -210,6 +212,66 @@ engine.AddRule("INFORMANT_APPEARS", "Rat in the organization",
     ctx => ctx.WealthyTarget && ctx.PoliceAttentionHigh,
     ctx => SpawnInformantEvent(),
     priority: 50);
+```
+
+### 4. Valuation Engine (`_valuationEngine` - `RulesEngineCore<TerritoryValueContext>`)
+
+Calculate territory values for strategic decisions:
+
+```csharp
+engine.AddRule("HIGH_REVENUE_BONUS", "Boost value for high revenue",
+    ctx => ctx.WeeklyRevenue > 5000,
+    ctx => ctx.ValueMultiplier *= 1.5,
+    priority: 100);
+```
+
+### 5. Difficulty Engine (`_difficultyEngine` - `RulesEngineCore<DifficultyContext>`)
+
+Adaptive difficulty scaling based on player performance:
+
+```csharp
+engine.AddRule("EASY_MODE", "Reduce difficulty when struggling",
+    ctx => ctx.ConsecutiveLosses > 3,
+    ctx => ctx.DifficultyModifier = 0.7,
+    priority: 100);
+```
+
+### 6. Strategy Engine (`_strategyEngine` - `RulesEngineCore<RivalStrategyContext>`)
+
+Control rival family AI behavior:
+
+```csharp
+engine.AddRule("AGGRESSIVE_RIVAL", "Rival attacks when player is weak",
+    ctx => ctx.PlayerReputation < 30 && ctx.RivalStrength > 70,
+    ctx => ctx.RivalAction = "attack",
+    priority: 90);
+```
+
+### 7. Chain Engine (`_chainEngine` - `RulesEngineCore<ChainReactionContext>`)
+
+Handle event cascades and chain reactions:
+
+```csharp
+engine.AddRule("RETALIATION_CHAIN", "Rival retaliates after attack",
+    ctx => ctx.TriggerEvent == "hit_on_rival",
+    ctx => ctx.ChainEvents.Add("rival_counter_attack"),
+    priority: 100);
+```
+
+### 8. Async Rules (`_asyncRules` - `List<IAsyncRule<AsyncEventContext>>`)
+
+Time-delayed operations for I/O-bound decisions:
+
+```csharp
+// Example: Police investigation with simulated delay
+var investigation = new AsyncRuleBuilder<AsyncEventContext>()
+    .WithId("POLICE_INVESTIGATION")
+    .WithCondition(async ctx => ctx.Heat > 60)
+    .WithAction(async ctx => {
+        await Task.Delay(100); // Simulate investigation time
+        ctx.Result = "Investigation launched";
+    })
+    .Build();
 ```
 
 ---
@@ -254,20 +316,18 @@ engine.AddRule("INFORMANT_APPEARS", "Rat in the organization",
 - [x] Message routing setup
 - [x] RulesBasedGameEngine scaffolding
 - [x] Context classes (GameRuleContext, AgentDecisionContext, EventContext)
-
-### Needs Integration
-- [ ] Wire RulesBasedGameEngine to MafiaGameEngine
-- [ ] Replace hardcoded agent decisions with rules
-- [ ] Add more sophisticated event generation rules
-- [ ] Connect agent message handling to routing pipeline
-- [ ] Add async rule support for I/O-bound decisions
+- [x] Wire RulesBasedGameEngine to MafiaGameEngine (`GetAgentAction()` called in turn loop)
+- [x] Replace hardcoded agent decisions with rules (~45 personality-driven rules)
+- [x] Sophisticated event generation rules (7+ event rules with probability)
+- [x] Connect agent message handling to routing pipeline (AgentRouter in GameEngine)
+- [x] Async rule support for I/O-bound decisions (3 async rules: police investigation, informant network, business deals)
+- [x] AI Autopilot mode using rules (AI Career Mode - Option 1 in Program.cs)
+- [x] Personality effects on decisions (rules check Aggression, Loyalty, Ambition traits)
 
 ### Enhancement Opportunities
-- [ ] AI Autopilot mode using rules
-- [ ] Save/load game state
-- [ ] More personality effects on decisions
-- [ ] Inter-agent relationships and loyalty dynamics
-- [ ] Territory disputes with other families
+- [ ] Save/load game state persistence
+- [ ] Inter-agent relationships and loyalty dynamics (beyond basic traits)
+- [ ] Territory disputes with other families (more sophisticated AI)
 
 ---
 
@@ -293,8 +353,9 @@ AgentRouting.MafiaDemo/
 
 ## Next Steps
 
-1. **Wire Rules to Agents**: Replace probability-based decisions with rules
-2. **Unify Engines**: Connect RulesBasedGameEngine with MafiaGameEngine
-3. **Add Tests**: Integration tests for game scenarios
-4. **Autopilot Mode**: Rules-driven AI that plays the game
-5. **Documentation**: Player guide with strategy tips
+Remaining enhancement opportunities:
+
+1. **Save/Load Game State**: Persist game progress to disk
+2. **Deeper Agent Relationships**: Track loyalty shifts and betrayals based on actions
+3. **Sophisticated Rival AI**: Territory disputes, alliances, and multi-front wars
+4. **Additional Documentation**: Consolidate overlapping markdown files (see TASK_LIST.md F-1a)
