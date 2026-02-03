@@ -206,9 +206,10 @@ public class PlayerAgent
         
         // Check highest priority matched rule
         var topRule = matchedRules.First();
-        
-        // Rules with REJECT in name = reject, otherwise accept
-        var accept = !topRule.Name.Contains("REJECT");
+
+        // Rules with REJECT in ID = reject, otherwise accept
+        // Bug fix: Using Id (which is uppercase) instead of Name (mixed case) for case-insensitive matching
+        var accept = !topRule.Id.Contains("REJECT");
         
         return new MissionDecision
         {
