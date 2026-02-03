@@ -51,7 +51,7 @@ Previous organization grouped by *category* (thread safety, MafiaDemo, tests), w
 | **B** | Resources | :white_check_mark: **COMPLETE** | 3 tasks | 5-8 |
 | **D** | App Fixes | :white_check_mark: **COMPLETE** | 5 tasks | 10-14 |
 | **E** | Enhancement | :white_check_mark: **COMPLETE** | 15 tasks | 35-47 |
-| **F** | Polish | :hourglass: After E | 10 tasks | 20-28 |
+| **F** | Polish | :hourglass: In Progress | 9 tasks remaining | 18-26 |
 | | | **TOTAL** | **39 tasks** | **83-115** |
 
 ### Completed (Reference)
@@ -435,17 +435,19 @@ Completed 2026-02-03. Added 63 new tests (1842 → 1905 total).
 
 ---
 
-#### Task F-1b: Update ARCHITECTURE.md Integration Status
-**NEW TASK**
+#### Task F-1b: Update ARCHITECTURE.md Integration Status :white_check_mark:
+**Completed**: 2026-02-03
 **Estimated Time**: 1-2 hours
 **File**: `AgentRouting/AgentRouting.MafiaDemo/ARCHITECTURE.md`
 
-**Problem**: "Needs Integration" section lists items that are actually complete.
+**Problem**: "Needs Integration" section listed items that were actually complete.
 
-**Subtasks**:
-- [ ] Update integration status to match actual implementation
-- [ ] Remove completed items or mark as done
-- [ ] Add any new integration points discovered
+**Resolution**:
+- [x] All 5 "Needs Integration" items were verified as COMPLETE
+- [x] Marked as done: rules-driven decisions, AgentRouter integration, async rules
+- [x] Added AI Career Mode and personality effects to completed list
+- [x] Documented all 8 rule engines (was showing only 3)
+- [x] Updated Next Steps to reflect remaining enhancement opportunities
 
 ---
 
@@ -513,4 +515,4 @@ C (Test Infra) ──► A (Foundation) ──┬──► B (Resources) ──�
 
 ---
 
-**Last Updated**: 2026-02-03 (Batch E: Enhancement complete, 1905 tests passing)
+**Last Updated**: 2026-02-03 (Batch F started: F-1b complete, 1905 tests passing)
