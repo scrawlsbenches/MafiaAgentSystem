@@ -114,7 +114,7 @@ public class DistributedTracingMiddleware : MiddlewareBase
     }
 }
 
-public class TraceSpan
+public class TraceSpan : ITraceSpan
 {
     public string TraceId { get; set; } = "";
     public string SpanId { get; set; } = "";
@@ -125,6 +125,9 @@ public class TraceSpan
     public TimeSpan Duration { get; set; }
     public bool Success { get; set; }
     public Dictionary<string, string> Tags { get; set; } = new();
+
+    // Explicit interface implementation for IReadOnlyDictionary
+    IReadOnlyDictionary<string, string> ITraceSpan.Tags => Tags;
 }
 
 /// <summary>
@@ -644,13 +647,16 @@ public class WorkflowOrchestrationMiddleware : MiddlewareBase
     }
 }
 
-public class WorkflowDefinition
+public class WorkflowDefinition : IWorkflowDefinition
 {
     public string WorkflowId { get; set; } = "";
     public List<WorkflowStage> Stages { get; set; } = new();
+
+    // Explicit interface implementation for IReadOnlyList<IWorkflowStage>
+    IReadOnlyList<IWorkflowStage> IWorkflowDefinition.Stages => Stages;
 }
 
-public class WorkflowStage
+public class WorkflowStage : IWorkflowStage
 {
     public string Name { get; set; } = "";
     public string AgentId { get; set; } = "";

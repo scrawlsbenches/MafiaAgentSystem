@@ -1,13 +1,55 @@
 # Execution Plan: MafiaAgentSystem Build & MVP
 
 > **Created**: 2026-01-31
-> **Last Updated**: 2026-02-02
+> **Last Updated**: 2026-02-03
 > **Constraint**: Zero 3rd party libraries (only .NET SDK)
 > **Goal**: Compiling codebase → Test baseline → MVP game → Production Quality
 
 ---
 
-## Execution State (Updated 2026-02-02)
+## Current Execution State (Updated 2026-02-03)
+
+### Batch Structure (Layered Approach)
+
+After Phase 5, tasks were reorganized into a **layered batch structure** to minimize churn.
+See `TASK_LIST.md` for full details.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Layer F: POLISH (last)                                       │
+│   Documentation, code cleanup                                │
+├─────────────────────────────────────────────────────────────┤
+│ Layer E: ENHANCEMENT                   ✅ COMPLETE           │
+│   DI extensions, interface extraction, new tests             │
+├─────────────────────────────────────────────────────────────┤
+│ Layer D: APPLICATION FIXES              ✅ COMPLETE           │
+│   MafiaDemo gameplay bugs                                    │
+├─────────────────────────────────────────────────────────────┤
+│ Layer B: RESOURCE STABILITY             ✅ COMPLETE           │
+│   Memory leaks, unbounded growth                             │
+├─────────────────────────────────────────────────────────────┤
+│ Layer A: FOUNDATION                     ✅ COMPLETE           │
+│   Thread safety in core libraries                            │
+├─────────────────────────────────────────────────────────────┤
+│ Layer C: TEST INFRASTRUCTURE            ✅ COMPLETE           │
+│   Setup/Teardown, state isolation                            │
+└─────────────────────────────────────────────────────────────┘
+```
+
+| Batch | Layer | Status | Tasks | Completed |
+|-------|-------|--------|-------|-----------|
+| **C** | Test Infra | ✅ Complete | 2 | 2026-02-02 |
+| **A** | Foundation | ✅ Complete | 4 | 2026-02-02 |
+| **B** | Resources | ✅ Complete | 3 | 2026-02-03 |
+| **D** | App Fixes | ✅ Complete | 5 | 2026-02-03 |
+| **E** | Enhancement | ✅ **COMPLETE** | 15 | 2026-02-03 |
+| **F** | Polish | ⏳ Pending | 10 | - |
+
+**Test count: 1905 (all passing)**
+
+---
+
+## Completed Phases (Historical)
 
 ### Phase 1: MVP Foundation ✅
 - [x] .NET SDK 8.0.122 installed ✅
@@ -27,8 +69,6 @@
 - [x] P1-7: Async Rule Support ✅
 - [x] P1-8: Standardize DateTime Usage ✅
 
-**PHASE 2 COMPLETE**
-
 ### Phase 3: Testing for New Features ✅
 - [x] P3-1: Concurrency tests for thread safety (4 tests) ✅
 - [x] Async execution and cancellation tests (14 tests) ✅
@@ -45,11 +85,6 @@
 - [x] P2-10: Add integration tests (22 tests) ✅
 
 **Test count: 67 → 89 (all passing)**
-
-**Discovery**: Code review revealed P2-2 through P2-8 were already implemented.
-Original estimate: 30-38h → Revised estimate: 7-9h (integration only)
-
-**PHASE 4 COMPLETE**
 
 ---
 
@@ -145,9 +180,10 @@ dotnet run --project Tests/TestRunner/
 
 ---
 
-### Phase 5: Architectural Improvements (In Progress)
+### Phase 5: Architectural Improvements ✅
 
 **Session: 2026-02-01**
+**Status: COMPLETE**
 
 Completed:
 - [x] Router Consolidation - Merged `MiddlewareAgentRouter` and `AgentRouterWithMiddleware` into `AgentRouter`
@@ -181,10 +217,10 @@ Completed:
 
 ---
 
-### Phase 6: Dependency Injection & Inversion of Control (Planned)
+### Phase 6: Dependency Injection & Inversion of Control ✅ (Core Complete)
 
 **Investigation**: 2026-02-01
-**Status**: PLANNED
+**Status**: Core DI complete, remaining tasks moved to Batch E
 **Branch**: `claude/investigate-dependency-injection-B6xCF`
 **Documentation**: `docs/DI_IOC_INVESTIGATION.md`
 
@@ -257,11 +293,14 @@ Batch DI-C (Parallel - after DI-B):
 
 ---
 
-### Phase 7: Code Review & Bug Fixes (Current)
+### Phase 7: Code Review & Bug Fixes ✅ (Reorganized into Batches A-D)
 
-**Session**: 2026-02-02
-**Status**: PLANNED
-**Documentation**: `TASK_LIST.md` (updated with code review findings)
+**Session**: 2026-02-02 - 2026-02-03
+**Status**: COMPLETE (reorganized into layered batches)
+**Documentation**: `TASK_LIST.md`, `DEEP_CODE_REVIEW.md`
+
+**Note**: Phase 7 was reorganized into Batches C, A, B, D for better dependency ordering.
+All critical bugs and thread safety issues have been addressed.
 
 **Comprehensive Code Review Completed**:
 A deep code review was performed covering all modules. Key findings:
@@ -344,11 +383,16 @@ Batch 7E: MafiaDemo Fixes (Parallel)
 
 | Gate | Criteria | Verified |
 |------|----------|----------|
-| G0 | .NET 8.x installed | [ ] |
-| G1 | Build errors catalogued | [ ] |
-| G2 | Build succeeds (0 errors) | [ ] |
-| G3 | Test baseline documented | [ ] |
-| G4 | MVP game runs | [ ] |
+| G0 | .NET 8.x installed | ✅ |
+| G1 | Build errors catalogued | ✅ |
+| G2 | Build succeeds (0 errors) | ✅ |
+| G3 | Test baseline documented | ✅ |
+| G4 | MVP game runs | ✅ |
+| G5-G8 | Phase 2 hardening complete | ✅ |
+| Batch C | Test infrastructure ready | ✅ |
+| Batch A | Thread safety verified | ✅ |
+| Batch B | Resource stability verified | ✅ |
+| Batch D | Application bugs fixed | ✅ |
 
 ---
 
@@ -504,3 +548,197 @@ Commit: ea0d9bd
 Updated RulesEngineCore to handle async rules
 Commit: 4eec858
 ```
+
+---
+
+## Layered Batch Logs (New Structure)
+
+### Batch C Log (Test Infrastructure) - 2026-02-02
+```
+✅ C-1: Added Setup/Teardown support
+   - [SetUp], [TearDown], [OneTimeSetUp], [OneTimeTearDown] attributes
+   - TestRunner discovers and invokes lifecycle methods
+   - LifecycleAttributeTests.cs added
+
+✅ C-2: Added Test State Isolation
+   - TestBase class in TestRunner.Framework
+   - AgentRoutingTestBase resets SystemClock.Instance
+   - MafiaTestBase resets GameTimingOptions.Current
+
+Gate: Test infrastructure ready for all subsequent batches
+```
+
+### Batch A Log (Foundation/Thread Safety) - 2026-02-02
+```
+✅ A-1: Fixed CircuitBreakerMiddleware State Machine Race
+   - Added HalfOpenTestInProgress flag
+   - Proper state machine transitions (Closed→Open→HalfOpen→Closed)
+   - Only ONE request tests recovery in HalfOpen state
+
+✅ A-2: Fixed CachingMiddleware TOCTOU
+   - Added PendingRequests dictionary with TaskCompletionSource
+   - Request coalescing prevents duplicate computation
+   - Concurrent requests for same key wait for first result
+
+✅ A-3: Fixed AgentBase Capacity Check Race
+   - Added TryAcquireSlot() with Interlocked.CompareExchange
+   - Atomic check-and-increment pattern
+   - Semantic checks before slot acquisition
+
+✅ A-4: Fixed AgentRouter Cached Pipeline Double-Check
+   - Added _pipelineLock object
+   - Added volatile keyword on _builtPipeline
+   - Proper double-checked locking pattern
+
+Gate: Thread-safe core libraries verified
+```
+
+### Batch B Log (Resource Stability) - 2026-02-03
+```
+✅ B-1: Fixed CancellationTokenSource Leaks
+   - Added try/finally in StartGameAsync() to dispose CTS
+   - Updated StopGame() to dispose after cancellation
+   - Set _cts = null after disposal
+
+✅ B-2: Fixed EventLog Unbounded Growth
+   - Added MaxEventLogSize constant (1000 events)
+   - Oldest-first eviction in LogEvent()
+
+✅ B-3: Verified Parallel Execution Priority Order
+   - Already implemented correctly
+   - Results stored with indices, sorted after execution
+   - Existing tests verify behavior
+
+Gate: No memory leaks, bounded collections
+```
+
+### Batch D Log (Application Fixes) - 2026-02-03
+```
+✅ D-1: Completed Agent Rule Actions
+   - Added RecommendedAction property to AgentDecisionContext
+   - All rules now set RecommendedAction (collect, expand, recruit, bribe, laylow)
+   - GetAgentAction() executes top matching rule
+
+✅ D-2: Fixed Crew Recruitment
+   - Added handlers for recruit/bribe/laylow in ExecuteAgentAction()
+   - Recruit: $5,000 cost, +1 soldier, +2 reputation
+   - Bribe: $10,000 cost, -15 heat
+   - Laylow: -5 heat (free)
+
+✅ D-3: Balanced Game Economy
+   - Heat decay: 2/week → 5/week
+   - Collection: 25% → 40% cut, respect 3 → 4
+   - Hit: $5000 → $2500, respect 25 → 20, heat 30 → 25
+   - Promotion thresholds: 40/70/85/95 → 35/60/80/90
+
+✅ D-4: Fixed Trivial Test Assertions
+   - Replaced 11 Assert.True(true) with meaningful assertions
+   - Tests now verify agent properties and state validity
+
+✅ D-5: Fixed Rule<T> Exception Handling
+   - Rule<T>.Execute() now preserves Matched=true when action throws
+   - Consistent with ActionRule behavior
+   - Updated test expectations
+
+Gate: MafiaDemo gameplay working correctly
+```
+
+### Batch E Log (Enhancement - COMPLETE) - 2026-02-03
+```
+✅ E-1a: Created Service Registration Extensions
+   - ServiceExtensions.cs with AddAgentRouting(), AddMiddleware<T>(),
+     AddAgent<T>(), AddRulesEngine<T>()
+   - AgentRoutingOptions for configuring router setup
+   - All extensions support singleton/transient patterns
+
+✅ E-1b: Updated Demos to Use Container
+   - MiddlewareDemo: Simplified setup using AddAgentRouting()
+   - AdvancedMiddlewareDemo: Simplified setup using AddAgentRouting()
+   - MafiaDemo: Left as-is (appropriate simpler pattern for games)
+
+✅ E-2a: Extract IRulesEngineResult Interface
+   - Created IResults.cs in RulesEngine/Core/
+   - RulesEngineResult now implements IRulesEngineResult
+
+✅ E-2b: Extract IRuleExecutionResult<T> Interface
+   - Added to IResults.cs
+   - RuleExecutionResult<T> now implements IRuleExecutionResult<T>
+
+✅ E-2c: Extract ITraceSpan Interface
+   - Created IMiddlewareTypes.cs in AgentRouting/Middleware/
+   - TraceSpan now implements ITraceSpan
+
+✅ E-2d: Extract IMiddlewareContext Interface
+   - Added to IMiddlewareTypes.cs
+   - MiddlewareContext now implements IMiddlewareContext
+   - BONUS: Fixed thread safety with ConcurrentDictionary
+
+✅ E-2e: Extract IMetricsSnapshot + IAnalyticsReport Interfaces
+   - Added to IMiddlewareTypes.cs
+   - MetricsSnapshot and AnalyticsReport implement interfaces
+
+✅ E-2f: Extract IWorkflowDefinition + IWorkflowStage Interfaces
+   - Added to IMiddlewareTypes.cs
+   - WorkflowDefinition and WorkflowStage implement interfaces
+
+✅ E-3a: Add Edge Case Tests for Rules (17 new tests)
+   - Negative priority handling, MaxRulesToExecute option
+   - ImmutableRulesEngine WithRule/WithoutRule tests
+   - Parallel execution tests, AllowDuplicateRuleIds option
+   - EvaluateAll, GetMatchingRules, concurrent registration
+
+✅ E-3b: Add Middleware Pipeline Tests (9 new tests)
+   - Cancellation token respect, concurrent pipeline execution
+   - Middleware context sharing, pipeline reusability
+   - Deep pipeline (50 middleware), metadata modification
+   - Conditional middleware execution
+
+✅ E-3c: Add Rate Limiter Tests (8 new tests)
+   - Very short window reset, empty sender handling
+   - One request limit, multiple windows independence
+   - Handler failure counting, high concurrency limits
+
+✅ E-3d: Add Circuit Breaker Tests (10 new tests)
+   - Half-open state success/failure transitions
+   - Large failure threshold, partial failures
+   - Concurrent half-open transitions, slow handler handling
+   - Separate state stores, recovery after outage
+
+✅ E-3e: Add Performance Benchmarks (7 new benchmarks)
+   - Circuit breaker, ImmutableRulesEngine
+   - Rule builder creation, AgentRouter routing
+   - 10-middleware pipeline, GetMatchingRules (500 rules)
+   - Concurrent message routing
+
+✅ E-3f: Add Integration Tests for Agent Routing (11 new tests)
+   - Agent registration verification, rule priority
+   - Error propagation, exception handling
+   - Concurrent registration/routing, category routing
+   - Message metadata preservation, routing context
+
+✅ E-3g: Add Test Coverage Analysis
+   - CoverageValidationTests.cs with 6 validation tests
+   - Validates threshold compliance per module
+   - Identifies zero-coverage classes and quick wins
+   - Generates summary reports
+
+Gate: 1905 tests passing, all enhancements complete
+```
+
+---
+
+## Next Steps
+
+**Batch E: Enhancement** (15 tasks, 35-47 hours)
+
+See `TASK_LIST.md` for full details. Summary:
+
+| Group | Tasks | Hours | Notes |
+|-------|-------|-------|-------|
+| E-1: DI Extensions | 2 | 4-6 | Service registration, demo updates |
+| E-2: Interface Extraction | 6 | 12-16 | All parallelizable |
+| E-3: Additional Testing | 7 | 19-25 | Edge cases, benchmarks |
+
+**Batch F: Polish** (10 tasks, 20-28 hours)
+
+Documentation consolidation, API docs, cleanup. Depends on E completion.

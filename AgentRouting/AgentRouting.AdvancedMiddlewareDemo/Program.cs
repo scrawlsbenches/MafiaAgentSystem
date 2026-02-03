@@ -29,11 +29,10 @@ class Program
         Console.WriteLine("  • Workflow Orchestration");
         Console.WriteLine();
 
-        // Set up dependency injection container
+        // Set up dependency injection container using the AddAgentRouting extension
+        // This registers all core services (logger, clock, state store, pipeline, router)
         _container = new ServiceContainer()
-            .AddSingleton<IAgentLogger>(c => new ConsoleAgentLogger())
-            .AddSingleton<ISystemClock>(c => SystemClock.Instance)
-            .AddTransient<IStateStore>(c => new InMemoryStateStore());
+            .AddAgentRouting();
 
         await Demo1_DistributedTracing();
         await Demo2_SemanticRouting();

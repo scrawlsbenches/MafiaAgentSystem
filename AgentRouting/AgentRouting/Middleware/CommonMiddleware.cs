@@ -616,7 +616,7 @@ public class MetricsMiddleware : MiddlewareBase
     }
 }
 
-public class MetricsSnapshot
+public class MetricsSnapshot : IMetricsSnapshot
 {
     public int TotalMessages { get; set; }
     public int SuccessCount { get; set; }
@@ -625,7 +625,7 @@ public class MetricsSnapshot
     public double AverageProcessingTimeMs { get; set; }
     public long MinProcessingTimeMs { get; set; }
     public long MaxProcessingTimeMs { get; set; }
-    
+
     public override string ToString()
     {
         return $"Total: {TotalMessages}, Success: {SuccessCount}, Failed: {FailureCount}, " +
@@ -781,9 +781,13 @@ public class AnalyticsMiddleware : MiddlewareBase
     }
 }
 
-public class AnalyticsReport
+public class AnalyticsReport : IAnalyticsReport
 {
     public int TotalMessages { get; set; }
     public Dictionary<string, int> CategoryCounts { get; set; } = new();
     public Dictionary<string, int> AgentWorkload { get; set; } = new();
+
+    // Explicit interface implementations for IReadOnlyDictionary
+    IReadOnlyDictionary<string, int> IAnalyticsReport.CategoryCounts => CategoryCounts;
+    IReadOnlyDictionary<string, int> IAnalyticsReport.AgentWorkload => AgentWorkload;
 }

@@ -42,7 +42,7 @@ public interface IRule<T>
 /// <summary>
 /// Result of a rule execution
 /// </summary>
-public class RuleResult
+public class RuleResult : IRuleResult
 {
     public string RuleId { get; set; } = string.Empty;
     public string RuleName { get; set; } = string.Empty;
@@ -51,6 +51,9 @@ public class RuleResult
     public DateTime ExecutedAt { get; set; }
     public Dictionary<string, object> Outputs { get; set; } = new();
     public string? ErrorMessage { get; set; }
+
+    // Explicit interface implementation for IReadOnlyDictionary
+    IReadOnlyDictionary<string, object> IRuleResult.Outputs => Outputs;
     
     public static RuleResult Success(string ruleId, string ruleName, Dictionary<string, object>? outputs = null)
     {

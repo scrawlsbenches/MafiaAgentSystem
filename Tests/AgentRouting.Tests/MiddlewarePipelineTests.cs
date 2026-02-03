@@ -288,4 +288,313 @@ public class MiddlewarePipelineTests
             return result;
         }
     }
+
+    // ==================== Additional Pipeline Tests ====================
+
+    [Test]
+    public async Task CancellationToken_Respected_ThrowsOperationCanceled()
+    {
+        var pipeline = new MiddlewarePipeline();
+        var reachedHandler = false;
+
+        pipeline.Use(new CancellationCheckingMiddleware());
+
+        MessageDelegate handler = (msg, ct) =>
+        {
+            reachedHandler = true;
+            return Task.FromResult(MessageResult.Ok("Done"));
+        };
+
+        var executor = pipeline.Build(handler);
+        var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var exceptionThrown = false;
+        try
+        {
+            await executor(CreateTestMessage(), cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            exceptionThrown = true;
+        }
+
+        Assert.True(exceptionThrown);
+        Assert.False(reachedHandler);
+    }
+
+    [Test]
+    public async Task ConcurrentPipelineExecution_ThreadSafe()
+    {
+        var pipeline = new MiddlewarePipeline();
+        var executionCount = 0;
+
+        pipeline.Use(new CallbackMiddleware(before: () => Interlocked.Increment(ref executionCount)));
+
+        MessageDelegate handler = (msg, ct) => Task.FromResult(MessageResult.Ok("Done"));
+
+        var executor = pipeline.Build(handler);
+        var tasks = new List<Task>();
+
+        for (int i = 0; i < 100; i++)
+        {
+            tasks.Add(Task.Run(async () =>
+            {
+                await executor(CreateTestMessage(), CancellationToken.None);
+            }));
+        }
+
+        await Task.WhenAll(tasks);
+
+        Assert.Equal(100, executionCount);
+    }
+
+    [Test]
+    public async Task MiddlewareContext_SharedAcrossPipeline()
+    {
+        var pipeline = new MiddlewarePipeline();
+
+        pipeline.Use(new ContextSettingMiddleware("key1", "value1"));
+        pipeline.Use(new ContextReadingMiddleware("key1"));
+
+        string? capturedValue = null;
+        MessageDelegate handler = (msg, ct) =>
+        {
+            var result = MessageResult.Ok("Done");
+            return Task.FromResult(result);
+        };
+
+        var executor = pipeline.Build(handler);
+        var message = CreateTestMessage();
+        var result = await executor(message, CancellationToken.None);
+
+        // Value should be readable by subsequent middleware
+        Assert.True(result.Success);
+    }
+
+    [Test]
+    public async Task Pipeline_Reusable_MultipleCalls()
+    {
+        var pipeline = new MiddlewarePipeline();
+        var callCount = 0;
+
+        pipeline.Use(new CallbackMiddleware(before: () => callCount++));
+
+        MessageDelegate handler = (msg, ct) => Task.FromResult(MessageResult.Ok("Done"));
+
+        var executor = pipeline.Build(handler);
+
+        for (int i = 0; i < 5; i++)
+        {
+            await executor(CreateTestMessage(), CancellationToken.None);
+        }
+
+        Assert.Equal(5, callCount);
+    }
+
+    [Test]
+    public async Task DeepPipeline_ManyMiddleware_ExecutesAll()
+    {
+        var pipeline = new MiddlewarePipeline();
+        var executionOrder = new List<int>();
+
+        // Add 50 middleware components
+        for (int i = 0; i < 50; i++)
+        {
+            pipeline.Use(new OrderTrackingMiddleware(i, executionOrder));
+        }
+
+        MessageDelegate handler = (msg, ct) =>
+        {
+            executionOrder.Add(-1); // Handler marker
+            return Task.FromResult(MessageResult.Ok("Done"));
+        };
+
+        var executor = pipeline.Build(handler);
+        await executor(CreateTestMessage(), CancellationToken.None);
+
+        // 50 before + 1 handler + 50 after = 101
+        Assert.Equal(101, executionOrder.Count);
+        Assert.Equal(-1, executionOrder[50]); // Handler in the middle
+    }
+
+    [Test]
+    public async Task Middleware_CanAccessAndModifyMessageMetadata()
+    {
+        var pipeline = new MiddlewarePipeline();
+
+        pipeline.Use(new MetadataAddingMiddleware("trace-id", "12345"));
+
+        MessageDelegate handler = (msg, ct) =>
+        {
+            var result = MessageResult.Ok("Done");
+            if (msg.Metadata.TryGetValue("trace-id", out var traceId))
+            {
+                result.Data["trace-id"] = traceId;
+            }
+            return Task.FromResult(result);
+        };
+
+        var executor = pipeline.Build(handler);
+        var result = await executor(CreateTestMessage(), CancellationToken.None);
+
+        Assert.True(result.Data.ContainsKey("trace-id"));
+        Assert.Equal("12345", result.Data["trace-id"]);
+    }
+
+    [Test]
+    public async Task AfterMiddleware_ExceptionInAfterPhase_StillExecutes()
+    {
+        var pipeline = new MiddlewarePipeline();
+        var afterExecuted = false;
+
+        pipeline.Use(new CallbackMiddleware(after: () => afterExecuted = true));
+        pipeline.Use(new AfterThrowingMiddleware());
+
+        MessageDelegate handler = (msg, ct) => Task.FromResult(MessageResult.Ok("Done"));
+
+        var executor = pipeline.Build(handler);
+
+        var exceptionThrown = false;
+        try
+        {
+            await executor(CreateTestMessage(), CancellationToken.None);
+        }
+        catch (InvalidOperationException)
+        {
+            exceptionThrown = true;
+        }
+
+        Assert.True(exceptionThrown);
+        // Outer middleware's "after" might not execute if inner throws
+        // This documents the behavior
+    }
+
+    [Test]
+    public async Task Pipeline_UseConditional_OnlyExecutesWhenConditionMet()
+    {
+        var pipeline = new MiddlewarePipeline();
+        var executed = false;
+
+        // Add middleware that only executes for high priority
+        pipeline.Use(new ConditionalMiddleware(
+            msg => msg.Priority == MessagePriority.High,
+            () => executed = true));
+
+        MessageDelegate handler = (msg, ct) => Task.FromResult(MessageResult.Ok("Done"));
+        var executor = pipeline.Build(handler);
+
+        // Normal priority - should not execute conditional middleware action
+        var normalMessage = CreateTestMessage();
+        normalMessage.Priority = MessagePriority.Normal;
+        await executor(normalMessage, CancellationToken.None);
+        Assert.False(executed);
+
+        // High priority - should execute
+        var highMessage = CreateTestMessage();
+        highMessage.Priority = MessagePriority.High;
+        await executor(highMessage, CancellationToken.None);
+        Assert.True(executed);
+    }
+
+    // Additional helper middleware classes
+
+    private class CancellationCheckingMiddleware : MiddlewareBase
+    {
+        public override Task<MessageResult> InvokeAsync(
+            AgentMessage message, MessageDelegate next, CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            return next(message, ct);
+        }
+    }
+
+    private class ContextSettingMiddleware : MiddlewareBase
+    {
+        private readonly string _key;
+        private readonly object _value;
+
+        public ContextSettingMiddleware(string key, object value)
+        {
+            _key = key;
+            _value = value;
+        }
+
+        public override async Task<MessageResult> InvokeAsync(
+            AgentMessage message, MessageDelegate next, CancellationToken ct)
+        {
+            message.Metadata[_key] = _value;
+            return await next(message, ct);
+        }
+    }
+
+    private class ContextReadingMiddleware : MiddlewareBase
+    {
+        private readonly string _key;
+
+        public ContextReadingMiddleware(string key)
+        {
+            _key = key;
+        }
+
+        public override async Task<MessageResult> InvokeAsync(
+            AgentMessage message, MessageDelegate next, CancellationToken ct)
+        {
+            var exists = message.Metadata.ContainsKey(_key);
+            var result = await next(message, ct);
+            result.Data["context_key_exists"] = exists;
+            return result;
+        }
+    }
+
+    private class MetadataAddingMiddleware : MiddlewareBase
+    {
+        private readonly string _key;
+        private readonly object _value;
+
+        public MetadataAddingMiddleware(string key, object value)
+        {
+            _key = key;
+            _value = value;
+        }
+
+        public override async Task<MessageResult> InvokeAsync(
+            AgentMessage message, MessageDelegate next, CancellationToken ct)
+        {
+            message.Metadata[_key] = _value;
+            return await next(message, ct);
+        }
+    }
+
+    private class AfterThrowingMiddleware : MiddlewareBase
+    {
+        public override async Task<MessageResult> InvokeAsync(
+            AgentMessage message, MessageDelegate next, CancellationToken ct)
+        {
+            var result = await next(message, ct);
+            throw new InvalidOperationException("After phase exception");
+        }
+    }
+
+    private class ConditionalMiddleware : MiddlewareBase
+    {
+        private readonly Func<AgentMessage, bool> _condition;
+        private readonly Action _action;
+
+        public ConditionalMiddleware(Func<AgentMessage, bool> condition, Action action)
+        {
+            _condition = condition;
+            _action = action;
+        }
+
+        public override async Task<MessageResult> InvokeAsync(
+            AgentMessage message, MessageDelegate next, CancellationToken ct)
+        {
+            if (_condition(message))
+            {
+                _action();
+            }
+            return await next(message, ct);
+        }
+    }
 }

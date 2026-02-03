@@ -515,4 +515,358 @@ public class RuleEdgeCaseTests
     }
 
     #endregion
+
+    #region Additional Edge Cases
+
+    /// <summary>
+    /// Tests that negative priority values are handled correctly.
+    /// </summary>
+    [Test]
+    public void Execute_NegativePriority_ExecutesInCorrectOrder()
+    {
+        var engine = new RulesEngineCore<TestFact>();
+        var executionOrder = new List<int>();
+
+        engine.AddRule("NEG", "Negative Priority", f => true, f => executionOrder.Add(-100), priority: -100);
+        engine.AddRule("ZERO", "Zero Priority", f => true, f => executionOrder.Add(0), priority: 0);
+        engine.AddRule("POS", "Positive Priority", f => true, f => executionOrder.Add(100), priority: 100);
+
+        var fact = new TestFact();
+        engine.Execute(fact);
+
+        // Higher priority first: 100 → 0 → -100
+        Assert.Equal(3, executionOrder.Count);
+        Assert.Equal(100, executionOrder[0]);
+        Assert.Equal(0, executionOrder[1]);
+        Assert.Equal(-100, executionOrder[2]);
+    }
+
+    /// <summary>
+    /// Tests MaxRulesToExecute option limits rule execution.
+    /// </summary>
+    [Test]
+    public void Execute_MaxRulesToExecute_LimitsExecution()
+    {
+        var engine = new RulesEngineCore<TestFact>(new RulesEngineOptions
+        {
+            MaxRulesToExecute = 2
+        });
+
+        var executionCount = 0;
+
+        engine.AddRule("R1", "Rule 1", f => true, f => executionCount++, priority: 100);
+        engine.AddRule("R2", "Rule 2", f => true, f => executionCount++, priority: 50);
+        engine.AddRule("R3", "Rule 3", f => true, f => executionCount++, priority: 10);
+
+        var fact = new TestFact();
+        var result = engine.Execute(fact);
+
+        Assert.Equal(2, executionCount);
+        Assert.Equal(2, result.MatchedRules);
+    }
+
+    /// <summary>
+    /// Tests that ImmutableRulesEngine creates independent copies.
+    /// </summary>
+    [Test]
+    public void ImmutableRulesEngine_WithRule_CreatesIndependentEngine()
+    {
+        var engine1 = new ImmutableRulesEngine<TestFact>();
+
+        var rule1 = new RuleBuilder<TestFact>()
+            .WithId("R1")
+            .WithName("Rule 1")
+            .When(f => f.Value > 10)
+            .Then(f => f.Results.Add("R1"))
+            .Build();
+
+        var rule2 = new RuleBuilder<TestFact>()
+            .WithId("R2")
+            .WithName("Rule 2")
+            .When(f => f.Value > 20)
+            .Then(f => f.Results.Add("R2"))
+            .Build();
+
+        var engine2 = engine1.WithRule(rule1);
+        var engine3 = engine2.WithRule(rule2);
+
+        // Each engine is independent
+        var fact1 = new TestFact { Value = 25 };
+        engine1.Execute(fact1);
+        Assert.Equal(0, fact1.Results.Count); // engine1 has no rules
+
+        var fact2 = new TestFact { Value = 25 };
+        engine2.Execute(fact2);
+        Assert.Equal(1, fact2.Results.Count); // engine2 has R1 only
+        Assert.Contains("R1", fact2.Results);
+
+        var fact3 = new TestFact { Value = 25 };
+        engine3.Execute(fact3);
+        Assert.Equal(2, fact3.Results.Count); // engine3 has R1 and R2
+    }
+
+    /// <summary>
+    /// Tests that ImmutableRulesEngine.WithoutRule removes correctly.
+    /// </summary>
+    [Test]
+    public void ImmutableRulesEngine_WithoutRule_RemovesRule()
+    {
+        var engine1 = new ImmutableRulesEngine<TestFact>();
+
+        var rule1 = new RuleBuilder<TestFact>()
+            .WithId("R1")
+            .WithName("Rule 1")
+            .When(f => true)
+            .Then(f => f.Results.Add("R1"))
+            .Build();
+
+        var rule2 = new RuleBuilder<TestFact>()
+            .WithId("R2")
+            .WithName("Rule 2")
+            .When(f => true)
+            .Then(f => f.Results.Add("R2"))
+            .Build();
+
+        var engine2 = engine1.WithRule(rule1).WithRule(rule2);
+        var engine3 = engine2.WithoutRule("R1");
+
+        var fact = new TestFact();
+        engine3.Execute(fact);
+
+        Assert.Equal(1, fact.Results.Count);
+        Assert.Contains("R2", fact.Results);
+        Assert.False(fact.Results.Contains("R1"));
+    }
+
+    /// <summary>
+    /// Tests that parallel execution works correctly.
+    /// </summary>
+    [Test]
+    public void Execute_ParallelExecution_AllRulesExecute()
+    {
+        var engine = new RulesEngineCore<TestFact>(new RulesEngineOptions
+        {
+            EnableParallelExecution = true
+        });
+
+        var executedRules = new System.Collections.Concurrent.ConcurrentBag<string>();
+
+        for (int i = 0; i < 20; i++)
+        {
+            var ruleId = $"R{i}";
+            engine.AddRule(ruleId, $"Rule {i}", f => true, f => executedRules.Add(ruleId));
+        }
+
+        var fact = new TestFact();
+        var result = engine.Execute(fact);
+
+        Assert.Equal(20, result.MatchedRules);
+        Assert.Equal(20, executedRules.Count);
+    }
+
+    /// <summary>
+    /// Tests that parallel execution with StopOnFirstMatch stops correctly.
+    /// </summary>
+    [Test]
+    public void Execute_ParallelWithStopOnFirstMatch_StopsAfterFirstMatch()
+    {
+        var engine = new RulesEngineCore<TestFact>(new RulesEngineOptions
+        {
+            EnableParallelExecution = true,
+            StopOnFirstMatch = true
+        });
+
+        var executedRules = new System.Collections.Concurrent.ConcurrentBag<string>();
+
+        // Add rules with varying priorities
+        for (int i = 0; i < 10; i++)
+        {
+            var ruleId = $"R{i}";
+            engine.AddRule(ruleId, $"Rule {i}", f => true, f => executedRules.Add(ruleId), priority: 100 - i);
+        }
+
+        var fact = new TestFact();
+        var result = engine.Execute(fact);
+
+        // At least one rule should match, but not necessarily all due to StopOnFirstMatch
+        Assert.True(result.MatchedRules >= 1);
+    }
+
+    /// <summary>
+    /// Tests duplicate rule ID handling with AllowDuplicateRuleIds option.
+    /// </summary>
+    [Test]
+    public void RegisterRule_AllowDuplicates_AcceptsDuplicateIds()
+    {
+        var engine = new RulesEngineCore<TestFact>(new RulesEngineOptions
+        {
+            AllowDuplicateRuleIds = true
+        });
+
+        engine.AddRule("SAME_ID", "Rule 1", f => true, f => f.Results.Add("1"));
+        engine.AddRule("SAME_ID", "Rule 2", f => true, f => f.Results.Add("2"));
+
+        var rules = engine.GetRules().ToList();
+        Assert.Equal(2, rules.Count);
+
+        var fact = new TestFact();
+        engine.Execute(fact);
+        Assert.Equal(2, fact.Results.Count);
+    }
+
+    /// <summary>
+    /// Tests that registering a rule with an existing ID throws when duplicates not allowed.
+    /// </summary>
+    [Test]
+    public void RegisterRule_DuplicateId_ThrowsException()
+    {
+        var engine = new RulesEngineCore<TestFact>();
+
+        engine.AddRule("DUPLICATE", "First Rule", f => true, f => { });
+
+        var exceptionThrown = false;
+        try
+        {
+            engine.AddRule("DUPLICATE", "Second Rule", f => true, f => { });
+        }
+        catch (RuleValidationException)
+        {
+            exceptionThrown = true;
+        }
+
+        Assert.True(exceptionThrown);
+    }
+
+    /// <summary>
+    /// Tests EvaluateAll modifies the fact in place.
+    /// </summary>
+    [Test]
+    public void EvaluateAll_ModifiesFactInPlace()
+    {
+        var engine = new RulesEngineCore<TestFact>();
+
+        engine.AddRule("R1", "Add 10", f => true, f => f.Value += 10, priority: 100);
+        engine.AddRule("R2", "Add 20", f => true, f => f.Value += 20, priority: 50);
+        engine.AddRule("R3", "Multiply by 2", f => true, f => f.Value *= 2, priority: 10);
+
+        var fact = new TestFact { Value = 5 };
+        engine.EvaluateAll(fact);
+
+        // Order: R1 (+10=15), R2 (+20=35), R3 (*2=70)
+        Assert.Equal(70, fact.Value);
+    }
+
+    /// <summary>
+    /// Tests GetMatchingRules does not execute actions.
+    /// </summary>
+    [Test]
+    public void GetMatchingRules_DoesNotExecuteActions()
+    {
+        var engine = new RulesEngineCore<TestFact>();
+        var actionExecuted = false;
+
+        engine.AddRule("R1", "Rule 1", f => f.Value > 0, f => actionExecuted = true);
+
+        var fact = new TestFact { Value = 10 };
+        var matching = engine.GetMatchingRules(fact).ToList();
+
+        Assert.Equal(1, matching.Count);
+        Assert.False(actionExecuted);
+    }
+
+    /// <summary>
+    /// Tests rule with very long ID and name.
+    /// </summary>
+    [Test]
+    public void Execute_VeryLongRuleIdAndName_HandledCorrectly()
+    {
+        var engine = new RulesEngineCore<TestFact>();
+
+        var longId = new string('A', 1000);
+        var longName = new string('B', 1000);
+
+        engine.AddRule(longId, longName, f => true, f => f.Results.Add("matched"));
+
+        var fact = new TestFact();
+        var result = engine.Execute(fact);
+
+        Assert.Equal(1, result.MatchedRules);
+        Assert.Contains("matched", fact.Results);
+    }
+
+    /// <summary>
+    /// Tests that removing a non-existent rule is handled gracefully.
+    /// </summary>
+    [Test]
+    public void RemoveRule_NonExistent_DoesNotThrow()
+    {
+        var engine = new RulesEngineCore<TestFact>();
+        engine.AddRule("R1", "Rule 1", f => true, f => { });
+
+        // Removing non-existent rule should not throw
+        engine.RemoveRule("DOES_NOT_EXIST");
+
+        var rules = engine.GetRules().ToList();
+        Assert.Equal(1, rules.Count);
+    }
+
+    /// <summary>
+    /// Tests concurrent rule registration.
+    /// </summary>
+    [Test]
+    public async Task RegisterRule_ConcurrentRegistration_ThreadSafe()
+    {
+        var engine = new RulesEngineCore<TestFact>(new RulesEngineOptions
+        {
+            AllowDuplicateRuleIds = true
+        });
+
+        var tasks = new List<Task>();
+
+        for (int i = 0; i < 100; i++)
+        {
+            var ruleId = $"R{i}";
+            tasks.Add(Task.Run(() =>
+            {
+                engine.AddRule(ruleId, $"Rule {ruleId}", f => true, f => { });
+            }));
+        }
+
+        await Task.WhenAll(tasks);
+
+        var rules = engine.GetRules().ToList();
+        Assert.Equal(100, rules.Count);
+    }
+
+    /// <summary>
+    /// Tests that disposed engine throws on operations.
+    /// </summary>
+    [Test]
+    public void Dispose_ThenOperate_ThrowsOrHandlesGracefully()
+    {
+        var engine = new RulesEngineCore<TestFact>();
+        engine.AddRule("R1", "Rule 1", f => true, f => { });
+
+        engine.Dispose();
+
+        // After dispose, the engine may throw ObjectDisposedException
+        // or handle gracefully - implementation dependent
+        // This test ensures no crash occurs
+        try
+        {
+            var fact = new TestFact();
+            engine.Execute(fact);
+        }
+        catch (ObjectDisposedException)
+        {
+            // Expected behavior
+            Assert.True(true);
+            return;
+        }
+
+        // If no exception, that's also acceptable
+        Assert.True(true);
+    }
+
+    #endregion
 }

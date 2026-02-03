@@ -313,7 +313,7 @@ dotnet build Tests/AgentRouting.Tests/ --no-restore
 dotnet build Tests/MafiaDemo.Tests/ --no-restore
 dotnet build Tests/TestRunner/ --no-restore
 
-# Run all tests
+# Run all tests (184+ tests)
 dotnet run --project Tests/TestRunner/ --no-build
 ```
 
@@ -359,11 +359,13 @@ MafiaAgentSystem/
 ### RulesEngine
 
 - **Expression Trees**: Type-safe, compiled rule conditions
-- **Fluent Builder**: Readable rule construction API
-- **Composite Rules**: AND/OR/NOT combinations
-- **Async Support**: Rules with I/O operations
-- **Performance Tracking**: Execution metrics per rule
-- **Thread-Safe Variant**: `ImmutableRulesEngine<T>`
+- **Fluent Builder**: `RuleBuilder<T>` and `CompositeRuleBuilder<T>` for readable rule construction
+- **Composite Rules**: AND/OR/NOT combinations via `CompositeRule<T>`
+- **Async Support**: `IAsyncRule<T>` and `AsyncRuleBuilder<T>` for I/O operations
+- **Performance Tracking**: Execution metrics per rule with `SaveMetricsSnapshot()` / `GetMetricsHistory()`
+- **Thread-Safe Variants**: `RulesEngineCore<T>` (locks) or `ImmutableRulesEngine<T>` (lock-free)
+- **Execution Options**: `StopOnFirstMatch`, parallel execution, max rules limit
+- **Dynamic Rules**: `DynamicRuleFactory` for configuration-based rule creation
 
 ### AgentRouting
 
@@ -372,10 +374,17 @@ MafiaAgentSystem/
 - **20+ Built-in Middleware**: Logging, caching, rate limiting, circuit breaker, etc.
 - **Agent Capabilities**: Skill-based routing
 - **Broadcast Support**: Send to multiple agents
+- **Dependency Injection**: `ServiceContainer` with scoped/singleton/transient lifetimes
+- **State Management**: `IStateStore` abstraction for distributed state (Redis-ready)
+- **Testable Time**: `ISystemClock` for deterministic testing
 
 ### MafiaDemo
 
 A text-based mafia family simulation that serves as a **proving ground** for both RulesEngine and AgentRouting. The game isn't just a demo—it's designed to stress-test the core libraries and uncover API gaps through real-world usage patterns.
+
+- **8 Rule Engines**: ~98 rules driving all game logic
+- **AI Decision Tracing**: `MissionDecisionTrace` for debugging AI choices
+- **Balanced Economy**: Heat decay, mission rewards, promotion thresholds tuned for gameplay
 
 #### Vision
 
@@ -431,35 +440,46 @@ The mafia hierarchy is a perfect metaphor for enterprise agent communication:
 
 #### Rules Engines
 
-The game uses 7 specialized `RulesEngineCore<T>` instances, each managing a different aspect:
+The game uses 8 specialized `RulesEngineCore<T>` instances with ~98 total rules:
 
 | Engine | Context Type | Purpose |
 |--------|--------------|---------|
 | Game Rules | `GameRuleContext` | Victory/defeat conditions, warnings |
-| Agent Rules | `AgentDecisionContext` | Personality-driven agent decisions |
+| Agent Rules | `AgentDecisionContext` | Personality-driven agent decisions (~45 rules) |
 | Event Rules | `EventContext` | Random event generation |
 | Valuation | `TerritoryValueContext` | Territory economic analysis |
 | Difficulty | `DifficultyContext` | Dynamic difficulty adjustment |
 | Strategy | `RivalStrategyContext` | Rival family AI decisions |
 | Chain Reactions | `ChainReactionContext` | Event cascades and crises |
+| Async Rules | `AsyncEventContext` | Time-delayed operations (police investigations, intel) |
 
-#### Roadmap
+#### Development Status
 
-**Phase 1: Core Integration** (Mostly Complete)
-- [x] Wire RulesBasedGameEngine to MafiaGameEngine (7 rule engines integrated)
-- [x] Connect agent message handling to routing pipeline
-- [ ] Replace remaining probability-based agent decisions with rules (hybrid approach in use)
+The project uses a **layered batch structure** for development. See [EXECUTION_PLAN.md](EXECUTION_PLAN.md) for full details.
 
-**Phase 2: Enhanced Gameplay** (Current Focus)
-- [x] Event generation rules (implemented in `_eventRules` engine)
-- [ ] Inter-agent relationships and loyalty dynamics
-- [ ] Territory disputes with rival families
-- [ ] Save/load game state
+| Batch | Focus | Status |
+|-------|-------|--------|
+| C | Test Infrastructure | Complete |
+| A | Thread Safety | Complete |
+| B | Resource Stability | Complete |
+| D | Application Fixes | Complete |
+| **E** | **Enhancement** | **Current** |
+| F | Polish | Pending |
 
-**Phase 3: AI & Automation**
-- [x] Rules-driven AI autopilot mode (AI Career Mode implemented)
-- [ ] Async rule support for I/O-bound decisions
-- [ ] Performance profiling under load
+**Completed Features:**
+- [x] 8 rule engines integrated with ~98 total rules
+- [x] Agent message handling connected to routing pipeline
+- [x] Event generation rules (`_eventRules` engine)
+- [x] AI Career Mode with rules-driven autopilot
+- [x] Async rule support (`IAsyncRule<T>`, `AsyncRuleBuilder<T>`)
+- [x] Thread-safe core libraries
+- [x] Game economy balancing
+
+**Remaining Work (Batch E-F):**
+- [ ] DI service registration extensions
+- [ ] Interface extraction for better testability
+- [ ] Additional edge case tests and benchmarks
+- [ ] Documentation consolidation
 
 #### Design Decisions (Resolved)
 
@@ -513,6 +533,9 @@ For the full story, see [ORIGINS.md](ORIGINS.md).
 |----------|-------------|
 | [ORIGINS.md](ORIGINS.md) | How expression trees led to this architecture |
 | [CLAUDE.md](CLAUDE.md) | Development guide and commands |
+| [EXECUTION_PLAN.md](EXECUTION_PLAN.md) | Project state, completed phases, batch logs |
+| [TASK_LIST.md](TASK_LIST.md) | Remaining work with priorities |
+| [DEEP_CODE_REVIEW.md](DEEP_CODE_REVIEW.md) | Code review findings and recommendations |
 | [RulesEngine/README.md](RulesEngine/README.md) | RulesEngine documentation |
 | [AgentRouting/README.md](AgentRouting/README.md) | AgentRouting documentation |
 | [AgentRouting/MIDDLEWARE_EXPLAINED.md](AgentRouting/MIDDLEWARE_EXPLAINED.md) | Middleware tutorial |

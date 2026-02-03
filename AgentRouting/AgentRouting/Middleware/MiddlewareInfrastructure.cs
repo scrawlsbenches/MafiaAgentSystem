@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using AgentRouting.Core;
 
 namespace AgentRouting.Middleware;
@@ -154,17 +155,18 @@ public abstract class MiddlewareBase : IAgentMiddleware
 }
 
 /// <summary>
-/// Context object for middleware to share data
+/// Context object for middleware to share data.
+/// Thread-safe implementation using ConcurrentDictionary.
 /// </summary>
-public class MiddlewareContext
+public class MiddlewareContext : IMiddlewareContext
 {
-    private readonly Dictionary<string, object> _items = new();
-    
+    private readonly ConcurrentDictionary<string, object> _items = new();
+
     public T? Get<T>(string key)
     {
         return _items.TryGetValue(key, out var value) ? (T)value : default;
     }
-    
+
     public void Set<T>(string key, T value)
     {
         if (value != null)
@@ -172,7 +174,7 @@ public class MiddlewareContext
             _items[key] = value;
         }
     }
-    
+
     public bool TryGet<T>(string key, out T? value)
     {
         if (_items.TryGetValue(key, out var obj) && obj is T typed)
