@@ -1,6 +1,7 @@
 using AgentRouting.Core;
 using AgentRouting.MafiaDemo;
 using AgentRouting.MafiaDemo.Rules;
+using AgentRouting.MafiaDemo.Story;
 using System.Collections.Concurrent;
 using System.Text;
 
@@ -307,27 +308,52 @@ public class MafiaGameEngine
     private CancellationTokenSource? _cts;
     private bool _running = false;
 
+    // Story System integration (initialized in InitializeStorySystem if enabled)
+    private WorldState? _worldState;
+    private StoryGraph? _storyGraph;
+    private IntelRegistry? _intelRegistry;
+    private GameWorldBridge? _worldBridge;
+
     public GameState State => _state;
 
-    public MafiaGameEngine(AgentRouter router)
-    {
-        _router = router;
-        _logger = new ConsoleAgentLogger();
-        _state = new GameState();
-        _gameAgents = new Dictionary<string, GameAgentData>();
-        _autonomousAgents = new Dictionary<string, AutonomousAgent>();
-        InitializeGame();
-        _rulesEngine = new GameRulesEngine(_state);
-        _rulesEngine.SetupAsyncEventRules(); // Initialize async event processing
+    /// <summary>
+    /// The Story System's world state. Null if Story System is not enabled.
+    /// </summary>
+    public WorldState? WorldState => _worldState;
 
-        // Register the game engine agent to receive routed messages
-        _router.RegisterAgent(new GameEngineAgent(_logger));
+    /// <summary>
+    /// The Story System's story graph for plot threads and narrative. Null if not enabled.
+    /// </summary>
+    public StoryGraph? StoryGraph => _storyGraph;
+
+    /// <summary>
+    /// The Story System's intel registry. Null if not enabled.
+    /// </summary>
+    public IntelRegistry? IntelRegistry => _intelRegistry;
+
+    /// <summary>
+    /// Whether the Story System is enabled and initialized.
+    /// </summary>
+    public bool StorySystemEnabled => _worldState != null && _worldBridge != null;
+
+    public MafiaGameEngine(AgentRouter router) : this(router, new ConsoleAgentLogger(), enableStorySystem: true)
+    {
     }
 
-    public MafiaGameEngine(IAgentLogger logger)
+    public MafiaGameEngine(IAgentLogger logger) : this(null, logger, enableStorySystem: true)
+    {
+    }
+
+    /// <summary>
+    /// Full constructor with Story System toggle.
+    /// </summary>
+    /// <param name="router">Optional router for agent communication</param>
+    /// <param name="logger">Logger for game events</param>
+    /// <param name="enableStorySystem">Whether to initialize the Story System (WorldState, StoryGraph, etc.)</param>
+    public MafiaGameEngine(AgentRouter? router, IAgentLogger logger, bool enableStorySystem = true)
     {
         _logger = logger;
-        _router = new AgentRouterBuilder().WithLogger(logger).Build();
+        _router = router ?? new AgentRouterBuilder().WithLogger(logger).Build();
         _state = new GameState();
         _gameAgents = new Dictionary<string, GameAgentData>();
         _autonomousAgents = new Dictionary<string, AutonomousAgent>();
@@ -337,6 +363,46 @@ public class MafiaGameEngine
 
         // Register the game engine agent to receive routed messages
         _router.RegisterAgent(new GameEngineAgent(_logger));
+
+        // Initialize Story System if enabled
+        if (enableStorySystem)
+        {
+            InitializeStorySystem();
+        }
+    }
+
+    /// <summary>
+    /// Initialize the Story System components (WorldState, StoryGraph, IntelRegistry).
+    /// Called from constructor when enableStorySystem is true.
+    /// </summary>
+    private void InitializeStorySystem()
+    {
+        try
+        {
+            // Create world state with initial locations, NPCs, and factions
+            _worldState = WorldStateSeeder.CreateInitialWorld();
+
+            // Create story graph with initial plot threads
+            _storyGraph = WorldStateSeeder.CreateInitialGraph(_worldState);
+
+            // Create intel registry for tracking gathered intelligence
+            _intelRegistry = new IntelRegistry();
+
+            // Create and initialize the bridge between GameState and WorldState
+            _worldBridge = new GameWorldBridge();
+            _worldBridge.Initialize(_state, _worldState);
+
+            // Initial sync from GameState to WorldState
+            _worldBridge.SyncToWorldState(_state, _worldState);
+
+            LogEvent("StorySystem", "Story System initialized with world state, story graph, and intel registry", "system");
+        }
+        catch (Exception ex)
+        {
+            // Log but don't fail - Story System is optional enhancement
+            LogEvent("StorySystemError", $"Failed to initialize Story System: {ex.Message}", "system");
+            // Fields remain null, StorySystemEnabled will return false
+        }
     }
 
     /// <summary>
@@ -563,16 +629,69 @@ public class MafiaGameEngine
         // 6. Update game state
         UpdateGameState();
 
-        // 7. Check win/loss conditions
+        // 7. Sync Story System with game state changes
+        SyncStorySystem();
+
+        // 8. Check win/loss conditions
         CheckGameOver();
 
         turnEvents.Add($"\n💰 Family Wealth: ${_state.FamilyWealth:N0}");
         turnEvents.Add($"⭐ Reputation: {_state.Reputation}/100");
         turnEvents.Add($"🚨 Heat Level: {_state.HeatLevel}/100");
+        if (StorySystemEnabled)
+        {
+            turnEvents.Add($"📖 Story System: Active ({_storyGraph?.GetActivePlots().Count() ?? 0} active plots)");
+        }
 
         _state.Week++;
 
         return turnEvents;
+    }
+
+    /// <summary>
+    /// Synchronize the Story System with current game state.
+    /// Call this after game state modifications.
+    /// </summary>
+    private void SyncStorySystem()
+    {
+        if (!StorySystemEnabled || _worldBridge == null || _worldState == null)
+            return;
+
+        // Sync game state changes to world state
+        _worldBridge.SyncToWorldState(_state, _worldState);
+
+        // Update plot thread states based on world state conditions
+        UpdatePlotThreads();
+    }
+
+    /// <summary>
+    /// Update plot thread states based on current world state.
+    /// Activates dormant plots when their conditions are met.
+    /// </summary>
+    private void UpdatePlotThreads()
+    {
+        if (_storyGraph == null || _worldState == null)
+            return;
+
+        foreach (var plot in _storyGraph.GetAllPlotThreads())
+        {
+            if (plot.State == PlotState.Dormant && plot.ActivationCondition != null)
+            {
+                try
+                {
+                    if (plot.ActivationCondition(_worldState))
+                    {
+                        plot.State = PlotState.Available;
+                        plot.ActivatedAtWeek = _worldState.CurrentWeek;
+                        LogEvent("PlotActivated", $"Plot thread '{plot.Title}' is now available!", "story-system");
+                    }
+                }
+                catch
+                {
+                    // Activation condition threw - ignore and leave dormant
+                }
+            }
+        }
     }
 
     private async Task<List<string>> ProcessWeeklyCollections()

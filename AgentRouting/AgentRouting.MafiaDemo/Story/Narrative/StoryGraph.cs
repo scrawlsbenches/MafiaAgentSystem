@@ -73,6 +73,9 @@ public class StoryGraph
     public IEnumerable<PlotThread> GetAvailablePlots() =>
         _plotThreads.Values.Where(p => p.State == PlotState.Available);
 
+    public IEnumerable<PlotThread> GetAllPlotThreads() =>
+        _plotThreads.Values;
+
     #endregion
 
     #region Graph Algorithms
