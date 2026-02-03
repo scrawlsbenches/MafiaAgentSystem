@@ -530,7 +530,8 @@ public class CapoAgent : AutonomousAgent
             "CrewLeadership",
             "AgentAction",   // For routing agent action requests
             "Collection",    // For routing collection missions
-            "Intimidation"   // For routing intimidation missions
+            "Intimidation",  // For routing intimidation missions
+            "DailyOperations" // For forwarded messages from Underboss
         });
 
         Capabilities.Skills.AddRange(new[]
