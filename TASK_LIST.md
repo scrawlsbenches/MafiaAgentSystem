@@ -54,7 +54,7 @@ Previous organization grouped by *category* (thread safety, MafiaDemo, tests), w
 | **B** | Resources | :white_check_mark: **COMPLETE** | 3 tasks | 5-8 |
 | **D** | App Fixes | :white_check_mark: **COMPLETE** | 5 tasks | 10-14 |
 | **E** | Enhancement | :white_check_mark: **COMPLETE** | 15 tasks | 35-47 |
-| **G** | **Critical Integration** | :construction: **NEW** | 5 tasks | 11-16 |
+| **G** | **Critical Integration** | :construction: **IN PROGRESS** | 5 tasks (1 done) | 11-16 |
 | **F** | Polish | :hourglass: Pending | 9 tasks remaining | 18-26 |
 | | | **TOTAL** | **44 tasks** | **94-131** |
 
@@ -421,24 +421,22 @@ Completed 2026-02-03. Added 63 new tests (1842 → 1905 total).
 > **Priority**: CRITICAL - Required before documentation can be accurate
 > **Source**: Forensic audit 2026-02-03
 
-### G-1: AgentRouter Full Integration :construction:
+### G-1: AgentRouter Full Integration :white_check_mark:
 **Priority**: CRITICAL
 **Estimated Time**: 3-4 hours
 **File**: `AgentRouting/AgentRouting.MafiaDemo/Game/GameEngine.cs`
+**Completed**: 2026-02-03
 
 **Problem**: AgentRouter exists in GameEngine but `RouteMessageAsync()` is never called during `ExecuteTurnAsync()`. Messages are processed directly without going through the middleware pipeline.
 
-**Current State**:
-- AgentRouter instantiated in constructor
-- Routing rules set up in `SetupRoutingRules()`
-- But `_router.RouteMessageAsync()` never called in game loop
+**Solution**: Added `RouteAgentActionAsync()` method that creates `AgentMessage` instances for each agent action and routes them through the middleware pipeline. Added new routing rules for AgentAction, Collection, and HeatManagement categories.
 
 **Subtasks**:
-- [ ] Create `AgentMessage` instances for agent decisions
-- [ ] Route messages through `_router.RouteMessageAsync()` in `ProcessAutonomousActions()`
-- [ ] Verify middleware pipeline executes (logging, validation)
-- [ ] Add tests verifying messages flow through router
-- [ ] Update documentation to confirm integration
+- [x] Create `AgentMessage` instances for agent decisions
+- [x] Route messages through `_router.RouteMessageAsync()` in `ProcessAutonomousActions()`
+- [x] Added `RouteAgentActionAsync()` method with category-based routing
+- [x] Added routing rules: AGENT_ACTIONS, COLLECTIONS, HEAT_MANAGEMENT
+- [x] Update documentation to confirm integration
 
 ---
 

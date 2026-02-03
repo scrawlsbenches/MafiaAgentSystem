@@ -323,7 +323,7 @@ var investigation = new AsyncRuleBuilder<AsyncEventContext>()
 
 ### In Progress
 - [ ] **Agent personality rules**: Currently 24 rules, target 45 (need +21 more personality-driven rules)
-- [ ] **AgentRouter game loop integration**: Router exists in GameEngine but `RouteMessageAsync()` not called during `ExecuteTurnAsync()` - messages processed directly
+- [x] **AgentRouter game loop integration**: `RouteAgentActionAsync()` now routes all agent actions through middleware pipeline during `ProcessAutonomousActions()`
 
 ### Enhancement Opportunities
 - [ ] Save/load game state persistence

@@ -267,6 +267,21 @@ public class MafiaGameEngine
         _router.AddRoutingRule("CONSIGLIERE", "Legal matters",
             ctx => ctx.Category == "Legal",
             "consigliere-001", priority: 900);
+
+        // Agent actions route to capo for execution
+        _router.AddRoutingRule("AGENT_ACTIONS", "Agent action execution",
+            ctx => ctx.Category == "AgentAction",
+            "capo-001", priority: 500);
+
+        // Collection reports route to underboss
+        _router.AddRoutingRule("COLLECTIONS", "Collection reports",
+            ctx => ctx.Category == "Collection",
+            "underboss-001", priority: 600);
+
+        // Heat-related activities route to consigliere for risk assessment
+        _router.AddRoutingRule("HEAT_MANAGEMENT", "Heat management",
+            ctx => ctx.Category == "HeatManagement",
+            "consigliere-001", priority: 700);
     }
 
     /// <summary>
@@ -629,10 +644,17 @@ public class MafiaGameEngine
 
             if (action != null)
             {
+                // Route action through AgentRouter middleware pipeline
+                var routeResult = await RouteAgentActionAsync(agent, action);
+
+                // Execute the action effects on game state
                 var result = await ExecuteAgentAction(agent, action);
+
                 if (!string.IsNullOrEmpty(result))
                 {
-                    events.Add($"  {result}");
+                    // Include routing info if available
+                    var routeInfo = routeResult.Success ? "" : " [route failed]";
+                    events.Add($"  {result}{routeInfo}");
                 }
 
                 agent.ActionCooldown = Random.Shared.Next(1, 3); // Cooldown 1-2 turns
@@ -646,6 +668,71 @@ public class MafiaGameEngine
 
         events.Add("");
         return events;
+    }
+
+    /// <summary>
+    /// Route an agent's action through the AgentRouter middleware pipeline.
+    /// This enables logging, validation, rate limiting, and other cross-cutting concerns.
+    /// </summary>
+    private async Task<MessageResult> RouteAgentActionAsync(GameAgentData agent, string action)
+    {
+        if (_router == null)
+        {
+            return MessageResult.Ok("No router configured");
+        }
+
+        // Determine message category based on action type
+        var category = action switch
+        {
+            "collection" => "Collection",
+            "bribe" or "laylow" => "HeatManagement",
+            "intimidate" or "expand" or "recruit" => "AgentAction",
+            _ => "DailyOperations"
+        };
+
+        // Create message representing this agent action
+        var message = new AgentMessage
+        {
+            SenderId = agent.AgentId,
+            ReceiverId = "game-engine", // Game engine processes actions
+            Subject = $"Agent Action: {action}",
+            Content = $"{agent.AgentId} requests to execute action: {action}",
+            Category = category,
+            Priority = action == "intimidate" ? MessagePriority.High : MessagePriority.Normal,
+            Metadata = new Dictionary<string, object>
+            {
+                ["action"] = action,
+                ["agentPersonality"] = new Dictionary<string, int>
+                {
+                    ["aggression"] = agent.Personality.Aggression,
+                    ["greed"] = agent.Personality.Greed,
+                    ["loyalty"] = agent.Personality.Loyalty,
+                    ["ambition"] = agent.Personality.Ambition
+                },
+                ["gameWeek"] = _state.Week,
+                ["familyWealth"] = _state.FamilyWealth,
+                ["heatLevel"] = _state.HeatLevel
+            }
+        };
+
+        try
+        {
+            // Route through middleware pipeline (logging, validation, etc.)
+            var result = await _router.RouteMessageAsync(message, CancellationToken.None);
+
+            // Log the routing for debugging
+            if (result.Success)
+            {
+                LogEvent("AgentRoute", $"{agent.AgentId} action '{action}' routed successfully", agent.AgentId);
+            }
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.Log($"[GameEngine] Route error for {agent.AgentId}: {ex.Message}");
+            return MessageResult.Fail($"Routing failed: {ex.Message}");
+        }
     }
 
     private string? DecideAction(GameAgentData agent)
