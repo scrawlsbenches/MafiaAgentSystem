@@ -42,10 +42,10 @@ See `TASK_LIST.md` for full details.
 | **A** | Foundation | ✅ Complete | 4 | 2026-02-02 |
 | **B** | Resources | ✅ Complete | 3 | 2026-02-03 |
 | **D** | App Fixes | ✅ Complete | 5 | 2026-02-03 |
-| **E** | Enhancement | 🚀 **NEXT** | 15 | - |
+| **E** | Enhancement | 🔨 **IN PROGRESS** (E-1, E-2 done) | 8/15 | 2026-02-03 |
 | **F** | Polish | ⏳ Pending | 10 | - |
 
-**Test count: 184+ (all passing)**
+**Test count: 1841+ (all passing)**
 
 ---
 
@@ -641,6 +641,48 @@ Gate: No memory leaks, bounded collections
    - Updated test expectations
 
 Gate: MafiaDemo gameplay working correctly
+```
+
+### Batch E Log (Enhancement - Partial) - 2026-02-03
+```
+✅ E-1a: Created Service Registration Extensions
+   - ServiceExtensions.cs with AddAgentRouting(), AddMiddleware<T>(),
+     AddAgent<T>(), AddRulesEngine<T>()
+   - AgentRoutingOptions for configuring router setup
+   - All extensions support singleton/transient patterns
+
+✅ E-1b: Updated Demos to Use Container
+   - MiddlewareDemo: Simplified setup using AddAgentRouting()
+   - AdvancedMiddlewareDemo: Simplified setup using AddAgentRouting()
+   - MafiaDemo: Left as-is (appropriate simpler pattern for games)
+
+✅ E-2a: Extract IRulesEngineResult Interface
+   - Created IResults.cs in RulesEngine/Core/
+   - RulesEngineResult now implements IRulesEngineResult
+
+✅ E-2b: Extract IRuleExecutionResult<T> Interface
+   - Added to IResults.cs
+   - RuleExecutionResult<T> now implements IRuleExecutionResult<T>
+
+✅ E-2c: Extract ITraceSpan Interface
+   - Created IMiddlewareTypes.cs in AgentRouting/Middleware/
+   - TraceSpan now implements ITraceSpan
+
+✅ E-2d: Extract IMiddlewareContext Interface
+   - Added to IMiddlewareTypes.cs
+   - MiddlewareContext now implements IMiddlewareContext
+   - BONUS: Fixed thread safety with ConcurrentDictionary
+
+✅ E-2e: Extract IMetricsSnapshot + IAnalyticsReport Interfaces
+   - Added to IMiddlewareTypes.cs
+   - MetricsSnapshot and AnalyticsReport implement interfaces
+
+✅ E-2f: Extract IWorkflowDefinition + IWorkflowStage Interfaces
+   - Added to IMiddlewareTypes.cs
+   - WorkflowDefinition and WorkflowStage implement interfaces
+
+Remaining: E-3 (Additional Testing - 7 tasks)
+Gate: 1841 tests passing, all interfaces extracted
 ```
 
 ---
