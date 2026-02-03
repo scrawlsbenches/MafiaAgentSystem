@@ -1707,14 +1707,14 @@ public class GameRulesEngine
             .WithPriority(100)
             .WithCondition(async ctx =>
             {
-                // Simulate checking if investigation should start
-                await Task.Delay(10); // Simulated async check
+                // Simulate checking if investigation should start (uses centralized timing)
+                await GameTimingOptions.DelayAsync(GameTimingOptions.Current.CapoThinkingMs);
                 return ctx.TriggerType == "PoliceActivity" && ctx.GameState.HeatLevel > 50;
             })
             .WithAction(async ctx =>
             {
-                // Simulate investigation taking time
-                await Task.Delay(ctx.DelayMs);
+                // Simulate investigation taking time (uses centralized timing)
+                await GameTimingOptions.DelayAsync(ctx.DelayMs);
                 ctx.ResultMessage = "Police investigation completed - heat reduced by 10";
                 ctx.GameState.HeatLevel = Math.Max(0, ctx.GameState.HeatLevel - 10);
                 return RuleResult.Success("ASYNC_POLICE_INVESTIGATION", "Police Investigation",
@@ -1730,12 +1730,12 @@ public class GameRulesEngine
             .WithPriority(90)
             .WithCondition(async ctx =>
             {
-                await Task.Delay(5);
+                await GameTimingOptions.DelayAsync(GameTimingOptions.Current.AssociateThinkingMs);
                 return ctx.TriggerType == "GatherIntel" && ctx.GameState.FamilyWealth > 50000;
             })
             .WithAction(async ctx =>
             {
-                await Task.Delay(ctx.DelayMs);
+                await GameTimingOptions.DelayAsync(ctx.DelayMs);
                 // Reveal information about rivals
                 var intel = ctx.GameState.RivalFamilies.Values.FirstOrDefault();
                 ctx.ResultMessage = intel != null
@@ -1753,12 +1753,12 @@ public class GameRulesEngine
             .WithPriority(80)
             .WithCondition(async ctx =>
             {
-                await Task.Delay(5);
+                await GameTimingOptions.DelayAsync(GameTimingOptions.Current.ConsigliereThinkingMs);
                 return ctx.TriggerType == "BusinessOpportunity" && ctx.GameState.Reputation > 40;
             })
             .WithAction(async ctx =>
             {
-                await Task.Delay(ctx.DelayMs);
+                await GameTimingOptions.DelayAsync(ctx.DelayMs);
                 var bonus = ctx.GameState.Reputation * 100;
                 ctx.GameState.FamilyWealth += bonus;
                 ctx.ResultMessage = $"Business deal completed! Earned ${bonus:N0}";
@@ -1829,7 +1829,10 @@ public class AsyncEventContext
     /// <summary>Type of event trigger (e.g., "PoliceActivity", "GatherIntel")</summary>
     public string TriggerType { get; set; } = "";
 
-    /// <summary>Simulated delay in milliseconds</summary>
+    /// <summary>
+    /// Base delay in milliseconds (processed through GameTimingOptions.DelayAsync
+    /// which applies the global DelayMultiplier - 0 = instant, 1 = normal speed)
+    /// </summary>
     public int DelayMs { get; set; } = 100;
 
     /// <summary>When the event was triggered</summary>
