@@ -2,6 +2,7 @@ using TestRunner.Framework;
 using AgentRouting.MafiaDemo;
 using AgentRouting.MafiaDemo.Game;
 using AgentRouting.Core;
+using TestUtilities;
 
 namespace TestRunner.Tests;
 
@@ -10,18 +11,7 @@ namespace TestRunner.Tests;
 /// </summary>
 public class AutonomousAgentsTests
 {
-    /// <summary>
-    /// Silent logger for tests - suppresses console output
-    /// </summary>
-    private class SilentAgentLogger : IAgentLogger
-    {
-        public void LogMessageReceived(IAgent agent, AgentMessage message) { }
-        public void LogMessageProcessed(IAgent agent, AgentMessage message, MessageResult result) { }
-        public void LogMessageRouted(AgentMessage message, IAgent? fromAgent, IAgent toAgent) { }
-        public void LogError(IAgent agent, AgentMessage message, Exception ex) { }
-    }
-
-    private static IAgentLogger CreateTestLogger() => new SilentAgentLogger();
+    private static IAgentLogger CreateTestLogger() => SilentAgentLogger.Instance;
 
     private static GameState CreateTestGameState()
     {

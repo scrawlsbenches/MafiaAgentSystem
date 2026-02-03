@@ -4,36 +4,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using AgentRouting.DependencyInjection;
 using TestRunner.Framework;
+using TestUtilities;
 
 namespace TestRunner.Tests;
-
-// Test helper classes
-public interface ITestService { string Name { get; } }
-public class TestService : ITestService { public string Name => "TestService"; }
-public class AnotherTestService : ITestService { public string Name => "Another"; }
-
-public interface IDisposableService : IDisposable { bool IsDisposed { get; } }
-public class DisposableService : IDisposableService
-{
-    public bool IsDisposed { get; private set; }
-    public void Dispose() => IsDisposed = true;
-}
-
-public interface ICountingService { int CallCount { get; } }
-public class CountingService : ICountingService
-{
-    private static int _globalCount;
-    public int CallCount { get; }
-    public CountingService() => CallCount = Interlocked.Increment(ref _globalCount);
-    public static void Reset() => _globalCount = 0;
-}
-
-public interface IDependentService { ITestService Dependency { get; } }
-public class DependentService : IDependentService
-{
-    public ITestService Dependency { get; }
-    public DependentService(ITestService dependency) => Dependency = dependency;
-}
 
 [TestClass]
 public class ServiceContainerSingletonTests

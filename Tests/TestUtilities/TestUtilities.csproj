@@ -8,8 +8,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\TestRunner.Framework\TestRunner.Framework.csproj" />
-    <ProjectReference Include="..\TestUtilities\TestUtilities.csproj" />
-    <ProjectReference Include="..\..\AgentRouting\AgentRouting.MafiaDemo\AgentRouting.MafiaDemo.csproj" />
+    <ProjectReference Include="..\..\AgentRouting\AgentRouting\AgentRouting.csproj" />
   </ItemGroup>
 
 </Project>
