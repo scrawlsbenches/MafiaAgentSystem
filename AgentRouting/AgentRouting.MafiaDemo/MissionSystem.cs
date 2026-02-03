@@ -961,4 +961,192 @@ public static class MissionConsequenceHandler
             npc.Status = NPCStatus.Active;
         }
     }
+
+    // Lazy-initialized rules engine for consequence rules
+    private static RulesEngineCore<ConsequenceContext>? _consequenceEngine;
+
+    /// <summary>
+    /// Get or create the consequence rules engine (lazy initialization).
+    /// </summary>
+    private static RulesEngineCore<ConsequenceContext> GetConsequenceEngine()
+    {
+        if (_consequenceEngine == null)
+        {
+            _consequenceEngine = new RulesEngineCore<ConsequenceContext>();
+            ConsequenceRulesSetup.RegisterConsequenceRules(_consequenceEngine);
+        }
+        return _consequenceEngine;
+    }
+
+    /// <summary>
+    /// Apply rule-based consequences to the world state after mission completion.
+    /// This extends the basic relationship changes with richer world state modifications.
+    ///
+    /// Consequences include:
+    /// - NPC status changes (Intimidated, Hostile, Dead)
+    /// - Location state changes
+    /// - Faction hostility changes
+    /// - Revenge mission unlocking
+    /// - Territory transfers
+    /// </summary>
+    /// <param name="mission">The completed mission</param>
+    /// <param name="result">The mission result</param>
+    /// <param name="worldState">The world state to update</param>
+    /// <param name="storyGraph">The story graph for plot unlocking</param>
+    /// <param name="gameState">The game state for player context</param>
+    /// <returns>List of applied consequence descriptions</returns>
+    public static List<string> ApplyConsequenceRules(
+        Mission mission,
+        MissionResult result,
+        WorldState worldState,
+        StoryGraph storyGraph,
+        GameState gameState)
+    {
+        // Create consequence context
+        var context = new ConsequenceContext
+        {
+            MissionId = mission.Id,
+            MissionType = mission.Type.ToString(),
+            Success = result.Success,
+            World = worldState,
+            Graph = storyGraph,
+            PlayerRespect = gameState.Reputation,
+            PlayerHeat = gameState.HeatLevel
+        };
+
+        // Resolve involved entities
+        if (!string.IsNullOrEmpty(mission.LocationId))
+        {
+            context.Location = worldState.GetLocation(mission.LocationId);
+        }
+
+        if (!string.IsNullOrEmpty(mission.NPCId))
+        {
+            context.TargetNPC = worldState.GetNPC(mission.NPCId);
+
+            // Try to find the faction this NPC belongs to
+            if (context.TargetNPC?.FactionId != null)
+            {
+                context.TargetFaction = worldState.GetFaction(context.TargetNPC.FactionId);
+            }
+        }
+
+        // Execute consequence rules
+        var engine = GetConsequenceEngine();
+        engine.EvaluateAll(context);
+
+        return context.AppliedConsequences;
+    }
+
+    /// <summary>
+    /// Record intel gathered from an Information mission.
+    /// Creates an Intel object and adds it to the registry based on mission context.
+    ///
+    /// Intel types created:
+    /// - Location intel: Local heat, owner, state
+    /// - NPC intel: Status, relationship, faction
+    /// - Faction intel: Hostility, resources, at war
+    /// </summary>
+    /// <param name="mission">The completed Information mission</param>
+    /// <param name="result">The mission result (must be Success=true for intel)</param>
+    /// <param name="worldState">The world state for context</param>
+    /// <param name="intelRegistry">The registry to add intel to</param>
+    /// <param name="playerCharacterName">The player's character name (source agent)</param>
+    /// <returns>The created Intel object, or null if no intel was recorded</returns>
+    public static Intel? RecordIntelFromMission(
+        Mission mission,
+        MissionResult result,
+        WorldState worldState,
+        IntelRegistry intelRegistry,
+        string playerCharacterName = "Player")
+    {
+        // Only record intel from successful Information missions
+        if (mission.Type != MissionType.Information || !result.Success)
+        {
+            return null;
+        }
+
+        Intel intel;
+
+        // Determine intel type based on mission context
+        if (!string.IsNullOrEmpty(mission.NPCId))
+        {
+            var npc = worldState.GetNPC(mission.NPCId);
+            if (npc == null) return null;
+
+            intel = new Intel
+            {
+                Type = IntelType.NpcActivity,
+                SubjectId = npc.Id,
+                SubjectType = "npc",
+                Summary = $"Information gathered about {npc.Name}",
+                SourceAgentId = playerCharacterName,
+                Reliability = 70 + (result.RespectGained > 0 ? 10 : 0), // More respect = better info
+                GatheredWeek = worldState.CurrentWeek,
+                ExpiresWeek = worldState.CurrentWeek + 12, // Intel expires after 12 weeks
+                Data = new Dictionary<string, object>
+                {
+                    ["Status"] = npc.Status.ToString(),
+                    ["Relationship"] = npc.Relationship,
+                    ["FactionId"] = npc.FactionId ?? "none",
+                    ["Location"] = npc.LocationId
+                }
+            };
+
+            // If NPC has a faction, also note faction info
+            if (!string.IsNullOrEmpty(npc.FactionId))
+            {
+                var faction = worldState.GetFaction(npc.FactionId);
+                if (faction != null)
+                {
+                    intel.Data["FactionHostility"] = faction.Hostility;
+                    intel.Data["FactionResources"] = faction.Resources;
+                }
+            }
+        }
+        else if (!string.IsNullOrEmpty(mission.LocationId))
+        {
+            var location = worldState.GetLocation(mission.LocationId);
+            if (location == null) return null;
+
+            intel = new Intel
+            {
+                Type = IntelType.LocationStatus,
+                SubjectId = location.Id,
+                SubjectType = "location",
+                Summary = $"Information gathered about {location.Name}",
+                SourceAgentId = playerCharacterName,
+                Reliability = 75,
+                GatheredWeek = worldState.CurrentWeek,
+                ExpiresWeek = worldState.CurrentWeek + 8, // Location intel expires faster
+                Data = new Dictionary<string, object>
+                {
+                    ["State"] = location.State.ToString(),
+                    ["LocalHeat"] = location.LocalHeat,
+                    ["OwnerId"] = location.OwnerId ?? "none",
+                    ["WeeklyValue"] = location.WeeklyValue
+                }
+            };
+        }
+        else
+        {
+            // Generic intel without specific target
+            intel = new Intel
+            {
+                Type = IntelType.Rumor,
+                SubjectId = "general",
+                SubjectType = "general",
+                Summary = $"General intelligence gathered: {mission.Description}",
+                SourceAgentId = playerCharacterName,
+                Reliability = 50,
+                GatheredWeek = worldState.CurrentWeek,
+                ExpiresWeek = worldState.CurrentWeek + 4 // Rumors expire quickly
+            };
+        }
+
+        // Add to registry
+        intelRegistry.Add(intel);
+
+        return intel;
+    }
 }

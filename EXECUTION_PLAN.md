@@ -19,7 +19,7 @@ See `TASK_LIST.md` for full details.
 │ Layer F: POLISH (last)                                       │
 │   Documentation, code cleanup                                │
 ├─────────────────────────────────────────────────────────────┤
-│ Layer I: STORY SYSTEM INTEGRATION    ⏳ 11/18 COMPLETE       │
+│ Layer I: STORY SYSTEM INTEGRATION    ⏳ 14/16 COMPLETE       │
 │   GameState↔WorldState sync, NPCs, plots, missions           │
 ├─────────────────────────────────────────────────────────────┤
 │ Layer H: CODE REVIEW BUG FIXES        ✅ COMPLETE            │
@@ -54,8 +54,8 @@ See `TASK_LIST.md` for full details.
 | **E** | Enhancement | ✅ Complete | 15 | 2026-02-03 |
 | **G** | Critical Integration | ✅ Complete | 5 | 2026-02-03 |
 | **H** | Code Review Fixes | ✅ Complete | 14 | 2026-02-03 |
-| **I** | Story System Integration | ⏳ **11/18 done** | 18 | In Progress |
-| **F** | Polish | ⏳ Pending | 9 | - |
+| **I** | Story System Integration | ⏳ **14/16 done** | 16 | In Progress |
+| **F** | Polish | ⏳ Pending | 11 | - |
 
 **Test count: ~1,765 tests (346 RulesEngine + 823 AgentRouting + 596 MafiaDemo)**
 
@@ -70,10 +70,11 @@ See `TASK_LIST.md` for full details.
 
 **Goal**: Integrate existing Story System with MafiaDemo game mechanics.
 
-**Completed (11 tasks)**:
+**Completed (14 tasks)**:
 - [x] I-1: Story System Implementation (reference - already complete)
 - [x] I-2a: GameState ↔ WorldState Bridge (`Game/GameWorldBridge.cs`)
 - [x] I-2b: WorldState Initialization in GameEngine
+- [x] I-2c: Week Counter Consolidation (LinkedWorldState delegates to WorldState.CurrentWeek)
 - [x] I-3a: Mission Target NPC References (NPCId, LocationId properties)
 - [x] I-3b: Relationship Updates on Mission Completion
 - [x] I-3c: NPC Status Effects on Missions
@@ -81,14 +82,15 @@ See `TASK_LIST.md` for full details.
 - [x] I-4b: Plot Mission Priority (+20 active, +10 available weighting)
 - [x] I-4c: Plot Completion Rewards
 - [x] I-5a: HybridMissionGenerator Integration
-- [x] I-7a-d: Integration Tests (30 tests in StorySystemIntegrationTests.cs)
+- [x] I-5b: Apply ConsequenceRules After Missions (MissionConsequenceHandler.ApplyConsequenceRules)
+- [x] I-5c: Intel Recording for Information Missions (MissionConsequenceHandler.RecordIntelFromMission)
+- [x] I-7a-d: Integration Tests (37+ tests in StorySystemIntegrationTests.cs)
 
-**Remaining (7 tasks)**:
-- [ ] I-2c: Week Counter Consolidation (WorldState.CurrentWeek as single source)
-- [ ] I-5b: Apply ConsequenceRules After Missions
-- [ ] I-5c: Intel Recording for Information Missions
-- [ ] I-6a: Basic NPC Conversation Command
-- [ ] I-6b: Conversation Results Integration
+**Remaining (2 tasks - Moved to Batch F)**:
+- [ ] F-2a: Basic NPC Conversation Command (was I-6a)
+- [ ] F-2b: Conversation Results Integration (was I-6b)
+
+> **Note**: Conversation tasks moved to Batch F as they add new features rather than integrate existing Story System components.
 
 **Integration Components Verified**:
 | Component | File | Status |
@@ -96,8 +98,10 @@ See `TASK_LIST.md` for full details.
 | GameWorldBridge | `Game/GameWorldBridge.cs` | ✅ Bidirectional sync |
 | HybridMissionGenerator | `Story/Integration/HybridMissionGenerator.cs` | ✅ Story + Legacy combined |
 | MissionAdapter | `Story/Integration/MissionAdapter.cs` | ✅ NPC/Location modifiers |
-| MissionConsequenceHandler | `Story/Integration/MissionConsequenceHandler.cs` | ✅ Relationship tracking |
+| MissionConsequenceHandler | `MissionSystem.cs` | ✅ Relationship + ConsequenceRules + Intel |
 | GameEngine Integration | `Game/GameEngine.cs:346-525` | ✅ InitializeStorySystem() |
+| Week Counter | `GameEngine.cs:67` | ✅ LinkedWorldState delegation |
+| PlayerAgent Story Props | `PlayerAgent.cs:75-110` | ✅ WorldState, StoryGraph, IntelRegistry |
 
 ---
 
@@ -948,17 +952,34 @@ Story System Components (28 files in Story/):
    - Combines Story + Legacy mission generation
    - Falls back to legacy when Story System disabled
 
+✅ I-2c: Week Counter Consolidation (2026-02-03)
+   - Added LinkedWorldState property to GameState
+   - GameState.Week now delegates to WorldState.CurrentWeek when linked
+   - Linked automatically in GameEngine.InitializeStorySystem()
+   - 3 new tests for week counter consistency
+
+✅ I-5b: ConsequenceRules Integration (2026-02-03)
+   - Added MissionConsequenceHandler.ApplyConsequenceRules()
+   - Creates ConsequenceContext from mission result
+   - Executes consequence rules (intimidation, hit, negotiation, etc.)
+   - 3 new tests for consequence rules
+
+✅ I-5c: Intel Recording (2026-02-03)
+   - Added MissionConsequenceHandler.RecordIntelFromMission()
+   - Creates Intel for NPC, Location, or general info
+   - Added IntelRegistry property to PlayerAgent
+   - 4 new tests for intel recording
+
 ✅ I-7a-d: Integration Tests
-   - 30 tests in StorySystemIntegrationTests.cs
+   - 37+ tests in StorySystemIntegrationTests.cs
    - Covers GameWorldBridge, HybridMissionGenerator, PlotThread, MissionConsequences
+   - Now includes ConsequenceRules and Intel recording tests
 
-Remaining:
-- [ ] I-2c: Week counter consolidation
-- [ ] I-5b: ConsequenceRules application
-- [ ] I-5c: Intel recording for Information missions
-- [ ] I-6a-b: NPC conversation system
+Remaining (Moved to Batch F):
+- [ ] F-2a: Basic NPC Conversation Command (was I-6a)
+- [ ] F-2b: Conversation Results Integration (was I-6b)
 
-Gate: Story System integrated with MafiaDemo (11/18 tasks complete)
+Gate: Story System integrated with MafiaDemo (14/16 tasks complete, conversation deferred to F)
 ```
 
 ### Documentation Review Log - 2026-02-03
