@@ -19,19 +19,25 @@ See `TASK_LIST.md` for full details.
 │ Layer F: POLISH (last)                                       │
 │   Documentation, code cleanup                                │
 ├─────────────────────────────────────────────────────────────┤
-│ Layer E: ENHANCEMENT                   ✅ COMPLETE           │
+│ Layer H: CODE REVIEW BUG FIXES       ⏳ 7/14 COMPLETE        │
+│   Heat balance, event timing, null safety, defeat logic      │
+├─────────────────────────────────────────────────────────────┤
+│ Layer G: CRITICAL INTEGRATION         ✅ COMPLETE            │
+│   AgentRouter integration, 47 personality rules              │
+├─────────────────────────────────────────────────────────────┤
+│ Layer E: ENHANCEMENT                  ✅ COMPLETE            │
 │   DI extensions, interface extraction, new tests             │
 ├─────────────────────────────────────────────────────────────┤
-│ Layer D: APPLICATION FIXES              ✅ COMPLETE           │
+│ Layer D: APPLICATION FIXES            ✅ COMPLETE            │
 │   MafiaDemo gameplay bugs                                    │
 ├─────────────────────────────────────────────────────────────┤
-│ Layer B: RESOURCE STABILITY             ✅ COMPLETE           │
+│ Layer B: RESOURCE STABILITY           ✅ COMPLETE            │
 │   Memory leaks, unbounded growth                             │
 ├─────────────────────────────────────────────────────────────┤
-│ Layer A: FOUNDATION                     ✅ COMPLETE           │
+│ Layer A: FOUNDATION                   ✅ COMPLETE            │
 │   Thread safety in core libraries                            │
 ├─────────────────────────────────────────────────────────────┤
-│ Layer C: TEST INFRASTRUCTURE            ✅ COMPLETE           │
+│ Layer C: TEST INFRASTRUCTURE          ✅ COMPLETE            │
 │   Setup/Teardown, state isolation                            │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -42,10 +48,49 @@ See `TASK_LIST.md` for full details.
 | **A** | Foundation | ✅ Complete | 4 | 2026-02-02 |
 | **B** | Resources | ✅ Complete | 3 | 2026-02-03 |
 | **D** | App Fixes | ✅ Complete | 5 | 2026-02-03 |
-| **E** | Enhancement | ✅ **COMPLETE** | 15 | 2026-02-03 |
+| **E** | Enhancement | ✅ Complete | 15 | 2026-02-03 |
+| **G** | Critical Integration | ✅ Complete | 5 | 2026-02-03 |
+| **H** | Code Review Fixes | ⏳ **7/14 done** | 14 | In Progress |
 | **F** | Polish | ⏳ Pending | 10 | - |
 
-**Test count: 1916 (all passing)**
+**Test count: 641 MafiaDemo tests + others (all passing)**
+
+---
+
+## Recent Activity Log
+
+### Batch H: Code Review Bug Fixes (2026-02-03)
+
+**Source**: Comprehensive code review of MafiaDemo (see `/MAFIA_DEMO_CODE_REVIEW.md`)
+
+**Critical Fix - Game Now Winnable**:
+- Heat balance was fundamentally broken (23 heat/week generation vs 5 decay = unwinnable)
+- Fixed: Territory heat reduced (23→11/week), decay increased (5→8/week)
+- Verified: Game reaches victory at week 52 with $2.4M wealth and 91% reputation
+
+**Completed (7 tasks)**:
+- [x] H-1: Heat balance (CRITICAL) - game now winnable
+- [x] H-2: Event timing uses game weeks instead of real time
+- [x] H-3: CHAIN_HIT_TO_WAR null safety
+- [x] H-4: Rival hostility clamping (prevents negative values)
+- [x] H-5: MissionEvaluator duplicate rule application
+- [x] H-6: PlayerAgent decision trace field consistency
+- [x] H-7: CONSEQUENCE_VULNERABLE null safety
+- [x] H-9: Currency symbol display ($ instead of ¤)
+
+**Remaining (7 tasks)**:
+- [ ] H-8: RivalStrategyContext.ShouldAttack logic review
+- [ ] H-10: Agent action coordination (prevent duplicate bribes)
+- [ ] H-11: Consolidate defeat condition logic
+- [ ] H-12: Event log eviction performance
+- [ ] H-13: Victory condition achievability test
+- [ ] H-14: Null safety for rival lookups
+
+### Batch G: Critical Integration (2026-02-03) ✅
+
+- [x] G-1: AgentRouter full integration with RouteAgentActionAsync
+- [x] G-2: Added 23 personality-driven rules (47 total agent rules)
+- [x] G-3-5: Moved to Batch F (documentation polish)
 
 ---
 
