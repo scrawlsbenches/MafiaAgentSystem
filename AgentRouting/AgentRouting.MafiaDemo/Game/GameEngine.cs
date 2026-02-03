@@ -1,7 +1,9 @@
 using AgentRouting.Core;
 using AgentRouting.MafiaDemo;
+using AgentRouting.MafiaDemo.Missions;
 using AgentRouting.MafiaDemo.Rules;
 using AgentRouting.MafiaDemo.Story;
+using AgentRouting.MafiaDemo.Story.Integration;
 using System.Collections.Concurrent;
 using System.Text;
 
@@ -345,6 +347,8 @@ public class MafiaGameEngine
     private StoryGraph? _storyGraph;
     private IntelRegistry? _intelRegistry;
     private GameWorldBridge? _worldBridge;
+    private MissionHistory? _missionHistory;
+    private HybridMissionGenerator? _missionGenerator;
 
     public GameState State => _state;
 
@@ -367,6 +371,79 @@ public class MafiaGameEngine
     /// Whether the Story System is enabled and initialized.
     /// </summary>
     public bool StorySystemEnabled => _worldState != null && _worldBridge != null;
+
+    /// <summary>
+    /// The mission history tracking completed missions. Null if Story System not enabled.
+    /// </summary>
+    public MissionHistory? MissionHistory => _missionHistory;
+
+    /// <summary>
+    /// Generate a mission using the hybrid generator (Story + Legacy systems).
+    /// Returns a mission blending narrative-driven and procedural content.
+    /// Falls back to legacy-only generation if Story System is not enabled.
+    /// </summary>
+    public Mission GenerateMission(PlayerCharacter player)
+    {
+        if (_missionGenerator != null)
+        {
+            return _missionGenerator.GenerateMission(player, _state);
+        }
+
+        // Fallback to legacy generator if Story System not enabled
+        var legacyGenerator = new MissionGenerator();
+        return legacyGenerator.GenerateMission(player, _state, _worldState);
+    }
+
+    /// <summary>
+    /// Generate multiple mission choices for player selection.
+    /// Returns up to 3 distinct mission options when possible.
+    /// </summary>
+    public List<Mission> GenerateMissionChoices(PlayerCharacter player, int count = 3)
+    {
+        if (_missionGenerator != null)
+        {
+            return _missionGenerator.GenerateMissionChoices(player, _state, count);
+        }
+
+        // Fallback: generate multiple missions using legacy generator
+        var legacyGenerator = new MissionGenerator();
+        var missions = new List<Mission>();
+        var seen = new HashSet<string>();
+
+        for (int attempts = 0; attempts < count * 3 && missions.Count < count; attempts++)
+        {
+            var mission = legacyGenerator.GenerateMission(player, _state, _worldState);
+            var key = $"{mission.Type}:{mission.Title}";
+            if (!seen.Contains(key))
+            {
+                seen.Add(key);
+                missions.Add(mission);
+            }
+        }
+
+        return missions;
+    }
+
+    /// <summary>
+    /// Record a completed mission in the history for repetition tracking.
+    /// Call this after a mission is completed to influence future mission generation.
+    /// </summary>
+    public void RecordMissionCompletion(Mission mission, bool success)
+    {
+        if (_missionHistory == null || _worldState == null)
+            return;
+
+        // Only record successful missions for repetition tracking
+        // (failed missions shouldn't count as "done" for variety purposes)
+        if (success)
+        {
+            _missionHistory.RecordMission(
+                mission.Type.ToString(),
+                mission.LocationId,
+                mission.NPCId,
+                _worldState.CurrentWeek);
+        }
+    }
 
     public MafiaGameEngine(AgentRouter router) : this(router, new ConsoleAgentLogger(), enableStorySystem: true)
     {
@@ -420,6 +497,9 @@ public class MafiaGameEngine
             // Create intel registry for tracking gathered intelligence
             _intelRegistry = new IntelRegistry();
 
+            // Create mission history for tracking completed missions (repetition tracking)
+            _missionHistory = new MissionHistory();
+
             // Create and initialize the bridge between GameState and WorldState
             _worldBridge = new GameWorldBridge();
             _worldBridge.Initialize(_state, _worldState);
@@ -427,7 +507,14 @@ public class MafiaGameEngine
             // Initial sync from GameState to WorldState
             _worldBridge.SyncToWorldState(_state, _worldState);
 
-            LogEvent("StorySystem", "Story System initialized with world state, story graph, and intel registry", "system");
+            // Create hybrid mission generator combining Story + Legacy systems
+            _missionGenerator = new HybridMissionGenerator(
+                _worldState,
+                _storyGraph,
+                _intelRegistry,
+                _missionHistory);
+
+            LogEvent("StorySystem", "Story System initialized with world state, story graph, intel registry, and hybrid mission generator", "system");
         }
         catch (Exception ex)
         {
