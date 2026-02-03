@@ -218,30 +218,47 @@ public class MyAgent : IAgent {
 
 ```
 RulesEngine/
+├── IRulesEngine<T>       # Main engine contract
 ├── IRule<T>              # Sync rule contract
 ├── IAsyncRule<T>         # Async rule contract (for I/O operations)
-├── RulesEngineCore<T>    # Thread-safe, supports both sync and async rules
+├── RulesEngineCore<T>    # Thread-safe implementation
+├── ImmutableRulesEngine<T> # Lock-free immutable alternative
+├── RuleBuilder<T>        # Fluent sync rule builder
+├── AsyncRuleBuilder<T>   # Fluent async rule builder
+├── CompositeRuleBuilder<T> # Combine existing rules
 ├── RuleValidationException # Thrown on invalid rule registration
 └── RuleExecutionResult<T>  # Detailed execution result with exception info
 
 AgentRouting/
 ├── IAgent             # Agent contract
 ├── IAgentMiddleware   # Middleware contract (in MiddlewareInfrastructure.cs)
+├── IMiddlewarePipeline # Pipeline contract
 ├── IAgentLogger       # Logging abstraction (nullable fromAgent)
+├── IStateStore        # State persistence abstraction
+├── ISystemClock       # Testable time abstraction
+├── IServiceContainer  # Dependency injection contract
 ├── AgentRouter        # Depends on IAgent abstraction
-├── MiddlewarePipeline # Composes IAgentMiddleware
-└── ISystemClock       # Testable time abstraction
+└── MiddlewarePipeline # Composes IAgentMiddleware
 ```
 
 ## File Locations
 
-- **Rules**: `RulesEngine/RulesEngine/Core/` (includes `AsyncRule.cs`, `RuleValidationException.cs`)
-- **Thread Safety**: `RulesEngine/RulesEngine/Enhanced/`
+- **Rules Core**: `RulesEngine/RulesEngine/Core/`
+  - `IRulesEngine.cs`, `IRule.cs` - Core interfaces
+  - `RulesEngineCore.cs` - Main engine (includes `ImmutableRulesEngine<T>` at end)
+  - `Rule.cs` - Sync rule implementation
+  - `AsyncRule.cs` - Async rule implementation
+  - `RuleBuilder.cs` - Fluent builders (`RuleBuilder<T>`, `CompositeRuleBuilder<T>`)
+  - `DynamicRuleFactory.cs` - Configuration-based rule creation
+  - `RuleValidationException.cs` - Validation errors
+- **Rules Enhanced**: `RulesEngine/RulesEngine/Enhanced/`
+  - `RuleValidation.cs` - Rule validator, analyzer, debuggable rules
 - **Agents**: `AgentRouting/AgentRouting/Core/`
 - **Middleware**: `AgentRouting/AgentRouting/Middleware/`
 - **Configuration**: `AgentRouting/AgentRouting/Configuration/` (defaults)
-- **Infrastructure**: `AgentRouting/AgentRouting/Infrastructure/` (SystemClock)
-- **Test Framework**: `Tests/TestRunner.Framework/` (Assert, attributes)
+- **Infrastructure**: `AgentRouting/AgentRouting/Infrastructure/` (SystemClock, StateStore)
+- **Dependency Injection**: `AgentRouting/AgentRouting/DependencyInjection/` (ServiceContainer)
+- **Test Framework**: `Tests/TestRunner.Framework/` (Assert, attributes, TestBase)
 - **Test Runner**: `Tests/TestRunner/` (runtime assembly loading)
 - **RulesEngine Tests**: `Tests/RulesEngine.Tests/`
 - **AgentRouting Tests**: `Tests/AgentRouting.Tests/`
@@ -275,6 +292,16 @@ The `AgentRouting.MafiaDemo` project is a **test bed** for exercising the RulesE
 
 **Purpose:** Find API gaps and areas for improvement in the core libraries through real-world usage patterns.
 
+**Scale:** 8 specialized `RulesEngineCore<T>` instances with ~98 total rules:
+- `_gameRules` (GameRuleContext) - Victory/defeat, warnings
+- `_agentRules` (AgentDecisionContext) - AI agent decisions (~45 rules)
+- `_eventRules` (EventContext) - Random event generation
+- `_valuationEngine` (TerritoryValueContext) - Economic pricing
+- `_difficultyEngine` (DifficultyContext) - Adaptive difficulty
+- `_strategyEngine` (RivalStrategyContext) - Rival AI
+- `_chainEngine` (ChainReactionContext) - Event cascades
+- `_asyncRules` (AsyncEventContext) - Time-delayed operations
+
 **Key namespaces:**
 - `AgentRouting.MafiaDemo.Game` - GameState, Territory, RivalFamily, AutonomousAgent base class
 - `AgentRouting.MafiaDemo.Rules` - Rules engine integration for game logic
@@ -297,10 +324,54 @@ engine.AddRule("RULE_ID", "Rule Name",
     priority: 100);
 ```
 
+**Fluent builder (RuleBuilder<T>):** For readable, composable conditions
+```csharp
+var rule = new RuleBuilder<Order>()
+    .WithId("high-value-vip")
+    .WithName("High Value VIP Order")
+    .WithPriority(100)
+    .When(o => o.Total > 1000)
+    .And(o => o.Customer.IsVip)
+    .Then(o => o.ApplyDiscount(0.1))
+    .Build();
+```
+
+**Composite builder (CompositeRuleBuilder<T>):** For combining existing rules
+```csharp
+var composite = new CompositeRuleBuilder<Order>()
+    .WithId("complex-approval")
+    .WithName("Complex Approval Rule")
+    .WithOperator(CompositeOperator.Or)
+    .AddRule(highValueRule)
+    .AddRule(riskyCategoryRule)
+    .Build();
+```
+
 **Execution modes:**
 - `Execute(fact)` - Returns results, rules don't modify fact
 - `EvaluateAll(fact)` - Applies all matching rules, modifies fact in-place
 - `ExecuteAsync(fact, cancellationToken)` - Async execution with cancellation support
+
+## RulesEngine Options
+
+Configure engine behavior via `RulesEngineOptions`:
+
+```csharp
+var options = new RulesEngineOptions
+{
+    StopOnFirstMatch = true,           // Stop after first matching rule
+    EnableParallelExecution = false,   // Execute rules in parallel
+    TrackPerformance = true,           // Track execution metrics
+    MaxRulesToExecute = null,          // Limit rules executed (null = no limit)
+    AllowDuplicateRuleIds = false      // Allow same ID for multiple rules
+};
+var engine = new RulesEngineCore<Order>(options);
+```
+
+**StopOnFirstMatch behavior:**
+- Sequential: Breaks loop after first match
+- Parallel: Uses linked CancellationTokenSource to stop other threads
+- Async: Checks flag between async rule evaluations
 
 ## Async Rules (IAsyncRule<T>)
 
@@ -336,6 +407,23 @@ var results = await engine.ExecuteAsync(order, cancellationToken);
 using var engine = new RulesEngineCore<Order>();
 // Safe for concurrent access
 ```
+
+## Immutable Rules Engine
+
+For lock-free concurrent access, use `ImmutableRulesEngine<T>`:
+
+```csharp
+var engine1 = new ImmutableRulesEngine<Order>();
+var engine2 = engine1.WithRule(rule1);  // Returns NEW engine
+var engine3 = engine2.WithRule(rule2);  // Each is independent
+
+// All three can be used concurrently without locks
+```
+
+**When to use:**
+- High read-to-write ratio (few rule changes, many executions)
+- Functional programming patterns
+- Snapshot isolation required
 
 ## Rule Validation
 
