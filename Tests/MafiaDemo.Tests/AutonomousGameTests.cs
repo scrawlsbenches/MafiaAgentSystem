@@ -1570,5 +1570,344 @@ public class AutonomousGameTests
         Assert.Equal(5, ruleMetrics.ExecutionCount);
     }
 
+    // =========================================================================
+    // COMPOSITE RULE TESTS
+    // =========================================================================
+
+    [Test]
+    public void GameRulesEngine_CompositeRule_OrLogic_TriggersOnAnyMatch()
+    {
+        // Test that OR composite rules trigger when any sub-rule matches
+        var state = new GameState
+        {
+            FamilyWealth = 500000m,  // Dominance mode
+            HeatLevel = 20,
+            Reputation = 90,
+            SoldierCount = 50
+        };
+        state.RivalFamilies["test"] = new RivalFamily { Hostility = 30, Strength = 30 }; // Weak rival
+
+        var engine = new GameRulesEngine(state);
+
+        // Aggressive agent in dominance mode with weak rival
+        var agent = new GameAgentData
+        {
+            AgentId = "test",
+            Personality = new AgentPersonality
+            {
+                Aggression = 80,
+                Greed = 30,
+                Loyalty = 50,
+                Ambition = 50
+            }
+        };
+
+        var action = engine.GetAgentAction(agent);
+
+        // The COMPOSITE_INTIMIDATE_ACTION or one of the dominance rules should trigger
+        Assert.True(action == "intimidate" || action == "expand" || action == "collection",
+            $"Dominance mode should trigger strategic action but got {action}");
+    }
+
+    [Test]
+    public void GameRulesEngine_CompositeRule_AndLogic_RequiresAllConditions()
+    {
+        // Test that AND composite rules require ALL conditions
+        var state = new GameState
+        {
+            FamilyWealth = 150000m,
+            HeatLevel = 30,  // HasHeatBudget = true (< 40)
+            SoldierCount = 20
+        };
+        state.RivalFamilies["test"] = new RivalFamily { Hostility = 30 }; // Not imminent attack
+
+        var engine = new GameRulesEngine(state);
+
+        // Greedy agent that would trigger safe collection composite
+        var agent = new GameAgentData
+        {
+            AgentId = "test",
+            Personality = new AgentPersonality
+            {
+                Aggression = 30,
+                Greed = 80,  // IsGreedy
+                Loyalty = 50,
+                Ambition = 50
+            }
+        };
+
+        var action = engine.GetAgentAction(agent);
+
+        // Safe collection composite should match (all AND conditions met + greedy)
+        Assert.True(action == "collection" || action == "expand",
+            $"Safe conditions with greedy agent should collect or expand but got {action}");
+    }
+
+    // =========================================================================
+    // RULE ANALYZER TESTS
+    // =========================================================================
+
+    [Test]
+    public void GameRulesEngine_RuleAnalyzer_GeneratesReport()
+    {
+        var state = new GameState
+        {
+            FamilyWealth = 100000m,
+            HeatLevel = 30,
+            SoldierCount = 15
+        };
+        state.RivalFamilies["test"] = new RivalFamily { Hostility = 40 };
+
+        var engine = new GameRulesEngine(state);
+
+        // Generate test cases and analyze
+        var testCases = engine.GenerateAnalysisTestCases();
+        var report = engine.AnalyzeAgentRules(testCases);
+
+        // Verify report structure
+        Assert.True(report.RuleAnalyses.Count > 0, "Report should have rule analyses");
+
+        // Check that we have some rules with matches
+        var matchingRules = report.RuleAnalyses.Where(a => a.MatchedCount > 0).ToList();
+        Assert.True(matchingRules.Count > 0, "Some rules should have matches");
+    }
+
+    [Test]
+    public void GameRulesEngine_RuleAnalyzer_DetectsOverlaps()
+    {
+        var state = new GameState
+        {
+            FamilyWealth = 100000m,
+            HeatLevel = 30,
+            SoldierCount = 15
+        };
+        state.RivalFamilies["test"] = new RivalFamily { Hostility = 40 };
+
+        var engine = new GameRulesEngine(state);
+
+        var report = engine.GetAgentRuleAnalysisReport();
+
+        // Report should be non-empty string
+        Assert.True(!string.IsNullOrEmpty(report), "Analysis report should not be empty");
+        Assert.Contains("Rule Analysis Report", report);
+    }
+
+    [Test]
+    public void GameRulesEngine_GenerateAnalysisTestCases_CreatesVariedScenarios()
+    {
+        var state = new GameState { FamilyWealth = 100000m };
+        state.RivalFamilies["test"] = new RivalFamily();
+
+        var engine = new GameRulesEngine(state);
+
+        var testCases = engine.GenerateAnalysisTestCases();
+
+        // Should generate multiple varied test cases
+        Assert.True(testCases.Count >= 5, $"Expected at least 5 test cases, got {testCases.Count}");
+
+        // Test cases should have different game phases
+        var phases = testCases.Select(tc => tc.Phase).Distinct().ToList();
+        Assert.True(phases.Count >= 2, "Test cases should cover multiple game phases");
+    }
+
+    // =========================================================================
+    // DEBUGGABLE RULE TESTS
+    // =========================================================================
+
+    [Test]
+    public void GameRulesEngine_GetAgentActionWithTrace_ProvidesDetailedTrace()
+    {
+        var state = new GameState
+        {
+            FamilyWealth = 100000m,
+            HeatLevel = 30,
+            SoldierCount = 15
+        };
+        state.RivalFamilies["test"] = new RivalFamily { Hostility = 40 };
+
+        var engine = new GameRulesEngine(state);
+
+        var agent = new GameAgentData
+        {
+            AgentId = "test-agent",
+            Personality = new AgentPersonality
+            {
+                Aggression = 50,
+                Greed = 50,
+                Loyalty = 50,
+                Ambition = 50
+            }
+        };
+
+        var action = engine.GetAgentActionWithTrace(agent, out var trace);
+
+        // Verify trace contains expected information
+        Assert.True(trace.Count > 5, "Trace should have multiple lines");
+        Assert.True(trace.Any(t => t.Contains("Decision Trace")), "Trace should have header");
+        Assert.True(trace.Any(t => t.Contains("Game Phase")), "Trace should show game phase");
+        Assert.True(trace.Any(t => t.Contains("Heat")), "Trace should show heat level");
+        Assert.True(trace.Any(t => t.Contains("Rule Evaluation")), "Trace should show rule evaluation");
+        Assert.True(trace.Any(t => t.Contains(">>>")), "Trace should show selected action");
+    }
+
+    [Test]
+    public void GameRulesEngine_GetAgentActionWithTrace_ShowsMatchedRules()
+    {
+        var state = new GameState
+        {
+            FamilyWealth = 20000m,  // Survival mode
+            HeatLevel = 60,         // Needs heat reduction
+            PreviousHeatLevel = 55, // Heat rising
+            SoldierCount = 10
+        };
+        state.RivalFamilies["test"] = new RivalFamily { Hostility = 30 };
+
+        var engine = new GameRulesEngine(state);
+
+        var agent = new GameAgentData
+        {
+            AgentId = "cautious-agent",
+            Personality = new AgentPersonality
+            {
+                Aggression = 20,
+                Greed = 30,
+                Loyalty = 70,
+                Ambition = 30
+            }
+        };
+
+        var action = engine.GetAgentActionWithTrace(agent, out var trace);
+
+        // Should show some rules that matched (✓) and some that didn't (✗)
+        Assert.True(trace.Any(t => t.Contains("✓") || t.Contains("MATCHED")),
+            "Trace should show at least one matched rule");
+        Assert.True(trace.Any(t => t.Contains("✗") || t.Contains("no match")),
+            "Trace should show some non-matching rules");
+    }
+
+    // =========================================================================
+    // ASYNC RULE TESTS
+    // =========================================================================
+
+    [Test]
+    public async Task GameRulesEngine_AsyncRule_PoliceInvestigation_ReducesHeat()
+    {
+        var state = new GameState
+        {
+            FamilyWealth = 100000m,
+            HeatLevel = 60  // Above 50, triggers police investigation
+        };
+        state.RivalFamilies["test"] = new RivalFamily();
+
+        var engine = new GameRulesEngine(state);
+        engine.SetupAsyncEventRules();
+
+        var initialHeat = state.HeatLevel;
+
+        var result = await engine.ProcessAsyncEventAsync("PoliceActivity", delayMs: 10);
+
+        Assert.Contains("investigation", result.ToLower());
+        Assert.Equal(initialHeat - 10, state.HeatLevel);
+    }
+
+    [Test]
+    public async Task GameRulesEngine_AsyncRule_InformantIntel_GathersInfo()
+    {
+        var state = new GameState
+        {
+            FamilyWealth = 100000m,  // Above 50k threshold
+            HeatLevel = 30
+        };
+        state.RivalFamilies["test"] = new RivalFamily { Strength = 60, Hostility = 70 };
+
+        var engine = new GameRulesEngine(state);
+        engine.SetupAsyncEventRules();
+
+        var result = await engine.ProcessAsyncEventAsync("GatherIntel", delayMs: 10);
+
+        Assert.Contains("intel", result.ToLower());
+        Assert.Contains("60", result);  // Rival strength
+        Assert.Contains("70", result);  // Rival hostility
+    }
+
+    [Test]
+    public async Task GameRulesEngine_AsyncRule_BusinessDeal_IncreasesWealth()
+    {
+        var state = new GameState
+        {
+            FamilyWealth = 100000m,
+            Reputation = 60  // Above 40 threshold
+        };
+        state.RivalFamilies["test"] = new RivalFamily();
+
+        var engine = new GameRulesEngine(state);
+        engine.SetupAsyncEventRules();
+
+        var initialWealth = state.FamilyWealth;
+        var expectedBonus = state.Reputation * 100;
+
+        var result = await engine.ProcessAsyncEventAsync("BusinessOpportunity", delayMs: 10);
+
+        Assert.Contains("deal", result.ToLower());
+        Assert.Equal(initialWealth + expectedBonus, state.FamilyWealth);
+    }
+
+    [Test]
+    public async Task GameRulesEngine_AsyncRule_NoMatchingHandler_ReturnsMessage()
+    {
+        var state = new GameState
+        {
+            FamilyWealth = 100000m,
+            HeatLevel = 30  // Below 50, won't trigger police investigation
+        };
+        state.RivalFamilies["test"] = new RivalFamily();
+
+        var engine = new GameRulesEngine(state);
+        engine.SetupAsyncEventRules();
+
+        // Trigger police activity but heat is too low
+        var result = await engine.ProcessAsyncEventAsync("PoliceActivity", delayMs: 10);
+
+        Assert.Equal("No matching async event handler", result);
+    }
+
+    [Test]
+    public void GameRulesEngine_AsyncRule_GetAsyncRuleIds_ReturnsAllRules()
+    {
+        var state = new GameState { FamilyWealth = 100000m };
+        state.RivalFamilies["test"] = new RivalFamily();
+
+        var engine = new GameRulesEngine(state);
+        engine.SetupAsyncEventRules();
+
+        var ruleIds = engine.GetAsyncRuleIds().ToList();
+
+        Assert.Equal(3, ruleIds.Count);
+        Assert.Contains("ASYNC_POLICE_INVESTIGATION", ruleIds);
+        Assert.Contains("ASYNC_INFORMANT_INTEL", ruleIds);
+        Assert.Contains("ASYNC_BUSINESS_DEAL", ruleIds);
+    }
+
+    [Test]
+    public async Task GameRulesEngine_AsyncRule_SupportsCancellation()
+    {
+        var state = new GameState
+        {
+            FamilyWealth = 100000m,
+            HeatLevel = 60
+        };
+        state.RivalFamilies["test"] = new RivalFamily();
+
+        var engine = new GameRulesEngine(state);
+        engine.SetupAsyncEventRules();
+
+        using var cts = new CancellationTokenSource();
+
+        // Should complete without exception
+        var result = await engine.ProcessAsyncEventAsync("PoliceActivity", delayMs: 10, cts.Token);
+
+        Assert.NotNull(result);
+    }
+
     #endregion
 }

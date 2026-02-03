@@ -1,4 +1,5 @@
 using RulesEngine.Core;
+using RulesEngine.Enhanced;
 using AgentRouting.MafiaDemo.Game;
 using System.Linq.Expressions;
 
@@ -735,6 +736,80 @@ public class GameRulesEngine
         );
 
         // =====================================================================
+        // COMPOSITE RULES - Complex multi-strategy decisions using CompositeRule
+        // =====================================================================
+
+        // Composite rule: Multiple ways to trigger "intimidate" action
+        // Uses OR logic - if ANY sub-rule matches, the composite matches
+        var intimidateStrategies = new CompositeRuleBuilder<AgentDecisionContext>()
+            .WithId("COMPOSITE_INTIMIDATE")
+            .WithName("Multi-Strategy Intimidation")
+            .WithDescription("Combines multiple intimidation triggers with OR logic")
+            .WithPriority(500)
+            .WithOperator(CompositeOperator.Or)
+            .AddRule(new RuleBuilder<AgentDecisionContext>()
+                .WithId("INTIMIDATE_DOMINANT")
+                .WithName("Dominant Position Strike")
+                .When(ctx => ctx.InDominanceMode)
+                .And(ctx => ctx.RivalIsWeak)
+                .Build())
+            .AddRule(new RuleBuilder<AgentDecisionContext>()
+                .WithId("INTIMIDATE_DEFENSIVE")
+                .WithName("Defensive Retaliation")
+                .When(ctx => ctx.FamilyUnderThreat)
+                .And(ctx => ctx.IsAggressive)
+                .And(ctx => !ctx.HeatIsCritical)
+                .Build())
+            .AddRule(new RuleBuilder<AgentDecisionContext>()
+                .WithId("INTIMIDATE_OPPORTUNISTIC")
+                .WithName("Opportunistic Strike")
+                .When(ctx => ctx.OpportunisticStrike)
+                .Build())
+            .Build();
+
+        // Wrap composite with action
+        _agentRules.AddRule(
+            "COMPOSITE_INTIMIDATE_ACTION",
+            "Composite Intimidation Strategy",
+            ctx => intimidateStrategies.Evaluate(ctx),
+            ctx => { ctx.RecommendedAction = "intimidate"; },
+            priority: 500
+        );
+
+        // Composite rule: Multiple safe collection strategies (AND logic)
+        // Uses AND logic - ALL sub-rules must match for composite to match
+        var safeCollectionRequirements = new CompositeRuleBuilder<AgentDecisionContext>()
+            .WithId("COMPOSITE_SAFE_COLLECT")
+            .WithName("Safe Collection Prerequisites")
+            .WithDescription("All conditions must be met for safe collection")
+            .WithPriority(450)
+            .WithOperator(CompositeOperator.And)
+            .AddRule(new RuleBuilder<AgentDecisionContext>()
+                .WithId("SAFE_HEAT_CHECK")
+                .WithName("Heat Level Safe")
+                .When(ctx => ctx.HasHeatBudget)
+                .Build())
+            .AddRule(new RuleBuilder<AgentDecisionContext>()
+                .WithId("SAFE_RIVAL_CHECK")
+                .WithName("No Imminent Rival Threat")
+                .When(ctx => !ctx.RivalAttackImminent)
+                .Build())
+            .AddRule(new RuleBuilder<AgentDecisionContext>()
+                .WithId("SAFE_ECONOMIC_CHECK")
+                .WithName("Not in Crisis")
+                .When(ctx => !ctx.InSurvivalMode || ctx.GameState.FamilyWealth > 20000)
+                .Build())
+            .Build();
+
+        _agentRules.AddRule(
+            "COMPOSITE_SAFE_COLLECT_ACTION",
+            "Safe Collection Strategy",
+            ctx => safeCollectionRequirements.Evaluate(ctx) && ctx.IsGreedy,
+            ctx => { ctx.RecommendedAction = "collection"; },
+            priority: 450
+        );
+
+        // =====================================================================
         // DEFAULT RULES - Fallback behavior
         // =====================================================================
 
@@ -1414,6 +1489,357 @@ public class GameRulesEngine
             .Keys
             .Where(id => id.StartsWith("CONFIG_"));
     }
+
+    // =========================================================================
+    // RULE ANALYZER - Detect rule conflicts, overlaps, and dead rules
+    // =========================================================================
+
+    /// <summary>
+    /// Analyze agent rules using a set of test scenarios.
+    /// Detects overlapping rules, dead rules, and provides match statistics.
+    /// </summary>
+    /// <param name="testScenarios">Test cases to analyze against</param>
+    /// <returns>Analysis report with findings</returns>
+    public AnalysisReport AnalyzeAgentRules(IEnumerable<AgentDecisionContext> testScenarios)
+    {
+        var analyzer = new RuleAnalyzer<AgentDecisionContext>(_agentRules, testScenarios);
+        return analyzer.Analyze();
+    }
+
+    /// <summary>
+    /// Generate standard test scenarios for agent rule analysis.
+    /// Creates a variety of game states to test rule coverage.
+    /// </summary>
+    public List<AgentDecisionContext> GenerateAnalysisTestCases()
+    {
+        var testCases = new List<AgentDecisionContext>();
+
+        // Scenario 1: Survival mode, critical heat
+        var survivalCritical = new GameState
+        {
+            FamilyWealth = 20000m,
+            HeatLevel = 90,
+            PreviousHeatLevel = 85,
+            SoldierCount = 10
+        };
+        survivalCritical.RivalFamilies["test"] = new RivalFamily { Hostility = 50 };
+        testCases.Add(CreateTestContext(survivalCritical, aggressive: false, greedy: false));
+
+        // Scenario 2: Dominance mode, weak rival
+        var dominanceWeak = new GameState
+        {
+            FamilyWealth = 500000m,
+            HeatLevel = 20,
+            Reputation = 90,
+            SoldierCount = 50
+        };
+        dominanceWeak.RivalFamilies["test"] = new RivalFamily { Hostility = 30, Strength = 30 };
+        testCases.Add(CreateTestContext(dominanceWeak, aggressive: true, greedy: false));
+
+        // Scenario 3: Growth mode, peaceful
+        var growthPeaceful = new GameState
+        {
+            FamilyWealth = 150000m,
+            HeatLevel = 30,
+            PreviousHeatLevel = 35,
+            Reputation = 60,
+            SoldierCount = 20
+        };
+        growthPeaceful.RivalFamilies["test"] = new RivalFamily { Hostility = 20 };
+        testCases.Add(CreateTestContext(growthPeaceful, aggressive: false, greedy: true));
+
+        // Scenario 4: Under attack, need defense
+        var underAttack = new GameState
+        {
+            FamilyWealth = 100000m,
+            HeatLevel = 50,
+            SoldierCount = 8
+        };
+        underAttack.RivalFamilies["test"] = new RivalFamily { Hostility = 90, Strength = 70 };
+        testCases.Add(CreateTestContext(underAttack, aggressive: true, greedy: false));
+
+        // Scenario 5: Accumulation mode, stable
+        var accumulationStable = new GameState
+        {
+            FamilyWealth = 80000m,
+            HeatLevel = 25,
+            PreviousHeatLevel = 25,
+            Reputation = 50,
+            SoldierCount = 15
+        };
+        accumulationStable.RivalFamilies["test"] = new RivalFamily { Hostility = 40 };
+        testCases.Add(CreateTestContext(accumulationStable, aggressive: false, greedy: true));
+
+        // Scenario 6: High heat, need bribe
+        var highHeatBribe = new GameState
+        {
+            FamilyWealth = 200000m,
+            HeatLevel = 65,
+            PreviousHeatLevel = 60,
+            SoldierCount = 20
+        };
+        highHeatBribe.RivalFamilies["test"] = new RivalFamily { Hostility = 40 };
+        testCases.Add(CreateTestContext(highHeatBribe, aggressive: false, greedy: false, calculating: true));
+
+        return testCases;
+    }
+
+    private AgentDecisionContext CreateTestContext(GameState state, bool aggressive, bool greedy, bool calculating = false)
+    {
+        return new AgentDecisionContext
+        {
+            GameState = state,
+            AgentId = "test-agent",
+            Aggression = aggressive ? 80 : 30,
+            Greed = greedy ? 80 : 30,
+            Loyalty = 50,
+            Ambition = calculating ? 30 : 60
+        };
+    }
+
+    /// <summary>
+    /// Run analysis and return a formatted report string.
+    /// </summary>
+    public string GetAgentRuleAnalysisReport()
+    {
+        var testCases = GenerateAnalysisTestCases();
+        var report = AnalyzeAgentRules(testCases);
+        return report.ToString();
+    }
+
+    // =========================================================================
+    // DEBUGGABLE RULES - Trace WHY decisions were made
+    // =========================================================================
+
+    private bool _debugMode = false;
+    private readonly List<string> _lastDecisionTrace = new();
+
+    /// <summary>
+    /// Enable or disable debug mode for decision tracing.
+    /// When enabled, GetAgentAction will record detailed traces.
+    /// </summary>
+    public bool DebugMode
+    {
+        get => _debugMode;
+        set => _debugMode = value;
+    }
+
+    /// <summary>
+    /// Get the trace from the last decision made in debug mode.
+    /// Shows which rules matched/failed and why.
+    /// </summary>
+    public IReadOnlyList<string> LastDecisionTrace => _lastDecisionTrace.AsReadOnly();
+
+    /// <summary>
+    /// Get agent action with optional debug tracing.
+    /// When DebugMode is true, records detailed decision trace.
+    /// </summary>
+    public string GetAgentActionWithTrace(GameAgentData agent, out List<string> trace)
+    {
+        trace = new List<string>();
+        var context = CreateAgentContext(agent);
+
+        trace.Add($"=== Decision Trace for {agent.AgentId} ===");
+        trace.Add($"Game Phase: {context.Phase}");
+        trace.Add($"Heat: {context.GameState.HeatLevel} (Critical: {context.HeatIsCritical}, Dangerous: {context.HeatIsDangerous})");
+        trace.Add($"Wealth: ${context.GameState.FamilyWealth:N0}");
+        trace.Add($"Personality: Aggr={agent.Personality.Aggression}, Greed={agent.Personality.Greed}");
+        trace.Add("");
+
+        // Evaluate each rule and trace
+        var rules = _agentRules.GetRules().OrderByDescending(r => r.Priority).ToList();
+        trace.Add("Rule Evaluation (by priority):");
+
+        foreach (var rule in rules)
+        {
+            var matches = rule.Evaluate(context);
+            var symbol = matches ? "✓" : "✗";
+            trace.Add($"  [{symbol}] {rule.Name} (P:{rule.Priority}) - {(matches ? "MATCHED" : "no match")}");
+
+            if (matches)
+            {
+                // This rule would be selected (with StopOnFirstMatch)
+                trace.Add($"");
+                trace.Add($">>> Selected: {rule.Name}");
+                break;
+            }
+        }
+
+        // Execute to get the action
+        _agentRules.Execute(context);
+        trace.Add($">>> Action: {context.RecommendedAction}");
+
+        return context.RecommendedAction ?? "wait";
+    }
+
+    /// <summary>
+    /// Creates the agent context (extracted for reuse)
+    /// </summary>
+    private AgentDecisionContext CreateAgentContext(GameAgentData agent)
+    {
+        return new AgentDecisionContext
+        {
+            GameState = _state,
+            AgentId = agent.AgentId,
+            Aggression = agent.Personality.Aggression,
+            Greed = agent.Personality.Greed,
+            Loyalty = agent.Personality.Loyalty,
+            Ambition = agent.Personality.Ambition
+        };
+    }
+
+    // =========================================================================
+    // ASYNC RULES - Delayed/async event processing
+    // =========================================================================
+
+    private readonly RulesEngineCore<AsyncEventContext> _asyncEventEngine = new();
+    private readonly List<IAsyncRule<AsyncEventContext>> _asyncRules = new();
+
+    /// <summary>
+    /// Initialize async event rules for time-delayed game events.
+    /// </summary>
+    public void SetupAsyncEventRules()
+    {
+        // Async rule 1: Police Investigation (takes time to complete)
+        var policeInvestigation = new AsyncRuleBuilder<AsyncEventContext>()
+            .WithId("ASYNC_POLICE_INVESTIGATION")
+            .WithName("Police Investigation")
+            .WithPriority(100)
+            .WithCondition(async ctx =>
+            {
+                // Simulate checking if investigation should start
+                await Task.Delay(10); // Simulated async check
+                return ctx.TriggerType == "PoliceActivity" && ctx.GameState.HeatLevel > 50;
+            })
+            .WithAction(async ctx =>
+            {
+                // Simulate investigation taking time
+                await Task.Delay(ctx.DelayMs);
+                ctx.ResultMessage = "Police investigation completed - heat reduced by 10";
+                ctx.GameState.HeatLevel = Math.Max(0, ctx.GameState.HeatLevel - 10);
+                return RuleResult.Success("ASYNC_POLICE_INVESTIGATION", "Police Investigation",
+                    new Dictionary<string, object> { ["HeatReduced"] = 10 });
+            })
+            .Build();
+        _asyncRules.Add(policeInvestigation);
+
+        // Async rule 2: Informant Network (gathering intel)
+        var informantNetwork = new AsyncRuleBuilder<AsyncEventContext>()
+            .WithId("ASYNC_INFORMANT_INTEL")
+            .WithName("Informant Network Intel")
+            .WithPriority(90)
+            .WithCondition(async ctx =>
+            {
+                await Task.Delay(5);
+                return ctx.TriggerType == "GatherIntel" && ctx.GameState.FamilyWealth > 50000;
+            })
+            .WithAction(async ctx =>
+            {
+                await Task.Delay(ctx.DelayMs);
+                // Reveal information about rivals
+                var intel = ctx.GameState.RivalFamilies.Values.FirstOrDefault();
+                ctx.ResultMessage = intel != null
+                    ? $"Intel gathered: Rival strength is {intel.Strength}, hostility is {intel.Hostility}"
+                    : "No rival intel available";
+                return RuleResult.Success("ASYNC_INFORMANT_INTEL", "Informant Network Intel");
+            })
+            .Build();
+        _asyncRules.Add(informantNetwork);
+
+        // Async rule 3: Business Deal Negotiation
+        var businessDeal = new AsyncRuleBuilder<AsyncEventContext>()
+            .WithId("ASYNC_BUSINESS_DEAL")
+            .WithName("Business Deal Negotiation")
+            .WithPriority(80)
+            .WithCondition(async ctx =>
+            {
+                await Task.Delay(5);
+                return ctx.TriggerType == "BusinessOpportunity" && ctx.GameState.Reputation > 40;
+            })
+            .WithAction(async ctx =>
+            {
+                await Task.Delay(ctx.DelayMs);
+                var bonus = ctx.GameState.Reputation * 100;
+                ctx.GameState.FamilyWealth += bonus;
+                ctx.ResultMessage = $"Business deal completed! Earned ${bonus:N0}";
+                return RuleResult.Success("ASYNC_BUSINESS_DEAL", "Business Deal Negotiation",
+                    new Dictionary<string, object> { ["Bonus"] = bonus });
+            })
+            .Build();
+        _asyncRules.Add(businessDeal);
+    }
+
+    /// <summary>
+    /// Process an async event with optional delay simulation.
+    /// </summary>
+    /// <param name="triggerType">Type of event trigger</param>
+    /// <param name="delayMs">Simulated delay in milliseconds</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Result message from the processed event</returns>
+    public async Task<string> ProcessAsyncEventAsync(
+        string triggerType,
+        int delayMs = 100,
+        CancellationToken cancellationToken = default)
+    {
+        var context = new AsyncEventContext
+        {
+            GameState = _state,
+            TriggerType = triggerType,
+            DelayMs = delayMs,
+            Timestamp = DateTime.UtcNow
+        };
+
+        foreach (var rule in _asyncRules.OrderByDescending(r => r.Priority))
+        {
+            if (await rule.EvaluateAsync(context, cancellationToken))
+            {
+                var result = await rule.ExecuteAsync(context, cancellationToken);
+                if (result.Matched)
+                {
+                    return context.ResultMessage ?? "Event processed";
+                }
+            }
+        }
+
+        return "No matching async event handler";
+    }
+
+    /// <summary>
+    /// Get registered async rule IDs
+    /// </summary>
+    public IEnumerable<string> GetAsyncRuleIds()
+    {
+        return _asyncRules.Select(r => r.Id);
+    }
+}
+
+// =============================================================================
+// ASYNC EVENT CONTEXT - For async rule processing
+// =============================================================================
+
+/// <summary>
+/// Context for async event processing rules.
+/// Used for events that simulate time-delayed operations.
+/// </summary>
+public class AsyncEventContext
+{
+    /// <summary>Current game state</summary>
+    public GameState GameState { get; set; } = null!;
+
+    /// <summary>Type of event trigger (e.g., "PoliceActivity", "GatherIntel")</summary>
+    public string TriggerType { get; set; } = "";
+
+    /// <summary>Simulated delay in milliseconds</summary>
+    public int DelayMs { get; set; } = 100;
+
+    /// <summary>When the event was triggered</summary>
+    public DateTime Timestamp { get; set; }
+
+    /// <summary>Result message after processing</summary>
+    public string? ResultMessage { get; set; }
+
+    /// <summary>Additional event data</summary>
+    public Dictionary<string, object> EventData { get; set; } = new();
 }
 
 // =============================================================================
