@@ -15,11 +15,11 @@ public partial class GameRulesEngine
 
     private void SetupGameRules()
     {
-        // Victory conditions
+        // Victory conditions (using GameState constants for single source of truth)
         _gameRules.AddRule(
             "VICTORY_EMPIRE",
             "Empire Victory",
-            ctx => ctx.Week >= 52 && ctx.IsRichFinancially && ctx.HasHighReputation,
+            ctx => ctx.Week >= GameState.VictoryWeekThreshold && ctx.IsRichFinancially && ctx.HasHighReputation,
             ctx => {
                 ctx.State.GameOver = true;
                 ctx.State.GameOverReason = "VICTORY! You've built an empire that will last generations!";
@@ -30,7 +30,7 @@ public partial class GameRulesEngine
         _gameRules.AddRule(
             "VICTORY_SURVIVAL",
             "Survival Victory",
-            ctx => ctx.Week >= 52 && ctx.Wealth > 150000,
+            ctx => ctx.Week >= GameState.VictoryWeekThreshold && ctx.Wealth > 150000,
             ctx => {
                 ctx.State.GameOver = true;
                 ctx.State.GameOverReason = "Victory! The family survived and prospered!";
@@ -38,7 +38,7 @@ public partial class GameRulesEngine
             priority: 900
         );
 
-        // Defeat conditions
+        // Defeat conditions (using GameState constants for single source of truth)
         _gameRules.AddRule(
             "DEFEAT_BANKRUPTCY",
             "Bankruptcy",
@@ -53,7 +53,7 @@ public partial class GameRulesEngine
         _gameRules.AddRule(
             "DEFEAT_FEDERAL",
             "Federal Crackdown",
-            ctx => ctx.Heat >= 100,
+            ctx => ctx.Heat >= GameState.DefeatHeatThreshold,
             ctx => {
                 ctx.State.GameOver = true;
                 ctx.State.GameOverReason = "DEFEAT: Federal crackdown! Everyone's going to prison!";
@@ -64,7 +64,7 @@ public partial class GameRulesEngine
         _gameRules.AddRule(
             "DEFEAT_BETRAYAL",
             "Internal Betrayal",
-            ctx => ctx.Reputation <= 5,
+            ctx => ctx.Reputation <= GameState.DefeatReputationThreshold,
             ctx => {
                 ctx.State.GameOver = true;
                 ctx.State.GameOverReason = "DEFEAT: Betrayed from within. The family is destroyed.";
@@ -101,9 +101,10 @@ public partial class GameRulesEngine
         _gameRules.AddRule(
             "CONSEQUENCE_VULNERABLE",
             "Vulnerable Position",
-            ctx => ctx.IsVulnerable && !ctx.State.Territories.Values.Any(t => t.UnderDispute),
+            ctx => ctx.IsVulnerable && ctx.State.Territories.Any() && !ctx.State.Territories.Values.Any(t => t.UnderDispute),
             ctx => {
-                var territory = ctx.State.Territories.Values.First();
+                var territory = ctx.State.Territories.Values.FirstOrDefault();
+                if (territory == null) return;  // Safety check
                 territory.UnderDispute = true;
                 Console.WriteLine($"Rivals sense weakness! {territory.Name} is under dispute!");
             },
@@ -1139,7 +1140,8 @@ public partial class GameRulesEngine
             "Hit Escalates to War",
             ctx => ctx.WasHit && ctx.HighTension,
             ctx => {
-                var rival = ctx.State.RivalFamilies.Values.First(r => r.Hostility > 80);
+                var rival = ctx.State.RivalFamilies.Values.FirstOrDefault(r => r.Hostility > 80);
+                if (rival == null) return;  // Safety check - no rival with hostility > 80
                 rival.AtWar = true;
                 rival.Hostility = 100;
                 Console.WriteLine($"  The hit has started a war with {rival.Name}!");

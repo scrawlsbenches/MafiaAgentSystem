@@ -130,13 +130,14 @@ public partial class GameRulesEngine
     {
         var events = new List<string>();
 
+        // Use GameWeek for timing checks (not real time) - events within last 3 game weeks are "recent"
         var recentPoliceRaid = _state.EventLog
             .Where(e => e.Type == "PoliceRaid")
-            .Any(e => e.Timestamp > DateTime.UtcNow.AddMinutes(-5));
+            .Any(e => _state.Week - e.GameWeek < 3);
 
         var recentHit = _state.EventLog
             .Where(e => e.Type == "Hit")
-            .Any(e => e.Timestamp > DateTime.UtcNow.AddMinutes(-5));
+            .Any(e => _state.Week - e.GameWeek < 3);
 
         var context = new EventContext
         {

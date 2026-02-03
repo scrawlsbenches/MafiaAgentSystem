@@ -526,14 +526,20 @@ public class MissionEvaluator
         
         // Clamp success chance
         context.SuccessChance = Math.Max(10, Math.Min(95, context.SuccessChance));
-        
+
         // Roll for success
         var roll = Random.Shared.Next(1, 101);
         context.Success = roll <= context.SuccessChance;
-        
-        // Apply final bonuses/penalties
-        _rules.EvaluateAll(context);
-        
+
+        // Apply post-roll bonuses (HIGH_RISK_HIGH_REWARD rule logic)
+        // This was previously done via a second EvaluateAll call, but that
+        // also double-applied pre-roll modifiers. Now we handle it explicitly.
+        if (context.Success && mission.RiskLevel >= 8)
+        {
+            context.BonusRespect = 10;
+            context.BonusMoney = mission.MoneyReward * 0.5m;
+        }
+
         return new MissionResult
         {
             Success = context.Success,

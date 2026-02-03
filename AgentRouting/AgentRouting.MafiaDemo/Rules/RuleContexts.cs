@@ -127,16 +127,16 @@ public class AgentDecisionContext
     // RIVAL ASSESSMENT
     // =========================================================================
 
-    /// <summary>There's a weak rival that can be attacked</summary>
-    public bool RivalIsWeak => GameState.WeakestRival?.Strength < 40;
+    /// <summary>A rival is weak (strength below 40). Returns false if no rivals.</summary>
+    public bool RivalIsWeak => GameState.HasWeakRival(40);
 
-    /// <summary>A rival is threatening (high hostility and strong)</summary>
-    public bool RivalIsThreatening => GameState.MostHostileRival != null &&
-                                      GameState.MostHostileRival.Hostility > 70 &&
-                                      GameState.MostHostileRival.Strength > 60;
+    /// <summary>A rival is threatening (high hostility and strong). Returns false if no rivals.</summary>
+    public bool RivalIsThreatening => GameState.HasRivals &&
+                                      GameState.MaxRivalHostility > 70 &&
+                                      GameState.MostHostileRival!.Strength > 60;
 
-    /// <summary>A rival is about to attack (very high hostility)</summary>
-    public bool RivalAttackImminent => GameState.MostHostileRival?.Hostility > 85;
+    /// <summary>A rival is about to attack (very high hostility). Returns false if no rivals.</summary>
+    public bool RivalAttackImminent => GameState.MaxRivalHostility > 85;
 
     /// <summary>All rivals are relatively peaceful</summary>
     public bool RivalsArePeaceful => !GameState.RivalFamilies.Values.Any(r => r.Hostility > 50);
@@ -278,20 +278,55 @@ public class RivalStrategyContext
     public int PlayerTerritories => GameState.Territories.Count;
     public int PlayerHeat => GameState.HeatLevel;
 
-    // Strategic assessment
+    // =========================================================================
+    // Strategic Assessment
+    // =========================================================================
+
+    /// <summary>Rival has strength > 70 (formidable opponent)</summary>
     public bool RivalIsStronger => RivalStrength > 70;
+
+    /// <summary>Rival has strength < 40 (vulnerable target)</summary>
     public bool RivalIsWeaker => RivalStrength < 40;
+
+    /// <summary>Rival has hostility > 70 (likely to act aggressively)</summary>
     public bool RivalIsAngry => RivalHostility > 70;
+
+    /// <summary>Rival has hostility < 30 (unlikely to initiate conflict)</summary>
     public bool RivalIsNeutral => RivalHostility < 30;
 
+    /// <summary>Player is economically or politically weak</summary>
     public bool PlayerIsWeak => PlayerWealth < 100000 || PlayerReputation < 40;
+
+    /// <summary>Player is economically and politically strong</summary>
     public bool PlayerIsStrong => PlayerWealth > 300000 && PlayerReputation > 70;
+
+    /// <summary>Player has high heat (> 70), meaning law enforcement focus is on the player</summary>
     public bool PlayerIsDistracted => PlayerHeat > 70;
 
-    // Strategic opportunities
+    // =========================================================================
+    // Strategic Opportunities (Rival AI Decision Logic)
+    // =========================================================================
+
+    /// <summary>
+    /// Rival should attack when conditions are favorable.
+    /// Requires: Rival is stronger, player is weak, AND player is NOT under law enforcement scrutiny.
+    ///
+    /// Design rationale: Rivals wait until law enforcement attention is LOW before attacking.
+    /// When player has high heat, attacking would draw unwanted police attention to the rival.
+    /// When player heat is low, rivals can strike without interference.
+    /// </summary>
     public bool ShouldAttack => RivalIsStronger && PlayerIsWeak && !PlayerIsDistracted;
+
+    /// <summary>Rival should seek peace when player is strong and rival is weak</summary>
     public bool ShouldMakePeace => RivalIsWeaker && PlayerIsStrong;
+
+    /// <summary>
+    /// Rival should wait and observe.
+    /// Wait when: Rival is neutral, OR player is distracted (and rival isn't angry enough to act recklessly).
+    /// </summary>
     public bool ShouldWait => RivalIsNeutral || (PlayerIsDistracted && !RivalIsAngry);
+
+    /// <summary>Rival should consider alliance when both parties are strong</summary>
     public bool ShouldFormAlliance => PlayerIsStrong && RivalIsStronger;
 }
 

@@ -143,9 +143,29 @@ public override AgentDecision? MakeDecision(GameState gameState, Random random)
 | Metric | Range | Effect |
 |--------|-------|--------|
 | **FamilyWealth** | $0+ | Funds for operations. $0 = Game Over |
-| **Reputation** | 0-100 | Respect in underworld. <10 = Betrayal |
-| **HeatLevel** | 0-100 | Police attention. 100 = RICO |
-| **Week** | 1+ | Turn counter. 52+ with goals = Victory |
+| **Reputation** | 0-100 | Respect in underworld. ≤10 = Betrayal |
+| **HeatLevel** | 0-100 | Police attention. ≥100 = RICO |
+| **Week** | 1+ | Turn counter. ≥52 with goals = Victory |
+
+### Heat Balance (Updated 2026-02-03)
+
+Heat is the core risk management mechanic. The game is balanced so heat is manageable but requires attention:
+
+| Source | Heat/Week | Notes |
+|--------|-----------|-------|
+| Little Italy (Protection) | +2 | Low-profile |
+| Brooklyn Docks (Smuggling) | +5 | Highest risk |
+| Bronx Gambling | +4 | Semi-legal |
+| **Total territory heat** | **+11** | |
+| Natural decay | **-8** | Automatic each week |
+| **Net heat/week** | **+3** | Manageable with occasional bribing |
+
+**Heat mitigation**:
+- Bribe: -15 heat ($10,000)
+- Lay low: -5 heat (no action cost)
+- Random event "heat dies down": -10 heat
+
+**Victory requires**: Week ≥52, Wealth ≥$1M, Reputation ≥80
 
 ### Territories
 

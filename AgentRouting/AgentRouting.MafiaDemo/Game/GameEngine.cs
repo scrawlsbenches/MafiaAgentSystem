@@ -26,6 +26,29 @@ public enum GamePhase
 /// </summary>
 public class GameState
 {
+    // ==========================================================================
+    // Game Condition Thresholds (Single Source of Truth)
+    // ==========================================================================
+
+    /// <summary>Reputation at or below this value triggers defeat by betrayal</summary>
+    public const int DefeatReputationThreshold = 10;
+
+    /// <summary>Heat at or above this value triggers defeat by federal crackdown</summary>
+    public const int DefeatHeatThreshold = 100;
+
+    /// <summary>Minimum weeks to achieve victory</summary>
+    public const int VictoryWeekThreshold = 52;
+
+    /// <summary>Minimum wealth required for victory</summary>
+    public const decimal VictoryWealthThreshold = 1000000m;
+
+    /// <summary>Minimum reputation required for victory</summary>
+    public const int VictoryReputationThreshold = 80;
+
+    // ==========================================================================
+    // Game State Properties
+    // ==========================================================================
+
     public decimal FamilyWealth { get; set; } = 100000m;
     public int Reputation { get; set; } = 50; // 0-100
     public int HeatLevel { get; set; } = 0; // Police attention 0-100
@@ -34,11 +57,22 @@ public class GameState
 
     public Dictionary<string, Territory> Territories { get; set; } = new();
     public Dictionary<string, decimal> AgentLoyalty { get; set; } = new(); // 0-100
-    public List<GameEvent> EventLog { get; set; } = new();
+    /// <summary>
+    /// Event log using Queue for O(1) dequeue performance during eviction.
+    /// Old events are dequeued when the log reaches capacity.
+    /// </summary>
+    public Queue<GameEvent> EventLog { get; set; } = new();
     public Dictionary<string, RivalFamily> RivalFamilies { get; set; } = new();
 
     public bool GameOver { get; set; } = false;
     public string? GameOverReason { get; set; }
+
+    /// <summary>
+    /// Tracks whether any agent has already bribed officials this week.
+    /// Prevents wasteful duplicate bribes - only one bribe per week is effective.
+    /// Reset at the start of each turn in ExecuteTurnAsync.
+    /// </summary>
+    public bool BribedThisWeek { get; set; } = false;
 
     // Computed properties for rules engine compatibility
     public int Day => Week; // Alias for Week
@@ -64,14 +98,42 @@ public class GameState
     public bool WealthIsGrowing => FamilyWealth > PreviousWealth * 1.05m;
     public bool WealthIsShrinking => FamilyWealth < PreviousWealth * 0.95m;
 
-    // Find the most threatening rival
+    // ==========================================================================
+    // Rival Lookup Properties (with null safety)
+    // ==========================================================================
+
+    /// <summary>Returns true if there are any rival families</summary>
+    public bool HasRivals => RivalFamilies.Count > 0;
+
+    /// <summary>
+    /// Find the most hostile rival family, or null if no rivals exist.
+    /// Always check HasRivals or use null-conditional operator when accessing.
+    /// </summary>
     public RivalFamily? MostHostileRival => RivalFamilies.Values
         .OrderByDescending(r => r.Hostility)
         .FirstOrDefault();
 
+    /// <summary>
+    /// Find the weakest rival family, or null if no rivals exist.
+    /// Always check HasRivals or use null-conditional operator when accessing.
+    /// </summary>
     public RivalFamily? WeakestRival => RivalFamilies.Values
         .OrderBy(r => r.Strength)
         .FirstOrDefault();
+
+    /// <summary>Returns the hostility of the most hostile rival, or 0 if no rivals</summary>
+    public int MaxRivalHostility => MostHostileRival?.Hostility ?? 0;
+
+    /// <summary>Returns the strength of the weakest rival, or 0 if no rivals</summary>
+    public int MinRivalStrength => WeakestRival?.Strength ?? 0;
+
+    /// <summary>Returns true if any rival has hostility above the threshold</summary>
+    public bool HasHostileRival(int threshold = 70) =>
+        HasRivals && RivalFamilies.Values.Any(r => r.Hostility > threshold);
+
+    /// <summary>Returns true if any rival is weak (below strength threshold)</summary>
+    public bool HasWeakRival(int threshold = 40) =>
+        HasRivals && RivalFamilies.Values.Any(r => r.Strength < threshold);
 }
 
 /// <summary>
@@ -105,6 +167,7 @@ public class RivalFamily
 public class GameEvent
 {
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    public int GameWeek { get; set; } = 0;  // Track which game week event occurred (for proper timing checks)
     public string Type { get; set; } = ""; // Collection, Hit, War, etc.
     public string Description { get; set; } = "";
     public string InvolvedAgent { get; set; } = "";
@@ -384,12 +447,15 @@ public class MafiaGameEngine
     private void InitializeGame()
     {
         // Initialize territories
+        // Heat balance: Total heat from territories = 11/week
+        // With natural decay of 8/week, net = +3/week (manageable)
+        // Bribe (-15) or laylow (-5) can control heat effectively
         _state.Territories["little-italy"] = new Territory
         {
             Name = "Little Italy",
             ControlledBy = "capo-001",
             WeeklyRevenue = 15000,
-            HeatGeneration = 5,
+            HeatGeneration = 2,  // Reduced from 5 (protection is low-profile)
             Type = "Protection"
         };
 
@@ -398,7 +464,7 @@ public class MafiaGameEngine
             Name = "Brooklyn Docks",
             ControlledBy = "capo-001",
             WeeklyRevenue = 20000,
-            HeatGeneration = 10,
+            HeatGeneration = 5,  // Reduced from 10 (still highest - smuggling is risky)
             Type = "Smuggling"
         };
 
@@ -407,7 +473,7 @@ public class MafiaGameEngine
             Name = "Bronx Gambling",
             ControlledBy = "capo-001",
             WeeklyRevenue = 12000,
-            HeatGeneration = 8,
+            HeatGeneration = 4,  // Reduced from 8 (gambling is semi-legal)
             Type = "Gambling"
         };
 
@@ -454,6 +520,9 @@ public class MafiaGameEngine
     public async Task<List<string>> ExecuteTurnAsync()
     {
         var turnEvents = new List<string>();
+
+        // Reset weekly coordination flags
+        _state.BribedThisWeek = false;
 
         // Track previous state for trend detection
         _state.PreviousHeatLevel = _state.HeatLevel;
@@ -848,10 +917,16 @@ public class MafiaGameEngine
 
             case "bribe":
                 // Bribe officials to reduce heat
+                // Coordination: Only one bribe per week is effective (prevents wasteful duplicates)
+                if (_state.BribedThisWeek)
+                {
+                    return $"{agent.AgentId} skips bribe - officials already bribed this week";
+                }
                 if (_state.FamilyWealth >= 10000 && _state.HeatLevel > 20)
                 {
                     _state.FamilyWealth -= 10000;
                     _state.HeatLevel -= 15;
+                    _state.BribedThisWeek = true;  // Mark as bribed for this week
                     LogEvent("Bribe", $"{agent.AgentId} bribed officials", agent.AgentId);
                     return $"{agent.AgentId} bribes officials - Cost $10,000, Heat -15";
                 }
@@ -888,10 +963,10 @@ public class MafiaGameEngine
                 LogEvent("RivalAttack", $"{rival.Name} attacked", "system");
             }
 
-            // Hostility slowly decreases over time
+            // Hostility slowly decreases over time (clamped to prevent negative values)
             if (rival.Hostility > 0)
             {
-                rival.Hostility -= Random.Shared.Next(1, 3);
+                rival.Hostility = Math.Max(0, rival.Hostility - Random.Shared.Next(1, 3));
             }
         }
 
@@ -900,10 +975,12 @@ public class MafiaGameEngine
 
     private void UpdateGameState()
     {
-        // Heat naturally decreases (balanced: 5/week allows recovery from hit in ~5 weeks)
+        // Heat naturally decreases (balanced: 8/week)
+        // With territory heat generation of 11/week, net = +3/week
+        // This makes the game winnable with occasional heat management
         if (_state.HeatLevel > 0)
         {
-            _state.HeatLevel -= 5;
+            _state.HeatLevel -= 8;
         }
 
         _state.HeatLevel = Math.Max(0, Math.Min(100, _state.HeatLevel));
@@ -912,26 +989,29 @@ public class MafiaGameEngine
 
     private void CheckGameOver()
     {
+        // Defeat conditions (using GameState constants for single source of truth)
         if (_state.FamilyWealth <= 0)
         {
             _state.GameOver = true;
             _state.GameOverReason = "The family went bankrupt. You've been absorbed by the Barzinis.";
         }
 
-        if (_state.HeatLevel >= 100)
+        if (_state.HeatLevel >= GameState.DefeatHeatThreshold)
         {
             _state.GameOver = true;
             _state.GameOverReason = "The Feds shut down the family. Everyone's going to prison.";
         }
 
-        if (_state.Reputation <= 10)
+        if (_state.Reputation <= GameState.DefeatReputationThreshold)
         {
             _state.GameOver = true;
             _state.GameOverReason = "The family lost all respect. You've been betrayed from within.";
         }
 
-        // Victory condition
-        if (_state.Week >= 52 && _state.FamilyWealth >= 1000000 && _state.Reputation >= 80)
+        // Victory condition (using GameState constants for single source of truth)
+        if (_state.Week >= GameState.VictoryWeekThreshold &&
+            _state.FamilyWealth >= GameState.VictoryWealthThreshold &&
+            _state.Reputation >= GameState.VictoryReputationThreshold)
         {
             _state.GameOver = true;
             _state.GameOverReason = "Victory! You've built an empire. The Corleone family controls New York.";
@@ -940,17 +1020,18 @@ public class MafiaGameEngine
 
     private void LogEvent(string type, string description, string agent)
     {
-        // Evict oldest events if at capacity (prevents unbounded growth)
+        // Evict oldest events if at capacity (O(1) dequeue operation)
         while (_state.EventLog.Count >= MaxEventLogSize)
         {
-            _state.EventLog.RemoveAt(0);
+            _state.EventLog.Dequeue();
         }
 
-        _state.EventLog.Add(new GameEvent
+        _state.EventLog.Enqueue(new GameEvent
         {
             Type = type,
             Description = description,
-            InvolvedAgent = agent
+            InvolvedAgent = agent,
+            GameWeek = _state.Week  // Track when event occurred for proper timing checks
         });
     }
 
@@ -981,10 +1062,16 @@ public class MafiaGameEngine
 
     private string ExecuteBribe()
     {
+        // Coordination: Only one bribe per week is effective
+        if (_state.BribedThisWeek)
+        {
+            return "⚠️ Officials already bribed this week. Wait until next week.";
+        }
         if (_state.FamilyWealth >= 10000)
         {
             _state.FamilyWealth -= 10000;
             _state.HeatLevel -= 20;
+            _state.BribedThisWeek = true;  // Mark as bribed for this week
             LogEvent("Bribe", "Player bribed officials", "player");
             return "💰 Paid $10,000 in bribes. Heat reduced by 20.";
         }
