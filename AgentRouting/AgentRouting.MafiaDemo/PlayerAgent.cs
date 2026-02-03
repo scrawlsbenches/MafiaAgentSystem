@@ -1,5 +1,6 @@
 using AgentRouting.MafiaDemo.Missions;
 using AgentRouting.MafiaDemo.Game;
+using AgentRouting.MafiaDemo.Story;
 using AgentRouting.Core;
 using AgentRouting.Middleware;
 using RulesEngine.Core;
@@ -71,9 +72,20 @@ public class PlayerAgent
     private readonly MissionEvaluator _missionEvaluator;
     private readonly RulesEngineCore<PlayerDecisionContext> _decisionRules;
     private readonly AgentRouter? _router;
+    private WorldState? _worldState;
 
     public PlayerCharacter Character => _character;
     public AgentRouter? Router => _router;
+
+    /// <summary>
+    /// Optional WorldState for Story System integration.
+    /// When set, missions are linked to NPCs and relationships are tracked.
+    /// </summary>
+    public WorldState? WorldState
+    {
+        get => _worldState;
+        set => _worldState = value;
+    }
 
     public PlayerAgent(string name, PlayerPersonality? personality = null, AgentRouter? router = null)
     {
@@ -82,12 +94,12 @@ public class PlayerAgent
             Name = name,
             Personality = personality ?? GenerateRandomPersonality()
         };
-        
+
         _router = router;
         _missionGenerator = new MissionGenerator();
         _missionEvaluator = new MissionEvaluator();
         _decisionRules = new RulesEngineCore<PlayerDecisionContext>();
-        
+
         SetupDecisionRules();
     }
     
@@ -438,10 +450,17 @@ public class PlayerAgent
             mission.Status = MissionStatus.Failed;
             mission.Success = false;
         }
-        
+
         mission.CompletedAt = DateTime.UtcNow;
         mission.Outcome = result.Message;
-        
+
+        // Apply mission consequences to NPCs (Story System integration)
+        var consequenceDescription = MissionConsequenceHandler.ApplyMissionConsequences(mission, result, _worldState);
+        if (consequenceDescription != null)
+        {
+            result.Message += $" ({consequenceDescription})";
+        }
+
         // Check for promotion
         CheckPromotion();
         
@@ -520,10 +539,10 @@ public class PlayerAgent
 
         // Heat naturally decreases over time (balanced: 5/week allows recovery from hit in ~6 weeks)
         _character.Heat = Math.Max(0, _character.Heat - 5);
-        
-        // Generate a mission
-        var mission = _missionGenerator.GenerateMission(_character, gameState);
-        
+
+        // Generate a mission (with WorldState integration if available)
+        var mission = _missionGenerator.GenerateMission(_character, gameState, _worldState);
+
         // Decide whether to accept
         var decision = DecideMission(mission, gameState);
         
