@@ -1910,4 +1910,224 @@ public class AutonomousGameTests
     }
 
     #endregion
+
+    #region RuleValidator and Startup Analysis Tests
+
+    [Test]
+    public void GameRulesEngine_ValidateAllAgentRules_ReturnsValidationMessages()
+    {
+        var state = new GameState();
+        state.RivalFamilies["test"] = new RivalFamily();
+
+        var engine = new GameRulesEngine(state);
+
+        var messages = engine.ValidateAllAgentRules();
+
+        // Should return a list (may be empty if all rules are valid)
+        Assert.NotNull(messages);
+    }
+
+    [Test]
+    public void GameRulesEngine_RunStartupRuleAnalysis_ReturnsReport()
+    {
+        var state = new GameState
+        {
+            FamilyWealth = 50000m,
+            Reputation = 50,
+            HeatLevel = 30
+        };
+        state.RivalFamilies["test"] = new RivalFamily { Hostility = 50 };
+
+        var engine = new GameRulesEngine(state);
+
+        var report = engine.RunStartupRuleAnalysis();
+
+        Assert.NotNull(report);
+        Assert.NotEmpty(report);
+        Assert.Contains("Agent Rule Startup Analysis", report);
+    }
+
+    [Test]
+    public void GameRulesEngine_GenerateExtendedTestCases_ReturnsMultipleScenarios()
+    {
+        var state = new GameState
+        {
+            FamilyWealth = 50000m,
+            Reputation = 50,
+            HeatLevel = 30
+        };
+        state.RivalFamilies["test"] = new RivalFamily { Hostility = 50 };
+
+        var engine = new GameRulesEngine(state);
+
+        var testCases = engine.GenerateExtendedTestCases();
+
+        // Should generate multiple test cases for different scenarios
+        Assert.True(testCases.Count >= 8);
+
+        // Check for specific scenarios
+        Assert.True(testCases.Any(c => c.GameState.FamilyWealth == 0)); // Bankrupt scenario (zero wealth)
+        Assert.True(testCases.Any(c => c.GameState.HeatLevel == 100));   // Max heat scenario
+    }
+
+    #endregion
+
+    #region Metrics Persistence Tests
+
+    [Test]
+    public void GameRulesEngine_SaveMetricsSnapshot_StoresSnapshot()
+    {
+        var state = new GameState();
+        state.RivalFamilies["test"] = new RivalFamily();
+
+        var engine = new GameRulesEngine(state);
+
+        // Clear history and save a snapshot
+        GameRulesEngine.ClearMetricsHistory();
+        engine.SaveMetricsSnapshot("TestSession1");
+
+        var history = GameRulesEngine.GetMetricsHistory();
+
+        Assert.NotNull(history);
+        Assert.Contains("TestSession1", history);
+    }
+
+    [Test]
+    public void GameRulesEngine_GetMetricsHistory_ReturnsFormattedString()
+    {
+        var state = new GameState();
+        state.RivalFamilies["test"] = new RivalFamily();
+
+        var engine = new GameRulesEngine(state);
+
+        // Clear and add fresh snapshots
+        GameRulesEngine.ClearMetricsHistory();
+        engine.SaveMetricsSnapshot("Session_A");
+        engine.SaveMetricsSnapshot("Session_B");
+
+        var history = GameRulesEngine.GetMetricsHistory();
+
+        Assert.NotNull(history);
+        Assert.Contains("Session_A", history);
+        Assert.Contains("Session_B", history);
+        Assert.Contains("Rule Metrics History", history);
+    }
+
+    [Test]
+    public void GameRulesEngine_ClearMetricsHistory_ClearsAllSnapshots()
+    {
+        var state = new GameState();
+        state.RivalFamilies["test"] = new RivalFamily();
+
+        var engine = new GameRulesEngine(state);
+        engine.SaveMetricsSnapshot("ToBeCleared");
+
+        GameRulesEngine.ClearMetricsHistory();
+
+        var history = GameRulesEngine.GetMetricsHistory();
+
+        Assert.Contains("No metrics history", history);
+    }
+
+    #endregion
+
+    #region Config Loader Tests
+
+    [Test]
+    public void RuleConfigLoader_ParseConfigString_ParsesValidConfig()
+    {
+        var config = @"
+# Test config
+[RULE]
+Id=TEST_RULE_1
+Name=Test Rule One
+Priority=100
+Condition=FamilyNeedsMoney==true
+Action=EXPAND
+
+[RULE]
+Id=TEST_RULE_2
+Name=Test Rule Two
+Priority=50
+Condition=HighHeat==true
+Action=DEFEND
+";
+
+        var rules = RuleConfigLoader.ParseConfigString(config);
+
+        Assert.Equal(2, rules.Count);
+        Assert.Equal("TEST_RULE_1", rules[0].Id);
+        Assert.Equal("Test Rule One", rules[0].Name);
+        Assert.Equal(100, rules[0].Priority);
+        Assert.True(rules[0].Conditions.Count >= 1);
+        Assert.Equal("EXPAND", rules[0].RecommendedAction);
+
+        Assert.Equal("TEST_RULE_2", rules[1].Id);
+        Assert.Equal(50, rules[1].Priority);
+    }
+
+    [Test]
+    public void RuleConfigLoader_ParseConfigString_IgnoresComments()
+    {
+        var config = @"
+# This is a comment
+# Another comment
+[RULE]
+Id=SINGLE_RULE
+Name=Single Rule
+Priority=75
+Condition=IsAggressive==true
+Action=WAIT
+# Comment in middle
+";
+
+        var rules = RuleConfigLoader.ParseConfigString(config);
+
+        Assert.Equal(1, rules.Count);
+        Assert.Equal("SINGLE_RULE", rules[0].Id);
+    }
+
+    [Test]
+    public void RuleConfigLoader_ParseConfigString_HandlesEmptyConfig()
+    {
+        var config = "";
+
+        var rules = RuleConfigLoader.ParseConfigString(config);
+
+        Assert.Empty(rules);
+    }
+
+    [Test]
+    public void RuleConfigLoader_ParseConfigString_HandlesCommentsOnlyConfig()
+    {
+        var config = @"
+# Only comments
+# No rules here
+";
+
+        var rules = RuleConfigLoader.ParseConfigString(config);
+
+        Assert.Empty(rules);
+    }
+
+    [Test]
+    public void AgentRuleDefinition_HasAllProperties()
+    {
+        var rule = new AgentRuleDefinition
+        {
+            Id = "TEST_ID",
+            Name = "Test Name",
+            Priority = 123,
+            Description = "Test Description",
+            RecommendedAction = "ATTACK"
+        };
+
+        Assert.Equal("TEST_ID", rule.Id);
+        Assert.Equal("Test Name", rule.Name);
+        Assert.Equal(123, rule.Priority);
+        Assert.Equal("Test Description", rule.Description);
+        Assert.Equal("ATTACK", rule.RecommendedAction);
+    }
+
+    #endregion
 }

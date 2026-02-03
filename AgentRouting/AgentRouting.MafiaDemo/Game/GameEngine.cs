@@ -222,6 +222,7 @@ public class MafiaGameEngine
         _autonomousAgents = new Dictionary<string, AutonomousAgent>();
         InitializeGame();
         _rulesEngine = new GameRulesEngine(_state);
+        _rulesEngine.SetupAsyncEventRules(); // Initialize async event processing
     }
 
     public MafiaGameEngine(IAgentLogger logger)
@@ -233,6 +234,7 @@ public class MafiaGameEngine
         _autonomousAgents = new Dictionary<string, AutonomousAgent>();
         InitializeGame();
         _rulesEngine = new GameRulesEngine(_state);
+        _rulesEngine.SetupAsyncEventRules(); // Initialize async event processing
     }
 
     /// <summary>
@@ -416,6 +418,10 @@ public class MafiaGameEngine
         var randomEvents = ProcessRandomEvents();
         turnEvents.AddRange(randomEvents);
 
+        // 2.5. Async events (triggered by game conditions)
+        var asyncEvents = await ProcessAsyncEventsAsync();
+        turnEvents.AddRange(asyncEvents);
+
         // 3. Autonomous agent actions
         var agentActions = await ProcessAutonomousActions();
         turnEvents.AddRange(agentActions);
@@ -545,6 +551,60 @@ public class MafiaGameEngine
                     }
                     break;
             }
+        }
+
+        return events;
+    }
+
+    /// <summary>
+    /// Process async events based on current game conditions.
+    /// Uses AsyncRule engine for time-sensitive events like police investigations,
+    /// informant intel gathering, and business deal negotiations.
+    /// </summary>
+    private async Task<List<string>> ProcessAsyncEventsAsync()
+    {
+        var events = new List<string>();
+
+        if (_rulesEngine == null)
+            return events;
+
+        // Determine which async events to trigger based on game state
+        var triggeredEvents = new List<string>();
+
+        // High heat triggers police activity
+        if (_state.HeatLevel > 50 && Random.Shared.Next(100) < 30)
+        {
+            triggeredEvents.Add("PoliceActivity");
+        }
+
+        // Wealthy family can gather intel
+        if (_state.FamilyWealth > 50000 && Random.Shared.Next(100) < 20)
+        {
+            triggeredEvents.Add("GatherIntel");
+        }
+
+        // Good reputation enables business opportunities
+        if (_state.Reputation > 40 && _state.Week % 4 == 0)
+        {
+            triggeredEvents.Add("BusinessOpportunity");
+        }
+
+        // Process triggered events
+        foreach (var trigger in triggeredEvents)
+        {
+            var result = await _rulesEngine.ProcessAsyncEventAsync(trigger, delayMs: 50);
+
+            if (result != "No matching async event handler")
+            {
+                events.Add($"⏳ {result}");
+            }
+        }
+
+        if (events.Any())
+        {
+            events.Insert(0, "───────────────────────────");
+            events.Insert(0, "⏰ ONGOING OPERATIONS");
+            events.Add("");
         }
 
         return events;

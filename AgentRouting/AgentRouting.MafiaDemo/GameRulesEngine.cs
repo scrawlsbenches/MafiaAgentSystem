@@ -882,6 +882,73 @@ public class GameRulesEngine
             ctx => { /* Generate betrayal */ },
             priority: 750
         );
+
+        // =====================================================================
+        // COMPOSITE EVENT RULES - Multiple triggers for same event type
+        // =====================================================================
+
+        // Composite: Crisis event triggers (OR logic - any of these causes crisis)
+        var crisisConditions = new CompositeRuleBuilder<EventContext>()
+            .WithId("COMPOSITE_CRISIS_CONDITIONS")
+            .WithName("Crisis Event Triggers")
+            .WithDescription("Multiple conditions that trigger a crisis event")
+            .WithPriority(950)
+            .WithOperator(CompositeOperator.Or)
+            .AddRule(new RuleBuilder<EventContext>()
+                .WithId("CRISIS_FINANCIAL")
+                .WithName("Financial Crisis")
+                .When(ctx => ctx.Wealth < 10000 && ctx.Week > 5)
+                .Build())
+            .AddRule(new RuleBuilder<EventContext>()
+                .WithId("CRISIS_HEAT")
+                .WithName("Heat Crisis")
+                .When(ctx => ctx.Heat >= 95)
+                .Build())
+            .AddRule(new RuleBuilder<EventContext>()
+                .WithId("CRISIS_ATTACK")
+                .WithName("Under Attack Crisis")
+                .When(ctx => ctx.TenseSituation && ctx.WeakPosition)
+                .Build())
+            .Build();
+
+        _eventRules.AddRule(
+            "EVENT_CRISIS",
+            "Family Crisis",
+            ctx => crisisConditions.Evaluate(ctx),
+            ctx => { /* Generate crisis event requiring immediate action */ },
+            priority: 950
+        );
+
+        // Composite: Good fortune event (AND logic - all conditions for windfall)
+        var fortuneConditions = new CompositeRuleBuilder<EventContext>()
+            .WithId("COMPOSITE_FORTUNE_CONDITIONS")
+            .WithName("Good Fortune Conditions")
+            .WithPriority(600)
+            .WithOperator(CompositeOperator.And)
+            .AddRule(new RuleBuilder<EventContext>()
+                .WithId("FORTUNE_REPUTATION")
+                .WithName("Good Standing")
+                .When(ctx => ctx.Reputation > 70)
+                .Build())
+            .AddRule(new RuleBuilder<EventContext>()
+                .WithId("FORTUNE_LOW_HEAT")
+                .WithName("Low Police Interest")
+                .When(ctx => ctx.Heat < 30)
+                .Build())
+            .AddRule(new RuleBuilder<EventContext>()
+                .WithId("FORTUNE_TIMING")
+                .WithName("Quarterly Timing")
+                .When(ctx => ctx.Week % 8 == 0 && ctx.Week > 0)
+                .Build())
+            .Build();
+
+        _eventRules.AddRule(
+            "EVENT_WINDFALL",
+            "Unexpected Windfall",
+            ctx => fortuneConditions.Evaluate(ctx),
+            ctx => { /* Generate windfall event - bonus income */ },
+            priority: 600
+        );
     }
 
     // =========================================================================
@@ -960,6 +1027,78 @@ public class GameRulesEngine
                 Console.WriteLine($"  📉 Market saturated - {ctx.Territory.Name} -$2,000");
             },
             priority: 700
+        );
+
+        // =====================================================================
+        // COMPOSITE VALUATION RULES - Complex territory pricing
+        // =====================================================================
+
+        // Composite: Golden territory (AND logic - all premium conditions)
+        var goldenConditions = new CompositeRuleBuilder<TerritoryValueContext>()
+            .WithId("COMPOSITE_GOLDEN_TERRITORY")
+            .WithName("Golden Territory Conditions")
+            .WithPriority(1100)
+            .WithOperator(CompositeOperator.And)
+            .AddRule(new RuleBuilder<TerritoryValueContext>()
+                .WithId("GOLDEN_PRIME")
+                .WithName("Prime Location")
+                .When(ctx => ctx.PrimeTerritory)
+                .Build())
+            .AddRule(new RuleBuilder<TerritoryValueContext>()
+                .WithId("GOLDEN_LOW_HEAT")
+                .WithName("Under the Radar")
+                .When(ctx => ctx.PoliceHeat < 20)
+                .Build())
+            .AddRule(new RuleBuilder<TerritoryValueContext>()
+                .WithId("GOLDEN_HIGH_REP")
+                .WithName("Well Respected")
+                .When(ctx => ctx.FamilyReputation > 80)
+                .Build())
+            .Build();
+
+        _valuationEngine.AddRule(
+            "VALUATION_GOLDEN",
+            "Golden Territory Bonus",
+            ctx => goldenConditions.Evaluate(ctx),
+            ctx => {
+                ctx.Territory.WeeklyRevenue = ctx.Territory.WeeklyRevenue * 2.0m;
+                Console.WriteLine($"  🌟 {ctx.Territory.Name} is GOLDEN! Revenue x2!");
+            },
+            priority: 1100
+        );
+
+        // Composite: Troubled territory (OR logic - any problem reduces value)
+        var troubledConditions = new CompositeRuleBuilder<TerritoryValueContext>()
+            .WithId("COMPOSITE_TROUBLED_TERRITORY")
+            .WithName("Troubled Territory Conditions")
+            .WithPriority(800)
+            .WithOperator(CompositeOperator.Or)
+            .AddRule(new RuleBuilder<TerritoryValueContext>()
+                .WithId("TROUBLED_DISPUTED")
+                .WithName("Under Dispute")
+                .When(ctx => ctx.Disputed)
+                .Build())
+            .AddRule(new RuleBuilder<TerritoryValueContext>()
+                .WithId("TROUBLED_POLICE")
+                .WithName("Heavy Police Presence")
+                .When(ctx => ctx.PoliceHeat > 80)
+                .Build())
+            .AddRule(new RuleBuilder<TerritoryValueContext>()
+                .WithId("TROUBLED_LOW_REP")
+                .WithName("Poor Reputation")
+                .When(ctx => ctx.FamilyReputation < 30)
+                .Build())
+            .Build();
+
+        _valuationEngine.AddRule(
+            "VALUATION_TROUBLED",
+            "Troubled Territory Penalty",
+            ctx => troubledConditions.Evaluate(ctx) && !ctx.PrimeTerritory,
+            ctx => {
+                ctx.Territory.WeeklyRevenue = ctx.Territory.WeeklyRevenue * 0.6m;
+                Console.WriteLine($"  💔 {ctx.Territory.Name} has problems - Revenue -40%");
+            },
+            priority: 800
         );
     }
 
@@ -1794,6 +1933,317 @@ public class GameRulesEngine
     {
         return _asyncRules.Select(r => r.Id);
     }
+
+    // =========================================================================
+    // RULE VALIDATOR - Validate rules at startup
+    // =========================================================================
+
+    /// <summary>
+    /// Validate all registered agent rules and return any warnings/errors.
+    /// Call this at startup to catch configuration issues early.
+    /// </summary>
+    /// <returns>List of validation messages (empty if all rules are valid)</returns>
+    public List<string> ValidateAllAgentRules()
+    {
+        var messages = new List<string>();
+        var rules = _agentRules.GetRules().ToList();
+
+        // Check for duplicate priorities (can cause unpredictable behavior)
+        var priorityGroups = rules.GroupBy(r => r.Priority).Where(g => g.Count() > 1);
+        foreach (var group in priorityGroups)
+        {
+            var ruleNames = string.Join(", ", group.Select(r => r.Name));
+            messages.Add($"[WARNING] Multiple rules with priority {group.Key}: {ruleNames}");
+        }
+
+        // Check for rules with empty/null IDs or names
+        foreach (var rule in rules)
+        {
+            if (string.IsNullOrWhiteSpace(rule.Id))
+                messages.Add($"[ERROR] Rule '{rule.Name}' has empty ID");
+            if (string.IsNullOrWhiteSpace(rule.Name))
+                messages.Add($"[ERROR] Rule with ID '{rule.Id}' has empty name");
+        }
+
+        // Check for very low priority rules that might never execute (with StopOnFirstMatch)
+        var veryLowPriorityRules = rules.Where(r => r.Priority < 10 && r.Priority > 1).ToList();
+        if (veryLowPriorityRules.Any())
+        {
+            messages.Add($"[INFO] {veryLowPriorityRules.Count} rules have very low priority (2-9) and may rarely execute");
+        }
+
+        return messages;
+    }
+
+    /// <summary>
+    /// Run rule analysis and log warnings about conflicts/dead rules.
+    /// Call this at startup in debug mode for comprehensive validation.
+    /// </summary>
+    /// <returns>Analysis summary with any issues found</returns>
+    public string RunStartupRuleAnalysis()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("=== Agent Rule Startup Analysis ===");
+        sb.AppendLine();
+
+        // Basic validation
+        var validationMessages = ValidateAllAgentRules();
+        if (validationMessages.Any())
+        {
+            sb.AppendLine("Validation Issues:");
+            foreach (var msg in validationMessages)
+                sb.AppendLine($"  {msg}");
+            sb.AppendLine();
+        }
+        else
+        {
+            sb.AppendLine("✓ Basic validation passed");
+        }
+
+        // Rule analysis with test scenarios
+        var testCases = GenerateAnalysisTestCases();
+        var report = AnalyzeAgentRules(testCases);
+
+        // Check for dead rules (never matched any test case)
+        var deadRules = report.RuleAnalyses.Where(a => a.MatchedCount == 0).ToList();
+        if (deadRules.Any())
+        {
+            sb.AppendLine();
+            sb.AppendLine($"⚠ Potential Dead Rules ({deadRules.Count} rules never matched):");
+            foreach (var rule in deadRules.Take(10))
+                sb.AppendLine($"  - {rule.RuleId}");
+            if (deadRules.Count > 10)
+                sb.AppendLine($"  ... and {deadRules.Count - 10} more");
+        }
+
+        // Check for overlapping rules (multiple rules match same scenarios)
+        var overlaps = report.Overlaps.Take(5).ToList();
+        if (overlaps.Any())
+        {
+            sb.AppendLine();
+            sb.AppendLine("⚠ Rules with overlaps (may cause priority conflicts):");
+            foreach (var overlap in overlaps)
+            {
+                sb.AppendLine($"  - {overlap.Rule1} overlaps with {overlap.Rule2} ({overlap.OverlapRate:P0})");
+            }
+        }
+
+        // Summary stats
+        sb.AppendLine();
+        sb.AppendLine($"Total rules: {report.RuleAnalyses.Count}");
+        sb.AppendLine($"Test scenarios: {testCases.Count}");
+        sb.AppendLine($"Rules with matches: {report.RuleAnalyses.Count(a => a.MatchedCount > 0)}");
+
+        return sb.ToString();
+    }
+
+    // =========================================================================
+    // EXTENDED TEST SCENARIOS - More coverage for rule analysis
+    // =========================================================================
+
+    /// <summary>
+    /// Generate extended test scenarios covering edge cases and all personality types.
+    /// Use this for comprehensive rule analysis.
+    /// </summary>
+    public List<AgentDecisionContext> GenerateExtendedTestCases()
+    {
+        var testCases = GenerateAnalysisTestCases(); // Start with base cases
+
+        // Edge case: Zero wealth (bankruptcy)
+        var bankrupt = new GameState
+        {
+            FamilyWealth = 0m,
+            HeatLevel = 50,
+            SoldierCount = 5
+        };
+        bankrupt.RivalFamilies["test"] = new RivalFamily { Hostility = 60 };
+        testCases.Add(CreateTestContext(bankrupt, aggressive: false, greedy: true));
+
+        // Edge case: Maximum heat
+        var maxHeat = new GameState
+        {
+            FamilyWealth = 100000m,
+            HeatLevel = 100,
+            PreviousHeatLevel = 95,
+            SoldierCount = 20
+        };
+        maxHeat.RivalFamilies["test"] = new RivalFamily { Hostility = 50 };
+        testCases.Add(CreateTestContext(maxHeat, aggressive: false, greedy: false));
+
+        // Hot-headed agent (high aggression, low loyalty)
+        var hotHeadedState = new GameState
+        {
+            FamilyWealth = 150000m,
+            HeatLevel = 40,
+            SoldierCount = 25
+        };
+        hotHeadedState.RivalFamilies["test"] = new RivalFamily { Hostility = 70, Strength = 50 };
+        testCases.Add(new AgentDecisionContext
+        {
+            GameState = hotHeadedState,
+            AgentId = "hotheaded-agent",
+            Aggression = 85,  // IsHotHeaded requires > 80
+            Greed = 50,
+            Loyalty = 40,     // IsHotHeaded requires < 60
+            Ambition = 60
+        });
+
+        // Family-first loyal agent
+        var loyalState = new GameState
+        {
+            FamilyWealth = 80000m,
+            HeatLevel = 70,
+            SoldierCount = 15
+        };
+        loyalState.RivalFamilies["test"] = new RivalFamily { Hostility = 60 };
+        testCases.Add(new AgentDecisionContext
+        {
+            GameState = loyalState,
+            AgentId = "loyal-agent",
+            Aggression = 30,
+            Greed = 40,       // IsFamilyFirst requires < 50
+            Loyalty = 95,     // IsFamilyFirst requires > 90
+            Ambition = 50
+        });
+
+        // Cautious agent (low aggression, high loyalty)
+        var cautiousState = new GameState
+        {
+            FamilyWealth = 120000m,
+            HeatLevel = 55,
+            SoldierCount = 18
+        };
+        cautiousState.RivalFamilies["test"] = new RivalFamily { Hostility = 45 };
+        testCases.Add(new AgentDecisionContext
+        {
+            GameState = cautiousState,
+            AgentId = "cautious-agent",
+            Aggression = 25,  // IsCautious requires < 30
+            Greed = 50,
+            Loyalty = 75,     // IsCautious requires > 70
+            Ambition = 50
+        });
+
+        // Wealthy with no soldiers (needs recruitment)
+        var needsSoldiers = new GameState
+        {
+            FamilyWealth = 300000m,
+            HeatLevel = 25,
+            SoldierCount = 5  // Very low
+        };
+        needsSoldiers.RivalFamilies["test"] = new RivalFamily { Hostility = 80, Strength = 60 };
+        testCases.Add(CreateTestContext(needsSoldiers, aggressive: true, greedy: false));
+
+        // Rival attack imminent scenario
+        var imminentAttack = new GameState
+        {
+            FamilyWealth = 200000m,
+            HeatLevel = 30,
+            SoldierCount = 12
+        };
+        imminentAttack.RivalFamilies["test"] = new RivalFamily { Hostility = 95, Strength = 80 };
+        testCases.Add(CreateTestContext(imminentAttack, aggressive: true, greedy: false));
+
+        // Perfect conditions (low heat, high wealth, weak rivals)
+        var perfectConditions = new GameState
+        {
+            FamilyWealth = 400000m,
+            HeatLevel = 10,
+            PreviousHeatLevel = 15,  // Heat falling
+            Reputation = 80,
+            SoldierCount = 40
+        };
+        perfectConditions.RivalFamilies["test"] = new RivalFamily { Hostility = 20, Strength = 25 };
+        testCases.Add(CreateTestContext(perfectConditions, aggressive: false, greedy: true));
+
+        return testCases;
+    }
+
+    // =========================================================================
+    // METRICS HISTORY - Track rule performance across game sessions (in-memory)
+    // =========================================================================
+
+    private static readonly List<MetricsSnapshot> _metricsHistory = new();
+
+    /// <summary>
+    /// Save current metrics snapshot to in-memory history.
+    /// Call this at end of game or periodically during long sessions.
+    /// </summary>
+    public void SaveMetricsSnapshot(string sessionLabel = "")
+    {
+        var metrics = _agentRules.GetAllMetrics();
+        var snapshot = new MetricsSnapshot
+        {
+            Timestamp = DateTime.UtcNow,
+            SessionLabel = string.IsNullOrEmpty(sessionLabel) ? $"Session_{_metricsHistory.Count + 1}" : sessionLabel,
+            RuleMetrics = metrics.ToDictionary(
+                kvp => kvp.Key,
+                kvp => new RuleMetricsSummary
+                {
+                    ExecutionCount = kvp.Value.ExecutionCount,
+                    TotalExecutionTimeMs = kvp.Value.TotalExecutionTime.TotalMilliseconds,
+                    AverageExecutionTimeMs = kvp.Value.AverageExecutionTime.TotalMilliseconds
+                })
+        };
+        _metricsHistory.Add(snapshot);
+    }
+
+    /// <summary>
+    /// Get historical metrics summary across all saved snapshots.
+    /// </summary>
+    public static string GetMetricsHistory()
+    {
+        if (!_metricsHistory.Any())
+            return "No metrics history recorded yet.";
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("=== Rule Metrics History ===");
+        sb.AppendLine();
+
+        foreach (var snapshot in _metricsHistory.TakeLast(5)) // Last 5 sessions
+        {
+            sb.AppendLine($"📊 {snapshot.SessionLabel} ({snapshot.Timestamp:HH:mm:ss})");
+            var topRules = snapshot.RuleMetrics
+                .OrderByDescending(kvp => kvp.Value.ExecutionCount)
+                .Take(5);
+            foreach (var rule in topRules)
+            {
+                sb.AppendLine($"   {rule.Key}: {rule.Value.ExecutionCount}x (avg {rule.Value.AverageExecutionTimeMs:F2}ms)");
+            }
+            sb.AppendLine();
+        }
+
+        var totalExecutions = _metricsHistory.Sum(s => s.RuleMetrics.Values.Sum(m => m.ExecutionCount));
+        sb.AppendLine($"Total sessions: {_metricsHistory.Count}");
+        sb.AppendLine($"Total rule executions: {totalExecutions}");
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Clear metrics history (useful for testing)
+    /// </summary>
+    public static void ClearMetricsHistory() => _metricsHistory.Clear();
+
+    // =========================================================================
+    // CONFIG LOADER - Load rules from simple config format (string-based)
+    // =========================================================================
+
+    /// <summary>
+    /// Load rules from config string.
+    /// Format:
+    /// [RULE]
+    /// Id=CONFIG_MY_RULE
+    /// Name=My Custom Rule
+    /// Priority=500
+    /// Condition=PropertyName==value
+    /// Action=laylow
+    /// </summary>
+    public int LoadRulesFromConfigString(string configContent)
+    {
+        var rules = RuleConfigLoader.ParseConfigString(configContent);
+        return RegisterDynamicAgentRules(rules);
+    }
 }
 
 // =============================================================================
@@ -1873,5 +2323,193 @@ public class AgentRuleDefinition
             Priority = Priority,
             Conditions = Conditions
         };
+    }
+}
+
+// =============================================================================
+// METRICS SNAPSHOT - In-memory metrics history
+// =============================================================================
+
+/// <summary>
+/// A snapshot of rule metrics at a point in time
+/// </summary>
+public class MetricsSnapshot
+{
+    public DateTime Timestamp { get; set; }
+    public string SessionLabel { get; set; } = "";
+    public Dictionary<string, RuleMetricsSummary> RuleMetrics { get; set; } = new();
+}
+
+/// <summary>
+/// Summary of metrics for a single rule
+/// </summary>
+public class RuleMetricsSummary
+{
+    public int ExecutionCount { get; set; }
+    public double TotalExecutionTimeMs { get; set; }
+    public double AverageExecutionTimeMs { get; set; }
+}
+
+// =============================================================================
+// RULE CONFIG LOADER - Parse rules from simple text format
+// =============================================================================
+
+/// <summary>
+/// Parses agent rules from a simple text-based configuration format.
+/// Enables modding without JSON dependencies.
+/// </summary>
+public static class RuleConfigLoader
+{
+    /// <summary>
+    /// Parse rules from a configuration string.
+    /// Format:
+    /// [RULE]
+    /// Id=CONFIG_MY_RULE
+    /// Name=My Custom Rule
+    /// Priority=500
+    /// Condition=PropertyName==value
+    /// Action=laylow
+    /// </summary>
+    public static List<AgentRuleDefinition> ParseConfigString(string configContent)
+    {
+        var rules = new List<AgentRuleDefinition>();
+        if (string.IsNullOrWhiteSpace(configContent))
+            return rules;
+
+        var lines = configContent.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        AgentRuleDefinition? currentRule = null;
+
+        foreach (var rawLine in lines)
+        {
+            var line = rawLine.Trim();
+
+            // Skip comments and empty lines
+            if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#") || line.StartsWith("//"))
+                continue;
+
+            // New rule marker
+            if (line.Equals("[RULE]", StringComparison.OrdinalIgnoreCase))
+            {
+                if (currentRule != null && !string.IsNullOrEmpty(currentRule.Id))
+                    rules.Add(currentRule);
+                currentRule = new AgentRuleDefinition();
+                continue;
+            }
+
+            // Skip if no current rule
+            if (currentRule == null)
+                continue;
+
+            // Parse key=value pairs
+            var eqIndex = line.IndexOf('=');
+            if (eqIndex <= 0)
+                continue;
+
+            var key = line.Substring(0, eqIndex).Trim().ToLowerInvariant();
+            var value = line.Substring(eqIndex + 1).Trim();
+
+            switch (key)
+            {
+                case "id":
+                    currentRule.Id = value;
+                    break;
+                case "name":
+                    currentRule.Name = value;
+                    break;
+                case "description":
+                    currentRule.Description = value;
+                    break;
+                case "priority":
+                    if (int.TryParse(value, out var priority))
+                        currentRule.Priority = priority;
+                    break;
+                case "action":
+                    currentRule.RecommendedAction = value;
+                    break;
+                case "condition":
+                    var condition = ParseCondition(value);
+                    if (condition != null)
+                        currentRule.Conditions.Add(condition);
+                    break;
+            }
+        }
+
+        // Don't forget the last rule
+        if (currentRule != null && !string.IsNullOrEmpty(currentRule.Id))
+            rules.Add(currentRule);
+
+        return rules;
+    }
+
+    /// <summary>
+    /// Parse a condition string like "PropertyName==value" or "Heat>50"
+    /// </summary>
+    private static ConditionDefinition? ParseCondition(string conditionStr)
+    {
+        // Try common operators in order of specificity
+        string[] operators = { "==", "!=", ">=", "<=", ">", "<", "contains" };
+
+        foreach (var op in operators)
+        {
+            var opIndex = conditionStr.IndexOf(op, StringComparison.OrdinalIgnoreCase);
+            if (opIndex > 0)
+            {
+                var propertyName = conditionStr.Substring(0, opIndex).Trim();
+                var valueStr = conditionStr.Substring(opIndex + op.Length).Trim();
+
+                // Parse the value
+                object parsedValue;
+                if (bool.TryParse(valueStr, out var boolVal))
+                    parsedValue = boolVal;
+                else if (int.TryParse(valueStr, out var intVal))
+                    parsedValue = intVal;
+                else if (double.TryParse(valueStr, out var doubleVal))
+                    parsedValue = doubleVal;
+                else
+                    parsedValue = valueStr; // Keep as string
+
+                return new ConditionDefinition
+                {
+                    PropertyName = propertyName,
+                    Operator = op,
+                    Value = parsedValue
+                };
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Get example configuration format documentation
+    /// </summary>
+    public static string GetConfigFormatHelp()
+    {
+        return @"
+Rule Configuration Format
+=========================
+
+# Comments start with # or //
+
+[RULE]
+Id=CONFIG_MY_RULE
+Name=My Custom Rule
+Description=Optional description
+Priority=500
+Condition=HeatIsDangerous==true
+Condition=InSurvivalMode==true
+Action=laylow
+
+[RULE]
+Id=CONFIG_ANOTHER_RULE
+Name=Another Rule
+Priority=400
+Condition=FamilyWealth>100000
+Action=expand
+
+Supported Operators: ==, !=, >, <, >=, <=, contains
+Supported Value Types: true/false, integers, decimals, strings
+Available Actions: collection, expand, recruit, attack, laylow, bribe, negotiate, wait
+";
     }
 }

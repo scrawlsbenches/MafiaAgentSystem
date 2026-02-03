@@ -1390,4 +1390,156 @@ public class MafiaAgentsTests
     }
 
     #endregion
+
+    #region PlayerAgent Decision Trace Tests
+
+    [Test]
+    public void PlayerAgent_DecideMissionWithTrace_ReturnsValidTrace()
+    {
+        var agent = new AgentRouting.MafiaDemo.AI.PlayerAgent("Test Player");
+        var gameState = CreateTestGameState();
+        var mission = CreateTestMission();
+
+        var trace = agent.DecideMissionWithTrace(mission, gameState);
+
+        Assert.NotNull(trace);
+        Assert.Equal("Test Player", trace.PlayerName);
+        Assert.Equal("Test Mission", trace.MissionTitle);
+        Assert.NotEmpty(trace.RuleEvaluations);
+        Assert.True(trace.FinalDecision == "ACCEPT" || trace.FinalDecision == "REJECT");
+    }
+
+    [Test]
+    public void PlayerAgent_DecideMissionWithTrace_CapturesContextSnapshot()
+    {
+        var agent = new AgentRouting.MafiaDemo.AI.PlayerAgent("Test Player");
+        var gameState = CreateTestGameState();
+        var mission = CreateTestMission();
+
+        var trace = agent.DecideMissionWithTrace(mission, gameState);
+
+        Assert.NotEmpty(trace.ContextSnapshot);
+        Assert.True(trace.ContextSnapshot.ContainsKey("Player.Respect"));
+        Assert.True(trace.ContextSnapshot.ContainsKey("Player.Money"));
+        Assert.True(trace.ContextSnapshot.ContainsKey("Player.Heat"));
+        Assert.True(trace.ContextSnapshot.ContainsKey("Mission.RiskLevel"));
+        Assert.True(trace.ContextSnapshot.ContainsKey("MissionIsSafe"));
+        Assert.True(trace.ContextSnapshot.ContainsKey("MeetsSkillRequirements"));
+    }
+
+    [Test]
+    public void PlayerAgent_DecideMissionWithTrace_EvaluatesAllRules()
+    {
+        var agent = new AgentRouting.MafiaDemo.AI.PlayerAgent("Test Player");
+        var gameState = CreateTestGameState();
+        var mission = CreateTestMission();
+
+        var trace = agent.DecideMissionWithTrace(mission, gameState);
+
+        // Should evaluate all decision rules
+        Assert.True(trace.RuleEvaluations.Count >= 5);
+
+        // Each evaluation should have rule info
+        foreach (var eval in trace.RuleEvaluations)
+        {
+            Assert.NotEmpty(eval.RuleId);
+            Assert.NotEmpty(eval.RuleName);
+            Assert.True(eval.Priority > 0);
+        }
+    }
+
+    [Test]
+    public void PlayerAgent_DecideMissionWithTrace_RulesOrderedByPriority()
+    {
+        var agent = new AgentRouting.MafiaDemo.AI.PlayerAgent("Test Player");
+        var gameState = CreateTestGameState();
+        var mission = CreateTestMission();
+
+        var trace = agent.DecideMissionWithTrace(mission, gameState);
+
+        // Verify rules are in descending priority order
+        for (int i = 1; i < trace.RuleEvaluations.Count; i++)
+        {
+            Assert.True(trace.RuleEvaluations[i - 1].Priority >= trace.RuleEvaluations[i].Priority);
+        }
+    }
+
+    [Test]
+    public void PlayerAgent_GetDecisionTraceReport_ReturnsFormattedString()
+    {
+        var agent = new AgentRouting.MafiaDemo.AI.PlayerAgent("Test Player");
+        var gameState = CreateTestGameState();
+        var mission = CreateTestMission();
+
+        var report = agent.GetDecisionTraceReport(mission, gameState);
+
+        Assert.NotEmpty(report);
+        Assert.Contains("MISSION DECISION TRACE", report);
+        Assert.Contains("CONTEXT STATE", report);
+        Assert.Contains("RULE EVALUATIONS", report);
+        Assert.Contains("DECISION", report);
+    }
+
+    [Test]
+    public void MissionDecisionTrace_ToFormattedString_ContainsAllSections()
+    {
+        var trace = new AgentRouting.MafiaDemo.AI.MissionDecisionTrace
+        {
+            Timestamp = DateTime.UtcNow,
+            PlayerName = "Test Player",
+            PlayerRank = "Associate",
+            MissionTitle = "Test Mission",
+            MissionType = "Collection",
+            FinalDecision = "ACCEPT",
+            DecisionReason = "Test Reason",
+            MatchedRuleId = "TEST_RULE",
+            Confidence = 75
+        };
+        trace.ContextSnapshot["Player.Respect"] = 50;
+        trace.ContextSnapshot["MissionIsSafe"] = true;
+        trace.RuleEvaluations.Add(new AgentRouting.MafiaDemo.AI.RuleEvaluationResult
+        {
+            RuleId = "TEST_RULE",
+            RuleName = "Test Rule",
+            Priority = 100,
+            Matched = true
+        });
+
+        var formatted = trace.ToFormattedString();
+
+        Assert.Contains("Test Player", formatted);
+        Assert.Contains("Associate", formatted);
+        Assert.Contains("Test Mission", formatted);
+        Assert.Contains("ACCEPT", formatted);
+        Assert.Contains("75%", formatted);
+        Assert.Contains("TEST_RULE", formatted);
+    }
+
+    // Helper methods for PlayerAgent tests
+    private static AgentRouting.MafiaDemo.Game.GameState CreateTestGameState()
+    {
+        var state = new AgentRouting.MafiaDemo.Game.GameState();
+        state.Week = 1;
+        state.HeatLevel = 20;
+        state.FamilyWealth = 10000m;
+        state.Reputation = 50;
+        return state;
+    }
+
+    private static AgentRouting.MafiaDemo.Missions.Mission CreateTestMission()
+    {
+        return new AgentRouting.MafiaDemo.Missions.Mission
+        {
+            Id = "test-mission-001",
+            Title = "Test Mission",
+            Description = "A test mission for unit tests",
+            Type = AgentRouting.MafiaDemo.Missions.MissionType.Collection,
+            RiskLevel = 3,
+            RespectReward = 5,
+            MoneyReward = 500,
+            SkillRequirements = new Dictionary<string, int>()
+        };
+    }
+
+    #endregion
 }

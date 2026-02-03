@@ -222,7 +222,7 @@ public class PlayerAgent
     private int CalculateConfidence(PlayerDecisionContext context, bool accepting)
     {
         var confidence = 50;
-        
+
         if (accepting)
         {
             if (context.OverqualifiedForMission) confidence += 30;
@@ -236,8 +236,129 @@ public class PlayerAgent
             if (context.UnderHeat) confidence += 30;
             if (context.MissionIsRisky) confidence += 20;
         }
-        
+
         return Math.Min(100, confidence);
+    }
+
+    /// <summary>
+    /// Decide mission with full trace showing rule evaluation details.
+    /// Useful for debugging AI decision making in career mode.
+    /// </summary>
+    public MissionDecisionTrace DecideMissionWithTrace(Mission mission, GameState gameState)
+    {
+        var context = new PlayerDecisionContext
+        {
+            Player = _character,
+            Mission = mission,
+            GameState = gameState
+        };
+
+        var trace = new MissionDecisionTrace
+        {
+            Timestamp = DateTime.UtcNow,
+            PlayerName = _character.Name,
+            PlayerRank = _character.Rank.ToString(),
+            MissionTitle = mission.Title,
+            MissionType = mission.Type.ToString()
+        };
+
+        // Capture context state
+        trace.ContextSnapshot = new Dictionary<string, object>
+        {
+            ["Player.Respect"] = _character.Respect,
+            ["Player.Money"] = _character.Money,
+            ["Player.Heat"] = _character.Heat,
+            ["Player.Week"] = _character.Week,
+            ["Mission.RiskLevel"] = mission.RiskLevel,
+            ["Mission.RespectReward"] = mission.RespectReward,
+            ["Mission.MoneyReward"] = mission.MoneyReward,
+
+            // Calculated properties
+            ["IsLowOnMoney"] = context.IsLowOnMoney,
+            ["IsRich"] = context.IsRich,
+            ["HasLowRespect"] = context.HasLowRespect,
+            ["HasHighRespect"] = context.HasHighRespect,
+            ["UnderHeat"] = context.UnderHeat,
+            ["SafeOperations"] = context.SafeOperations,
+            ["MissionIsSafe"] = context.MissionIsSafe,
+            ["MissionIsRisky"] = context.MissionIsRisky,
+            ["MissionIsHighReward"] = context.MissionIsHighReward,
+            ["CanAffordRisk"] = context.CanAffordRisk,
+            ["MeetsSkillRequirements"] = context.MeetsSkillRequirements,
+            ["OverqualifiedForMission"] = context.OverqualifiedForMission,
+            ["ReadyForPromotion"] = context.ReadyForPromotion,
+            ["ShouldTakeRisk"] = context.ShouldTakeRisk,
+            ["ShouldBeCautious"] = context.ShouldBeCautious,
+
+            // Personality traits
+            ["Personality.IsAmbitious"] = _character.Personality.IsAmbitious,
+            ["Personality.IsCautious"] = _character.Personality.IsCautious,
+            ["Personality.IsRuthless"] = _character.Personality.IsRuthless,
+            ["Personality.IsLoyal"] = _character.Personality.IsLoyal
+        };
+
+        // Evaluate all rules and capture results
+        var allRules = _decisionRules.GetRules().ToList();
+        foreach (var rule in allRules.OrderByDescending(r => r.Priority))
+        {
+            bool matches;
+            try
+            {
+                matches = rule.Evaluate(context);
+            }
+            catch (Exception ex)
+            {
+                trace.RuleEvaluations.Add(new RuleEvaluationResult
+                {
+                    RuleId = rule.Id,
+                    RuleName = rule.Name,
+                    Priority = rule.Priority,
+                    Matched = false,
+                    EvaluationError = ex.Message
+                });
+                continue;
+            }
+
+            trace.RuleEvaluations.Add(new RuleEvaluationResult
+            {
+                RuleId = rule.Id,
+                RuleName = rule.Name,
+                Priority = rule.Priority,
+                Matched = matches
+            });
+        }
+
+        // Get actual decision
+        var matchedRules = trace.RuleEvaluations.Where(r => r.Matched).ToList();
+
+        if (!matchedRules.Any())
+        {
+            trace.FinalDecision = "REJECT";
+            trace.DecisionReason = "No compelling reason to take this mission";
+            trace.MatchedRuleId = "NONE";
+            trace.Confidence = 50;
+        }
+        else
+        {
+            var topRule = matchedRules.First(); // Already sorted by priority
+            var accept = !topRule.RuleName.Contains("REJECT");
+
+            trace.FinalDecision = accept ? "ACCEPT" : "REJECT";
+            trace.DecisionReason = topRule.RuleName;
+            trace.MatchedRuleId = topRule.RuleId;
+            trace.Confidence = CalculateConfidence(context, accept);
+        }
+
+        return trace;
+    }
+
+    /// <summary>
+    /// Get formatted trace output for debugging
+    /// </summary>
+    public string GetDecisionTraceReport(Mission mission, GameState gameState)
+    {
+        var trace = DecideMissionWithTrace(mission, gameState);
+        return trace.ToFormattedString();
     }
     
     /// <summary>
@@ -481,4 +602,125 @@ public class WeekResult
     public Mission GeneratedMission { get; set; } = null!;
     public MissionDecision Decision { get; set; } = null!;
     public MissionExecutionResult? ExecutionResult { get; set; }
+}
+
+/// <summary>
+/// Detailed trace of mission decision rule evaluation.
+/// Used for debugging AI decision making in career mode.
+/// </summary>
+public class MissionDecisionTrace
+{
+    public DateTime Timestamp { get; set; }
+    public string PlayerName { get; set; } = "";
+    public string PlayerRank { get; set; } = "";
+    public string MissionTitle { get; set; } = "";
+    public string MissionType { get; set; } = "";
+
+    /// <summary>
+    /// Snapshot of all context values at decision time
+    /// </summary>
+    public Dictionary<string, object> ContextSnapshot { get; set; } = new();
+
+    /// <summary>
+    /// Results of evaluating each rule (in priority order)
+    /// </summary>
+    public List<RuleEvaluationResult> RuleEvaluations { get; set; } = new();
+
+    /// <summary>
+    /// Final decision: ACCEPT or REJECT
+    /// </summary>
+    public string FinalDecision { get; set; } = "";
+
+    /// <summary>
+    /// Reason for the decision (rule name or "No compelling reason")
+    /// </summary>
+    public string DecisionReason { get; set; } = "";
+
+    /// <summary>
+    /// ID of the rule that determined the decision
+    /// </summary>
+    public string MatchedRuleId { get; set; } = "";
+
+    /// <summary>
+    /// Confidence level (0-100)
+    /// </summary>
+    public int Confidence { get; set; }
+
+    /// <summary>
+    /// Format trace as human-readable string
+    /// </summary>
+    public string ToFormattedString()
+    {
+        var sb = new System.Text.StringBuilder();
+
+        sb.AppendLine("╔══════════════════════════════════════════════════════════════╗");
+        sb.AppendLine("║           MISSION DECISION TRACE                             ║");
+        sb.AppendLine("╠══════════════════════════════════════════════════════════════╣");
+        sb.AppendLine($"║ Time: {Timestamp:yyyy-MM-dd HH:mm:ss}");
+        sb.AppendLine($"║ Player: {PlayerName} ({PlayerRank})");
+        sb.AppendLine($"║ Mission: {MissionTitle} [{MissionType}]");
+        sb.AppendLine("╠══════════════════════════════════════════════════════════════╣");
+        sb.AppendLine("║ CONTEXT STATE:");
+        sb.AppendLine("╠──────────────────────────────────────────────────────────────╣");
+
+        // Group context by category
+        var playerStats = ContextSnapshot.Where(kv => kv.Key.StartsWith("Player.")).ToList();
+        var missionStats = ContextSnapshot.Where(kv => kv.Key.StartsWith("Mission.")).ToList();
+        var calculated = ContextSnapshot.Where(kv => !kv.Key.Contains(".") || kv.Key.StartsWith("Personality.")).ToList();
+
+        sb.AppendLine("║ Player Stats:");
+        foreach (var kv in playerStats)
+            sb.AppendLine($"║   {kv.Key.Replace("Player.", "")}: {kv.Value}");
+
+        sb.AppendLine("║ Mission Stats:");
+        foreach (var kv in missionStats)
+            sb.AppendLine($"║   {kv.Key.Replace("Mission.", "")}: {kv.Value}");
+
+        sb.AppendLine("║ Calculated Context:");
+        foreach (var kv in calculated.Where(kv => !kv.Key.StartsWith("Personality.")))
+        {
+            var value = kv.Value is bool b ? (b ? "✓" : "✗") : kv.Value.ToString();
+            sb.AppendLine($"║   {kv.Key}: {value}");
+        }
+
+        sb.AppendLine("║ Personality:");
+        foreach (var kv in calculated.Where(kv => kv.Key.StartsWith("Personality.")))
+        {
+            var value = kv.Value is bool b ? (b ? "✓" : "✗") : kv.Value.ToString();
+            sb.AppendLine($"║   {kv.Key.Replace("Personality.", "")}: {value}");
+        }
+
+        sb.AppendLine("╠══════════════════════════════════════════════════════════════╣");
+        sb.AppendLine("║ RULE EVALUATIONS (by priority):");
+        sb.AppendLine("╠──────────────────────────────────────────────────────────────╣");
+
+        foreach (var rule in RuleEvaluations)
+        {
+            var icon = rule.Matched ? "✓" : "✗";
+            var error = !string.IsNullOrEmpty(rule.EvaluationError) ? $" [ERROR: {rule.EvaluationError}]" : "";
+            sb.AppendLine($"║ [{icon}] P{rule.Priority,4} {rule.RuleId}: {rule.RuleName}{error}");
+        }
+
+        sb.AppendLine("╠══════════════════════════════════════════════════════════════╣");
+        sb.AppendLine("║ DECISION:");
+        sb.AppendLine("╠──────────────────────────────────────────────────────────────╣");
+        sb.AppendLine($"║ Result: {FinalDecision} (Confidence: {Confidence}%)");
+        sb.AppendLine($"║ Reason: {DecisionReason}");
+        sb.AppendLine($"║ Matched Rule: {MatchedRuleId}");
+        sb.AppendLine("╚══════════════════════════════════════════════════════════════╝");
+
+        return sb.ToString();
+    }
+}
+
+/// <summary>
+/// Result of evaluating a single rule
+/// </summary>
+public class RuleEvaluationResult
+{
+    public string RuleId { get; set; } = "";
+    public string RuleName { get; set; } = "";
+    public int Priority { get; set; }
+    public bool Matched { get; set; }
+    public string? EvaluationError { get; set; }
 }
