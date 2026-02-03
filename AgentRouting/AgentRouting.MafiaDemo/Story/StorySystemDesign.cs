@@ -1762,6 +1762,1015 @@ public class ConversationEngine
     }
 }
 
+// =============================================================================
+// RULES-BASED DECISION ENGINES
+// =============================================================================
+// Instead of hardcoded if/else logic, we use RulesEngine for all decisions.
+// This makes behavior:
+// - Configurable (add rules without changing code)
+// - Debuggable (see which rules fired and why)
+// - Consistent (same pattern as game rules)
+// - Extensible (mods can add new rules)
+// =============================================================================
+
+#region Conversation Rules Context
+
+/// <summary>
+/// Context for evaluating conversation rules.
+/// Contains all information needed to decide how to respond to a question.
+/// </summary>
+public class ConversationContext
+{
+    // The question being asked
+    public AgentQuestion Question { get; set; } = null!;
+    public QuestionType QuestionType => Question.Type;
+    public QuestionUrgency Urgency => Question.Urgency;
+    public bool IsSensitive => Question.RequiresHonesty;
+
+    // The responder's state
+    public Persona Persona { get; set; } = null!;
+    public MemoryBank Memories { get; set; } = null!;
+    public int RelationshipWithAsker { get; set; }
+
+    // Computed persona properties for rules
+    public bool IsProud => Persona.Pride > 70;
+    public bool IsCautious => Persona.Caution > 70;
+    public bool IsLoyal => Persona.Loyalty > 70;
+    public bool IsCunning => Persona.Cunning > 70;
+    public bool IsTrusting => Persona.Trust > 70;
+    public bool IsAggressive => Persona.Aggression > 70;
+    public int Honesty => Persona.Honesty;
+
+    // Relationship categories
+    public bool IsEnemy => RelationshipWithAsker < -30;
+    public bool IsStranger => RelationshipWithAsker >= -30 && RelationshipWithAsker <= 30;
+    public bool IsFriend => RelationshipWithAsker > 30;
+    public bool IsCloseFriend => RelationshipWithAsker > 70;
+
+    // Memory state
+    public List<Memory> RelevantMemories { get; set; } = new();
+    public bool HasRelevantMemories => RelevantMemories.Count > 0;
+    public bool HasSecretMemories => RelevantMemories.Any(m => m.Type == MemoryType.Secret);
+    public int BestMemoryConfidence => RelevantMemories.Max(m => (int?)m.Confidence) ?? 0;
+
+    // Subject relationships (for loyalty checks)
+    public string? SubjectEntityId => Question.SubjectEntityId;
+    public int LoyaltyToSubject { get; set; }  // How loyal to the entity being asked about
+    public bool IsProtectingSubject => LoyaltyToSubject > 50 && !IsFriend;
+
+    // Output - set by rules
+    public ResponseDecision Decision { get; set; } = new();
+}
+
+/// <summary>
+/// The decision made by conversation rules.
+/// </summary>
+public class ResponseDecision
+{
+    public bool WillAnswer { get; set; } = true;
+    public bool WillLie { get; set; }
+    public bool WillBargain { get; set; }
+    public string? RefusalReason { get; set; }
+    public string? LieReason { get; set; }
+    public int RelationshipModifier { get; set; }
+    public string? MatchedRule { get; set; }
+
+    // Response style overrides
+    public ResponseType? ForcedResponseType { get; set; }
+    public string? CustomResponse { get; set; }
+}
+
+#endregion
+
+#region Conversation Rules Setup
+
+/// <summary>
+/// Sets up all conversation decision rules using the RulesEngine.
+/// Rules are evaluated in priority order (highest first).
+///
+/// RULE CATEGORIES:
+/// 1. Refusal rules (100-199) - When to refuse to answer
+/// 2. Lie rules (200-299) - When to lie
+/// 3. Bargain rules (300-399) - When to negotiate
+/// 4. Honesty rules (400-499) - When to be truthful
+/// 5. Style rules (500-599) - How to phrase the response
+/// </summary>
+public static class ConversationRulesSetup
+{
+    public static RulesEngineCore<ConversationContext> CreateEngine()
+    {
+        var engine = new RulesEngineCore<ConversationContext>();
+
+        // ========================================
+        // REFUSAL RULES (Priority 100-199)
+        // ========================================
+
+        engine.AddRule(
+            "REFUSE_ENEMY_TRUST_QUESTION",
+            "Enemy Asks About Trust",
+            ctx => ctx.IsEnemy && ctx.QuestionType == QuestionType.CanWeTrust,
+            ctx => {
+                ctx.Decision.WillAnswer = false;
+                ctx.Decision.RefusalReason = "I don't discuss such matters with you.";
+                ctx.Decision.MatchedRule = "REFUSE_ENEMY_TRUST_QUESTION";
+            },
+            priority: 150);
+
+        engine.AddRule(
+            "REFUSE_PROUD_DEMANDS",
+            "Proud Persona Refuses Demands",
+            ctx => ctx.IsProud && ctx.Urgency == QuestionUrgency.Critical && !ctx.IsCloseFriend,
+            ctx => {
+                ctx.Decision.WillAnswer = false;
+                ctx.Decision.RefusalReason = "Don't presume to demand answers from me.";
+                ctx.Decision.MatchedRule = "REFUSE_PROUD_DEMANDS";
+            },
+            priority: 140);
+
+        engine.AddRule(
+            "REFUSE_CAUTIOUS_DANGEROUS_INFO",
+            "Cautious Persona Protects Dangerous Info",
+            ctx => ctx.IsCautious && ctx.IsSensitive &&
+                   (ctx.QuestionType == QuestionType.WhoControls ||
+                    ctx.QuestionType == QuestionType.WhereDoYouStand),
+            ctx => {
+                ctx.Decision.WillAnswer = false;
+                ctx.Decision.RefusalReason = "Some things are better left unsaid.";
+                ctx.Decision.MatchedRule = "REFUSE_CAUTIOUS_DANGEROUS_INFO";
+            },
+            priority: 130);
+
+        engine.AddRule(
+            "REFUSE_STRANGER_HELP",
+            "Won't Help Strangers/Enemies",
+            ctx => ctx.RelationshipWithAsker < 0 && ctx.QuestionType == QuestionType.WillYouHelp,
+            ctx => {
+                ctx.Decision.WillAnswer = false;
+                ctx.Decision.RefusalReason = "Why would I help you?";
+                ctx.Decision.MatchedRule = "REFUSE_STRANGER_HELP";
+            },
+            priority: 120);
+
+        engine.AddRule(
+            "REFUSE_PROTECTING_ALLY",
+            "Protect Ally from Enemy Questions",
+            ctx => ctx.IsProtectingSubject && ctx.IsEnemy,
+            ctx => {
+                ctx.Decision.WillAnswer = false;
+                ctx.Decision.RefusalReason = "I have nothing to say about that.";
+                ctx.Decision.MatchedRule = "REFUSE_PROTECTING_ALLY";
+            },
+            priority: 110);
+
+        // ========================================
+        // LIE RULES (Priority 200-299)
+        // ========================================
+
+        engine.AddRule(
+            "LIE_CUNNING_STRATEGIC",
+            "Cunning Persona Lies Strategically",
+            ctx => ctx.IsCunning && ctx.Honesty < 40 && ctx.HasRelevantMemories && !ctx.IsFriend,
+            ctx => {
+                ctx.Decision.WillLie = true;
+                ctx.Decision.LieReason = "strategic_advantage";
+                ctx.Decision.MatchedRule = "LIE_CUNNING_STRATEGIC";
+            },
+            priority: 250);
+
+        engine.AddRule(
+            "LIE_ENEMY_INFO_REQUEST",
+            "Lie to Enemy Seeking Information",
+            ctx => ctx.IsEnemy && ctx.QuestionType == QuestionType.WhatDoYouKnow &&
+                   ctx.HasRelevantMemories && ctx.Honesty < 70,
+            ctx => {
+                ctx.Decision.WillLie = true;
+                ctx.Decision.LieReason = "distrust";
+                ctx.Decision.MatchedRule = "LIE_ENEMY_INFO_REQUEST";
+            },
+            priority: 240);
+
+        engine.AddRule(
+            "LIE_PROTECT_ALLY",
+            "Lie to Protect Loyal Ally",
+            ctx => ctx.IsLoyal && ctx.IsProtectingSubject && ctx.HasRelevantMemories,
+            ctx => {
+                ctx.Decision.WillLie = true;
+                ctx.Decision.LieReason = "protecting_ally";
+                ctx.Decision.MatchedRule = "LIE_PROTECT_ALLY";
+            },
+            priority: 230);
+
+        engine.AddRule(
+            "LIE_LOW_HONESTY_STRANGER",
+            "Dishonest Persona Lies to Strangers",
+            ctx => ctx.Honesty < 30 && ctx.IsStranger && ctx.HasRelevantMemories,
+            ctx => {
+                ctx.Decision.WillLie = true;
+                ctx.Decision.LieReason = "habitual";
+                ctx.Decision.MatchedRule = "LIE_LOW_HONESTY_STRANGER";
+            },
+            priority: 220);
+
+        engine.AddRule(
+            "LIE_ABOUT_SECRETS",
+            "Lie About Secrets to Non-Friends",
+            ctx => ctx.HasSecretMemories && !ctx.IsFriend,
+            ctx => {
+                ctx.Decision.WillLie = true;
+                ctx.Decision.LieReason = "protecting_secrets";
+                ctx.Decision.MatchedRule = "LIE_ABOUT_SECRETS";
+            },
+            priority: 210);
+
+        // ========================================
+        // BARGAIN RULES (Priority 300-399)
+        // ========================================
+
+        engine.AddRule(
+            "BARGAIN_CUNNING_VALUABLE_INFO",
+            "Cunning Persona Bargains with Valuable Info",
+            ctx => ctx.IsCunning && ctx.HasSecretMemories && ctx.IsStranger,
+            ctx => {
+                ctx.Decision.WillBargain = true;
+                ctx.Decision.ForcedResponseType = ResponseType.Bargain;
+                ctx.Decision.CustomResponse = "That information has value. What's it worth to you?";
+                ctx.Decision.MatchedRule = "BARGAIN_CUNNING_VALUABLE_INFO";
+            },
+            priority: 350);
+
+        engine.AddRule(
+            "BARGAIN_ENEMY_NEEDS_HELP",
+            "Bargain When Enemy Needs Help",
+            ctx => ctx.IsEnemy && ctx.QuestionType == QuestionType.WillYouHelp && ctx.Honesty > 50,
+            ctx => {
+                ctx.Decision.WillBargain = true;
+                ctx.Decision.ForcedResponseType = ResponseType.Bargain;
+                ctx.Decision.CustomResponse = "Maybe. But you'll owe me.";
+                ctx.Decision.MatchedRule = "BARGAIN_ENEMY_NEEDS_HELP";
+            },
+            priority: 340);
+
+        // ========================================
+        // HONESTY RULES (Priority 400-499)
+        // ========================================
+
+        engine.AddRule(
+            "HONEST_CLOSE_FRIEND",
+            "Always Honest with Close Friends",
+            ctx => ctx.IsCloseFriend && ctx.HasRelevantMemories,
+            ctx => {
+                ctx.Decision.WillAnswer = true;
+                ctx.Decision.WillLie = false;
+                ctx.Decision.RelationshipModifier = 5;
+                ctx.Decision.MatchedRule = "HONEST_CLOSE_FRIEND";
+            },
+            priority: 490);
+
+        engine.AddRule(
+            "HONEST_HIGH_INTEGRITY",
+            "High Honesty Persona Tells Truth",
+            ctx => ctx.Honesty > 80 && ctx.HasRelevantMemories,
+            ctx => {
+                ctx.Decision.WillAnswer = true;
+                ctx.Decision.WillLie = false;
+                ctx.Decision.MatchedRule = "HONEST_HIGH_INTEGRITY";
+            },
+            priority: 480);
+
+        engine.AddRule(
+            "HONEST_TRUSTING_FRIEND",
+            "Trusting Persona Honest with Friends",
+            ctx => ctx.IsTrusting && ctx.IsFriend && ctx.HasRelevantMemories,
+            ctx => {
+                ctx.Decision.WillAnswer = true;
+                ctx.Decision.WillLie = false;
+                ctx.Decision.RelationshipModifier = 3;
+                ctx.Decision.MatchedRule = "HONEST_TRUSTING_FRIEND";
+            },
+            priority: 470);
+
+        engine.AddRule(
+            "HONEST_DEFAULT",
+            "Default Honest Response",
+            ctx => ctx.HasRelevantMemories && !ctx.Decision.WillLie,
+            ctx => {
+                ctx.Decision.WillAnswer = true;
+                ctx.Decision.MatchedRule = "HONEST_DEFAULT";
+            },
+            priority: 400);
+
+        // ========================================
+        // UNKNOWN INFO RULES (Priority 300-350)
+        // ========================================
+
+        engine.AddRule(
+            "UNKNOWN_REDIRECT_HELPFUL",
+            "Helpful Redirect When Unknown",
+            ctx => !ctx.HasRelevantMemories && ctx.IsFriend && ctx.Persona.Empathy > 50,
+            ctx => {
+                ctx.Decision.WillAnswer = true;
+                ctx.Decision.ForcedResponseType = ResponseType.Redirect;
+                ctx.Decision.CustomResponse = "I don't know, but you might ask around the docks.";
+                ctx.Decision.MatchedRule = "UNKNOWN_REDIRECT_HELPFUL";
+            },
+            priority: 320);
+
+        engine.AddRule(
+            "UNKNOWN_BLUNT",
+            "Blunt Unknown Response",
+            ctx => !ctx.HasRelevantMemories && ctx.Persona.Style == CommunicationStyle.Blunt,
+            ctx => {
+                ctx.Decision.WillAnswer = true;
+                ctx.Decision.ForcedResponseType = ResponseType.Partial;
+                ctx.Decision.CustomResponse = "Don't know.";
+                ctx.Decision.MatchedRule = "UNKNOWN_BLUNT";
+            },
+            priority: 310);
+
+        return engine;
+    }
+}
+
+#endregion
+
+#region Character Evolution Rules
+
+/// <summary>
+/// Context for character evolution rules.
+/// Determines how experiences change a persona over time.
+/// </summary>
+public class EvolutionContext
+{
+    public Persona Persona { get; set; } = null!;
+    public string ExperienceType { get; set; } = "";
+    public int Intensity { get; set; }              // 0-100, how significant
+    public string? InvolvesEntityId { get; set; }
+
+    // Current trait values for conditions
+    public int Trust => Persona.Trust;
+    public int Caution => Persona.Caution;
+    public int Aggression => Persona.Aggression;
+    public int Loyalty => Persona.Loyalty;
+    public int Pride => Persona.Pride;
+    public int Ambition => Persona.Ambition;
+
+    // Output - changes to apply
+    public Dictionary<string, int> TraitChanges { get; set; } = new();
+    public string? NewGoal { get; set; }
+    public string? NewFear { get; set; }
+}
+
+/// <summary>
+/// Rules for how experiences change personas.
+/// </summary>
+public static class EvolutionRulesSetup
+{
+    public static RulesEngineCore<EvolutionContext> CreateEngine()
+    {
+        var engine = new RulesEngineCore<EvolutionContext>();
+
+        // === BETRAYAL EXPERIENCES ===
+
+        engine.AddRule(
+            "EVOLVE_BETRAYAL_TRUST_LOSS",
+            "Betrayal Reduces Trust",
+            ctx => ctx.ExperienceType == "betrayed",
+            ctx => {
+                ctx.TraitChanges["Trust"] = -ctx.Intensity;
+                ctx.TraitChanges["Caution"] = ctx.Intensity / 2;
+            },
+            priority: 100);
+
+        engine.AddRule(
+            "EVOLVE_BETRAYAL_REVENGE_GOAL",
+            "Severe Betrayal Creates Revenge Goal",
+            ctx => ctx.ExperienceType == "betrayed" && ctx.Intensity > 70 && ctx.Pride > 50,
+            ctx => {
+                ctx.NewGoal = $"revenge_{ctx.InvolvesEntityId}";
+                ctx.TraitChanges["Aggression"] = ctx.Intensity / 3;
+            },
+            priority: 110);
+
+        // === SUCCESS EXPERIENCES ===
+
+        engine.AddRule(
+            "EVOLVE_SUCCESS_AMBITION",
+            "Success Increases Ambition",
+            ctx => ctx.ExperienceType == "success",
+            ctx => {
+                ctx.TraitChanges["Ambition"] = ctx.Intensity / 3;
+                ctx.TraitChanges["Pride"] = ctx.Intensity / 4;
+            },
+            priority: 100);
+
+        engine.AddRule(
+            "EVOLVE_BIG_SUCCESS_REDUCES_CAUTION",
+            "Big Success Reduces Caution",
+            ctx => ctx.ExperienceType == "success" && ctx.Intensity > 60,
+            ctx => {
+                ctx.TraitChanges["Caution"] = -ctx.Intensity / 4;
+            },
+            priority: 105);
+
+        // === FAILURE EXPERIENCES ===
+
+        engine.AddRule(
+            "EVOLVE_FAILURE_CAUTION",
+            "Failure Increases Caution",
+            ctx => ctx.ExperienceType == "failure",
+            ctx => {
+                ctx.TraitChanges["Caution"] = ctx.Intensity / 2;
+                ctx.TraitChanges["Pride"] = -ctx.Intensity / 3;
+            },
+            priority: 100);
+
+        engine.AddRule(
+            "EVOLVE_REPEATED_FAILURE_FEAR",
+            "Repeated Failure Creates Fear",
+            ctx => ctx.ExperienceType == "failure" && ctx.Caution > 70,
+            ctx => {
+                ctx.NewFear = "failure";
+                ctx.TraitChanges["Ambition"] = -ctx.Intensity / 4;
+            },
+            priority: 105);
+
+        // === HELP EXPERIENCES ===
+
+        engine.AddRule(
+            "EVOLVE_HELPED_TRUST",
+            "Being Helped Increases Trust",
+            ctx => ctx.ExperienceType == "helped",
+            ctx => {
+                ctx.TraitChanges["Trust"] = ctx.Intensity / 2;
+                ctx.TraitChanges["Loyalty"] = ctx.Intensity / 3;
+            },
+            priority: 100);
+
+        // === THREAT EXPERIENCES ===
+
+        engine.AddRule(
+            "EVOLVE_THREAT_AGGRESSION",
+            "Threats Increase Aggression",
+            ctx => ctx.ExperienceType == "threatened",
+            ctx => {
+                ctx.TraitChanges["Aggression"] = ctx.Intensity / 2;
+                ctx.TraitChanges["Trust"] = -ctx.Intensity / 2;
+            },
+            priority: 100);
+
+        engine.AddRule(
+            "EVOLVE_THREAT_CAUTIOUS_FEAR",
+            "Threats Make Cautious Personas Fearful",
+            ctx => ctx.ExperienceType == "threatened" && ctx.Caution > 60,
+            ctx => {
+                ctx.TraitChanges["Caution"] = ctx.Intensity / 3;
+                ctx.NewFear = $"threat_from_{ctx.InvolvesEntityId}";
+            },
+            priority: 105);
+
+        engine.AddRule(
+            "EVOLVE_THREAT_PROUD_REVENGE",
+            "Threats Make Proud Personas Vengeful",
+            ctx => ctx.ExperienceType == "threatened" && ctx.Pride > 70,
+            ctx => {
+                ctx.NewGoal = $"retaliate_{ctx.InvolvesEntityId}";
+            },
+            priority: 105);
+
+        return engine;
+    }
+}
+
+#endregion
+
+#region Story Trigger Rules
+
+/// <summary>
+/// Context for evaluating story trigger rules.
+/// Determines when conversations unlock story nodes.
+/// </summary>
+public class StoryTriggerContext
+{
+    // The conversation that happened
+    public AgentQuestion Question { get; set; } = null!;
+    public AgentResponse Response { get; set; } = null!;
+
+    // Shorthand properties
+    public QuestionType QuestionType => Question.Type;
+    public ResponseType ResponseType => Response.Type;
+    public bool WasHonest => Response.IsHonest;
+    public bool SharedSecret => Response.SharedMemories.Any(m => m.Type == MemoryType.Secret);
+
+    // Memory content checks
+    public bool MentionedInformant => Response.SharedMemories
+        .Any(m => m.Summary.Contains("informant", StringComparison.OrdinalIgnoreCase));
+    public bool MentionedBetrayal => Response.SharedMemories
+        .Any(m => m.Type == MemoryType.Betrayal);
+    public bool MentionedThreat => Response.SharedMemories
+        .Any(m => m.Type == MemoryType.Threat);
+
+    // World state
+    public WorldState World { get; set; } = null!;
+    public StoryGraph Graph { get; set; } = null!;
+
+    // Output - events to trigger
+    public List<string> TriggeredEvents { get; set; } = new();
+    public List<string> UnlockedNodes { get; set; } = new();
+}
+
+/// <summary>
+/// Rules for when conversations trigger story events.
+/// </summary>
+public static class StoryTriggerRulesSetup
+{
+    public static RulesEngineCore<StoryTriggerContext> CreateEngine()
+    {
+        var engine = new RulesEngineCore<StoryTriggerContext>();
+
+        // === SECRET REVELATIONS ===
+
+        engine.AddRule(
+            "TRIGGER_INFORMANT_DISCOVERED",
+            "Informant Identity Revealed",
+            ctx => ctx.WasHonest && ctx.MentionedInformant && ctx.SharedSecret,
+            ctx => {
+                ctx.TriggeredEvents.Add("informant_discovered");
+                ctx.UnlockedNodes.Add("rat-hunt-plot");
+            },
+            priority: 100);
+
+        engine.AddRule(
+            "TRIGGER_BETRAYAL_REVEALED",
+            "Betrayal Information Shared",
+            ctx => ctx.WasHonest && ctx.MentionedBetrayal,
+            ctx => {
+                ctx.TriggeredEvents.Add("betrayal_revealed");
+            },
+            priority: 90);
+
+        // === RELATIONSHIP EVENTS ===
+
+        engine.AddRule(
+            "TRIGGER_ALLIANCE_FORMED",
+            "Help Agreement Reached",
+            ctx => ctx.QuestionType == QuestionType.WillYouHelp &&
+                   ctx.ResponseType == ResponseType.Answer,
+            ctx => {
+                ctx.TriggeredEvents.Add("alliance_formed");
+            },
+            priority: 80);
+
+        engine.AddRule(
+            "TRIGGER_TRUST_BROKEN",
+            "Lie Discovered (Future)",
+            ctx => ctx.ResponseType == ResponseType.Lie,
+            ctx => {
+                // Lie may be discovered later, flag for potential trigger
+                ctx.TriggeredEvents.Add("potential_lie_discovery");
+            },
+            priority: 70);
+
+        // === THREAT REVELATIONS ===
+
+        engine.AddRule(
+            "TRIGGER_THREAT_WARNING",
+            "Threat Information Shared",
+            ctx => ctx.WasHonest && ctx.MentionedThreat,
+            ctx => {
+                ctx.TriggeredEvents.Add("threat_warning_received");
+            },
+            priority: 85);
+
+        // === BARGAINING EVENTS ===
+
+        engine.AddRule(
+            "TRIGGER_DEBT_CREATED",
+            "Bargain Creates Debt",
+            ctx => ctx.ResponseType == ResponseType.Bargain,
+            ctx => {
+                ctx.TriggeredEvents.Add("debt_created");
+            },
+            priority: 60);
+
+        return engine;
+    }
+}
+
+#endregion
+
+#region Memory Relevance Rules
+
+/// <summary>
+/// Context for scoring memory relevance to a question.
+/// </summary>
+public class MemoryRelevanceContext
+{
+    public Memory Memory { get; set; } = null!;
+    public AgentQuestion Question { get; set; } = null!;
+    public int CurrentWeek { get; set; }
+
+    // Memory properties
+    public MemoryType MemoryType => Memory.Type;
+    public int Salience => Memory.Salience;
+    public int Confidence => Memory.Confidence;
+    public bool IsFirsthand => Memory.IsFirsthand;
+    public int WeeksSinceCreated => CurrentWeek - Memory.CreatedWeek;
+
+    // Match checks
+    public bool MatchesEntity => Memory.InvolvesEntityId == Question.SubjectEntityId;
+    public bool MatchesLocation => Memory.LocationId == Question.SubjectLocationId;
+    public bool MatchesTopic => !string.IsNullOrEmpty(Question.Topic) &&
+        Memory.Summary.Contains(Question.Topic, StringComparison.OrdinalIgnoreCase);
+
+    // Output
+    public float RelevanceScore { get; set; }
+}
+
+/// <summary>
+/// Rules for scoring how relevant a memory is to a question.
+/// </summary>
+public static class MemoryRelevanceRulesSetup
+{
+    public static RulesEngineCore<MemoryRelevanceContext> CreateEngine()
+    {
+        var engine = new RulesEngineCore<MemoryRelevanceContext>();
+
+        // Base relevance from matching
+        engine.AddRule(
+            "RELEVANCE_ENTITY_MATCH",
+            "Memory About Same Entity",
+            ctx => ctx.MatchesEntity,
+            ctx => ctx.RelevanceScore += 0.5f,
+            priority: 100);
+
+        engine.AddRule(
+            "RELEVANCE_LOCATION_MATCH",
+            "Memory About Same Location",
+            ctx => ctx.MatchesLocation,
+            ctx => ctx.RelevanceScore += 0.3f,
+            priority: 100);
+
+        engine.AddRule(
+            "RELEVANCE_TOPIC_MATCH",
+            "Memory Mentions Topic",
+            ctx => ctx.MatchesTopic,
+            ctx => ctx.RelevanceScore += 0.4f,
+            priority: 100);
+
+        // Quality modifiers
+        engine.AddRule(
+            "RELEVANCE_FIRSTHAND_BONUS",
+            "Firsthand Memory More Relevant",
+            ctx => ctx.IsFirsthand && ctx.RelevanceScore > 0,
+            ctx => ctx.RelevanceScore *= 1.2f,
+            priority: 90);
+
+        engine.AddRule(
+            "RELEVANCE_HIGH_CONFIDENCE_BONUS",
+            "High Confidence Memory",
+            ctx => ctx.Confidence > 80 && ctx.RelevanceScore > 0,
+            ctx => ctx.RelevanceScore *= 1.1f,
+            priority: 90);
+
+        engine.AddRule(
+            "RELEVANCE_RECENCY_BONUS",
+            "Recent Memory More Relevant",
+            ctx => ctx.WeeksSinceCreated < 4 && ctx.RelevanceScore > 0,
+            ctx => ctx.RelevanceScore *= 1.15f,
+            priority: 90);
+
+        engine.AddRule(
+            "RELEVANCE_STALE_PENALTY",
+            "Old Memory Less Relevant",
+            ctx => ctx.WeeksSinceCreated > 20 && ctx.RelevanceScore > 0,
+            ctx => ctx.RelevanceScore *= 0.7f,
+            priority: 85);
+
+        // Type-specific relevance
+        engine.AddRule(
+            "RELEVANCE_SECRET_FOR_INFO_QUESTION",
+            "Secrets Highly Relevant to Info Questions",
+            ctx => ctx.MemoryType == MemoryType.Secret &&
+                   ctx.Question.Type == QuestionType.WhatDoYouKnow,
+            ctx => ctx.RelevanceScore += 0.3f,
+            priority: 80);
+
+        engine.AddRule(
+            "RELEVANCE_INTERACTION_FOR_RELATIONSHIP",
+            "Interactions Relevant to Relationship Questions",
+            ctx => ctx.MemoryType == MemoryType.Interaction &&
+                   ctx.Question.Type == QuestionType.HowIsRelationship,
+            ctx => ctx.RelevanceScore += 0.25f,
+            priority: 80);
+
+        return engine;
+    }
+}
+
+#endregion
+
+#region Rules-Driven Conversation Engine
+
+/// <summary>
+/// Conversation engine that uses RulesEngine for all decisions.
+/// This replaces the hardcoded if/else logic with configurable rules.
+/// </summary>
+public class RulesBasedConversationEngine
+{
+    private readonly WorldState _world;
+    private readonly StoryGraph _graph;
+    private readonly RulesEngineCore<ConversationContext> _conversationRules;
+    private readonly RulesEngineCore<MemoryRelevanceContext> _relevanceRules;
+    private readonly RulesEngineCore<StoryTriggerContext> _triggerRules;
+    private readonly RulesEngineCore<EvolutionContext> _evolutionRules;
+
+    public RulesBasedConversationEngine(WorldState world, StoryGraph graph)
+    {
+        _world = world;
+        _graph = graph;
+        _conversationRules = ConversationRulesSetup.CreateEngine();
+        _relevanceRules = MemoryRelevanceRulesSetup.CreateEngine();
+        _triggerRules = StoryTriggerRulesSetup.CreateEngine();
+        _evolutionRules = EvolutionRulesSetup.CreateEngine();
+    }
+
+    /// <summary>
+    /// Process a question using rules for all decisions.
+    /// </summary>
+    public AgentResponse ProcessQuestion(
+        AgentQuestion question,
+        EntityMind responderMind,
+        int relationshipWithAsker)
+    {
+        // 1. Gather relevant memories using rules-based scoring
+        var relevantMemories = FindRelevantMemories(question, responderMind.Memories);
+
+        // 2. Build conversation context
+        var context = new ConversationContext
+        {
+            Question = question,
+            Persona = responderMind.Persona,
+            Memories = responderMind.Memories,
+            RelationshipWithAsker = relationshipWithAsker,
+            RelevantMemories = relevantMemories,
+            LoyaltyToSubject = question.SubjectEntityId != null
+                ? responderMind.Persona.FactionBiases.GetValueOrDefault(question.SubjectEntityId)
+                : 0
+        };
+
+        // 3. Evaluate conversation rules to make decision
+        _conversationRules.EvaluateAll(context);
+
+        // 4. Generate response based on decision
+        var response = GenerateResponse(context, responderMind.Persona);
+
+        // 5. Check for story triggers
+        var triggerContext = new StoryTriggerContext
+        {
+            Question = question,
+            Response = response,
+            World = _world,
+            Graph = _graph
+        };
+        _triggerRules.EvaluateAll(triggerContext);
+        response.TriggeredEvents.AddRange(triggerContext.TriggeredEvents);
+        response.UnlockedNodeIds.AddRange(triggerContext.UnlockedNodes);
+
+        // 6. Record the interaction as a memory for both parties
+        var emotionalValence = response.IsHonest ? EmotionalValence.Positive : EmotionalValence.Negative;
+        responderMind.RecordInteraction(
+            question.AskerId,
+            $"Answered question about {question.Topic}",
+            emotionalValence,
+            question.Urgency == QuestionUrgency.Critical ? 70 : 40,
+            _world.CurrentWeek);
+
+        return response;
+    }
+
+    private List<Memory> FindRelevantMemories(AgentQuestion question, MemoryBank memories)
+    {
+        var candidates = new List<(Memory memory, float score)>();
+
+        // Score all memories using rules
+        foreach (var memory in GetCandidateMemories(question, memories))
+        {
+            var context = new MemoryRelevanceContext
+            {
+                Memory = memory,
+                Question = question,
+                CurrentWeek = _world.CurrentWeek
+            };
+
+            _relevanceRules.EvaluateAll(context);
+
+            if (context.RelevanceScore > 0.2f)  // Minimum threshold
+            {
+                candidates.Add((memory, context.RelevanceScore));
+            }
+        }
+
+        // Return top 5 by relevance score
+        return candidates
+            .OrderByDescending(c => c.score)
+            .Take(5)
+            .Select(c => c.memory)
+            .ToList();
+    }
+
+    private IEnumerable<Memory> GetCandidateMemories(AgentQuestion question, MemoryBank memories)
+    {
+        // Gather candidates from different indexes
+        var candidates = new HashSet<Memory>();
+
+        if (question.SubjectEntityId != null)
+        {
+            foreach (var m in memories.RecallAbout(question.SubjectEntityId, _world.CurrentWeek, 10))
+                candidates.Add(m);
+        }
+
+        if (question.SubjectLocationId != null)
+        {
+            foreach (var m in memories.RecallAtLocation(question.SubjectLocationId, _world.CurrentWeek, 10))
+                candidates.Add(m);
+        }
+
+        if (!string.IsNullOrEmpty(question.Topic))
+        {
+            foreach (var m in memories.Search(question.Topic, _world.CurrentWeek, 10))
+                candidates.Add(m);
+        }
+
+        return candidates;
+    }
+
+    private AgentResponse GenerateResponse(ConversationContext context, Persona persona)
+    {
+        var response = new AgentResponse
+        {
+            QuestionId = context.Question.Id,
+            ResponderId = context.Question.ResponderId,
+            RelationshipChange = context.Decision.RelationshipModifier
+        };
+
+        // Check for forced response type from rules
+        if (context.Decision.ForcedResponseType.HasValue)
+        {
+            response.Type = context.Decision.ForcedResponseType.Value;
+            response.Content = context.Decision.CustomResponse ?? "";
+            return response;
+        }
+
+        // Handle refusal
+        if (!context.Decision.WillAnswer)
+        {
+            response.Type = ResponseType.Refuse;
+            response.RefusedToAnswer = true;
+            response.RefusalReason = context.Decision.RefusalReason;
+            response.Content = FormatRefusal(persona, context.Decision.RefusalReason);
+            return response;
+        }
+
+        // Handle lie
+        if (context.Decision.WillLie)
+        {
+            response.Type = ResponseType.Lie;
+            response.IsHonest = false;
+            response.Content = GenerateMisinformation(context.Question, persona);
+            response.ConfidenceLevel = 80;
+            return response;
+        }
+
+        // Handle bargain
+        if (context.Decision.WillBargain)
+        {
+            response.Type = ResponseType.Bargain;
+            response.Content = context.Decision.CustomResponse ??
+                "That information has a price. What's it worth to you?";
+            return response;
+        }
+
+        // Handle honest answer
+        if (context.HasRelevantMemories)
+        {
+            response.Type = ResponseType.Answer;
+            response.IsHonest = true;
+            response.SharedMemories = context.RelevantMemories;
+            response.ConfidenceLevel = context.BestMemoryConfidence;
+            response.Content = FormatHonestAnswer(context, persona);
+        }
+        else
+        {
+            response.Type = ResponseType.Partial;
+            response.IsHonest = true;
+            response.ConfidenceLevel = 0;
+            response.Content = FormatUnknown(persona);
+        }
+
+        return response;
+    }
+
+    private string FormatRefusal(Persona persona, string? reason)
+    {
+        return persona.Style switch
+        {
+            CommunicationStyle.Threatening => "You don't want to keep asking questions like that.",
+            CommunicationStyle.Formal => "I must decline to discuss this matter.",
+            CommunicationStyle.Blunt => "No.",
+            CommunicationStyle.Cryptic => "Not all questions deserve answers.",
+            _ => reason ?? "I'd rather not say."
+        };
+    }
+
+    private string FormatHonestAnswer(ConversationContext context, Persona persona)
+    {
+        var memory = context.RelevantMemories.FirstOrDefault();
+        if (memory == null) return "I'm not certain.";
+
+        var prefix = persona.Style switch
+        {
+            CommunicationStyle.Formal => "I can confirm that ",
+            CommunicationStyle.Casual => "Yeah, so ",
+            CommunicationStyle.Cryptic => "What I can tell you is ",
+            CommunicationStyle.Blunt => "",
+            _ => ""
+        };
+
+        return prefix + memory.Summary;
+    }
+
+    private string FormatUnknown(Persona persona)
+    {
+        return persona.Style switch
+        {
+            CommunicationStyle.Blunt => "Don't know.",
+            CommunicationStyle.Formal => "I regret that I have no information on this matter.",
+            CommunicationStyle.Diplomatic => "That's not something I have insight into, I'm afraid.",
+            CommunicationStyle.Cryptic => "Some things remain hidden, even from me.",
+            _ => "I'm not sure about that."
+        };
+    }
+
+    private string GenerateMisinformation(AgentQuestion question, Persona persona)
+    {
+        return question.Type switch
+        {
+            QuestionType.WhereIs => "Last I heard, they were in Brooklyn.",
+            QuestionType.WhoControls => "The Barzinis have that territory now.",
+            QuestionType.WhatHappened => "Nothing unusual that I know of.",
+            QuestionType.CanWeTrust => "Absolutely, they're completely reliable.",
+            _ => "I've heard differently, but I can't say more."
+        };
+    }
+
+    /// <summary>
+    /// Apply experience to evolve a character's persona using rules.
+    /// </summary>
+    public void EvolvePersona(EntityMind mind, string experienceType, int intensity, string? involvesEntityId = null)
+    {
+        var context = new EvolutionContext
+        {
+            Persona = mind.Persona,
+            ExperienceType = experienceType,
+            Intensity = intensity,
+            InvolvesEntityId = involvesEntityId
+        };
+
+        _evolutionRules.EvaluateAll(context);
+
+        // Apply trait changes
+        foreach (var (trait, change) in context.TraitChanges)
+        {
+            var prop = typeof(Persona).GetProperty(trait);
+            if (prop != null)
+            {
+                int current = (int)prop.GetValue(mind.Persona)!;
+                int newValue = Math.Clamp(current + change, 0, 100);
+                prop.SetValue(mind.Persona, newValue);
+            }
+        }
+
+        // Add new goals/fears
+        if (context.NewGoal != null)
+        {
+            mind.Persona.Goals.Add(new Goal
+            {
+                Id = context.NewGoal,
+                Type = context.NewGoal.StartsWith("revenge") ? GoalType.Revenge : GoalType.Survive,
+                Priority = intensity,
+                TargetId = involvesEntityId
+            });
+        }
+
+        if (context.NewFear != null && !mind.Persona.Fears.Contains(context.NewFear))
+        {
+            mind.Persona.Fears.Add(context.NewFear);
+        }
+    }
+}
+
+#endregion
+
 /// <summary>
 /// Extension to WorldState to support personas and memories for all entities.
 /// </summary>
