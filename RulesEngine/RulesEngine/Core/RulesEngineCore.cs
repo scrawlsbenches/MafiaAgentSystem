@@ -696,28 +696,28 @@ public class RulesEngineCore<T> : IRulesEngine<T>
 /// <summary>
 /// Result of executing the rules engine
 /// </summary>
-public class RulesEngineResult
+public class RulesEngineResult : IRulesEngineResult
 {
     private readonly List<RuleResult> _ruleResults = new();
-    
+
     public IReadOnlyList<RuleResult> RuleResults => _ruleResults.AsReadOnly();
     public TimeSpan TotalExecutionTime { get; set; }
-    
+
     public int TotalRulesEvaluated => _ruleResults.Count;
     public int MatchedRules => _ruleResults.Count(r => r.Matched);
     public int ExecutedActions => _ruleResults.Count(r => r.ActionExecuted);
     public int Errors => _ruleResults.Count(r => r.ErrorMessage != null);
-    
+
     public void AddRuleResult(RuleResult result)
     {
         _ruleResults.Add(result);
     }
-    
+
     public List<RuleResult> GetMatchedRules()
     {
         return _ruleResults.Where(r => r.Matched).ToList();
     }
-    
+
     public List<RuleResult> GetErrors()
     {
         return _ruleResults.Where(r => r.ErrorMessage != null).ToList();
@@ -807,7 +807,7 @@ internal class ActionRule<T> : IRule<T>
 /// Supports both sync rules (IRule) and async rules (IAsyncRule).
 /// </summary>
 /// <typeparam name="T">The type of fact the rule evaluated</typeparam>
-public class RuleExecutionResult<T>
+public class RuleExecutionResult<T> : IRuleExecutionResult<T>
 {
     /// <summary>
     /// The sync rule that was executed (null if async rule was executed)
