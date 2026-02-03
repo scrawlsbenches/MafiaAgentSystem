@@ -532,7 +532,11 @@ public class AutonomousGameTests
         EnsureInstantTiming();
         var logger = CreateTestLogger();
         var engine = new MafiaGameEngine(logger);
-        engine.State.HeatLevel = 100;
+        // Set heat to 120 to account for potential reductions during turn processing:
+        // - ProcessRandomEvents can reduce heat by 10 (~1.67% chance)
+        // - ProcessAsyncEventsAsync can reduce heat by 10 (30% chance if heat > 50)
+        // UpdateGameState clamps to 100, so 120 - 20 = 100 still triggers game over
+        engine.State.HeatLevel = 120;
 
         await engine.ExecuteTurnAsync();
 
