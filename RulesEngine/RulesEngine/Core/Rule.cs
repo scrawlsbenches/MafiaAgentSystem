@@ -263,26 +263,44 @@ public class CompositeRule<T> : IRule<T>
     {
         try
         {
-            if (!Evaluate(fact))
-            {
-                return RuleResult.NotMatched(Id, Name);
-            }
-            
-            // Execute all matching child rules
+            // NOTE: We intentionally do NOT call Evaluate(fact) here.
+            // The calling code (engine or external) has already called Evaluate
+            // before calling Execute. Re-evaluating would waste CPU cycles.
+            //
+            // Each child rule's Execute() will internally verify its own match,
+            // so we don't need to pre-filter with Evaluate() either.
+            // This reduces evaluation from 3x per child to 1x per child.
+
+            // Execute all child rules - let each rule's Execute handle match checking
             var results = new List<RuleResult>();
             foreach (var rule in _rules)
             {
-                if (rule.Evaluate(fact))
+                var result = rule.Execute(fact);
+                if (result.Matched)
                 {
-                    results.Add(rule.Execute(fact));
+                    results.Add(result);
                 }
             }
-            
+
+            // Determine if the composite matched based on operator and results
+            bool compositeMatched = _operator switch
+            {
+                CompositeOperator.And => results.Count == _rules.Count,
+                CompositeOperator.Or => results.Count > 0,
+                CompositeOperator.Not => results.Count == 0,
+                _ => false
+            };
+
+            if (!compositeMatched)
+            {
+                return RuleResult.NotMatched(Id, Name);
+            }
+
             var outputs = new Dictionary<string, object>
             {
                 ["ChildResults"] = results
             };
-            
+
             return RuleResult.Success(Id, Name, outputs);
         }
         catch (Exception ex)

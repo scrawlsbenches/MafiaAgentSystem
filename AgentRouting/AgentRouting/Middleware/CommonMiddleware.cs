@@ -569,40 +569,61 @@ public class CircuitBreakerMiddleware : MiddlewareBase
 }
 
 /// <summary>
-/// Tracks metrics and statistics
+/// Tracks metrics and statistics.
+/// Uses a bounded circular buffer to prevent unbounded memory growth.
 /// </summary>
 public class MetricsMiddleware : MiddlewareBase
 {
     private int _totalMessages = 0;
     private int _successCount = 0;
     private int _failureCount = 0;
-    private readonly ConcurrentBag<long> _processingTimes = new();
-    
+
+    // Bounded circular buffer for processing times - prevents unbounded memory growth.
+    // Keeps only the most recent N samples for statistics calculation.
+    private const int MaxSamples = 10000;
+    private readonly long[] _processingTimes = new long[MaxSamples];
+    private int _writeIndex = 0;
+    private int _sampleCount = 0;
+    private readonly object _timesLock = new();
+
     public override async Task<MessageResult> InvokeAsync(
         AgentMessage message,
         MessageDelegate next,
         CancellationToken ct)
     {
         Interlocked.Increment(ref _totalMessages);
-        
+
         var sw = Stopwatch.StartNew();
         var result = await next(message, ct);
         sw.Stop();
-        
-        _processingTimes.Add(sw.ElapsedMilliseconds);
-        
+
+        // Thread-safe circular buffer write
+        lock (_timesLock)
+        {
+            _processingTimes[_writeIndex] = sw.ElapsedMilliseconds;
+            _writeIndex = (_writeIndex + 1) % MaxSamples;
+            if (_sampleCount < MaxSamples)
+                _sampleCount++;
+        }
+
         if (result.Success)
             Interlocked.Increment(ref _successCount);
         else
             Interlocked.Increment(ref _failureCount);
-        
+
         return result;
     }
-    
+
     public MetricsSnapshot GetSnapshot()
     {
-        var times = _processingTimes.ToArray();
-        
+        long[] times;
+        lock (_timesLock)
+        {
+            // Copy only the valid samples
+            times = new long[_sampleCount];
+            Array.Copy(_processingTimes, 0, times, 0, _sampleCount);
+        }
+
         return new MetricsSnapshot
         {
             TotalMessages = _totalMessages,

@@ -677,17 +677,20 @@ public class RulesEngineCore<T> : IRulesEngine<T>
             },
             (_, existing) =>
             {
-                existing.ExecutionCount++;
-                existing.TotalExecutionTime += duration;
-                existing.AverageExecutionTime = TimeSpan.FromTicks(
-                    existing.TotalExecutionTime.Ticks / existing.ExecutionCount);
-                existing.MinExecutionTime = duration < existing.MinExecutionTime 
-                    ? duration 
-                    : existing.MinExecutionTime;
-                existing.MaxExecutionTime = duration > existing.MaxExecutionTime 
-                    ? duration 
-                    : existing.MaxExecutionTime;
-                return existing;
+                // Create a NEW object to avoid race conditions - AddOrUpdate's update
+                // factory may be called multiple times concurrently, so mutating
+                // the existing object in place would corrupt the metrics.
+                var newCount = existing.ExecutionCount + 1;
+                var newTotal = existing.TotalExecutionTime + duration;
+                return new RulePerformanceMetrics
+                {
+                    RuleId = ruleId,
+                    ExecutionCount = newCount,
+                    TotalExecutionTime = newTotal,
+                    AverageExecutionTime = TimeSpan.FromTicks(newTotal.Ticks / newCount),
+                    MinExecutionTime = duration < existing.MinExecutionTime ? duration : existing.MinExecutionTime,
+                    MaxExecutionTime = duration > existing.MaxExecutionTime ? duration : existing.MaxExecutionTime
+                };
             }
         );
     }
@@ -910,8 +913,21 @@ public class ImmutableRulesEngine<T>
     /// Returns a new engine with the rule added (immutable pattern)
     /// Thread-safe: No shared mutable state
     /// </summary>
+    /// <exception cref="ArgumentNullException">Thrown when rule is null</exception>
+    /// <exception cref="RuleValidationException">Thrown when rule fails validation</exception>
     public ImmutableRulesEngine<T> WithRule(IRule<T> rule)
     {
+        // Validate rule - same validation as RulesEngineCore.RegisterRule
+        if (rule == null) throw new ArgumentNullException(nameof(rule));
+        if (string.IsNullOrEmpty(rule.Id))
+            throw new RuleValidationException("Rule ID cannot be null or empty");
+        if (string.IsNullOrEmpty(rule.Name))
+            throw new RuleValidationException("Rule name cannot be null or empty", rule.Id);
+
+        // Check for duplicates if configured
+        if (!_options.AllowDuplicateRuleIds && _rules.Any(r => r.Id == rule.Id))
+            throw new RuleValidationException($"Rule with ID '{rule.Id}' already exists", rule.Id);
+
         var newRules = _rules.Add(rule);
         return new ImmutableRulesEngine<T>(newRules, _options, _metrics);
     }
@@ -919,8 +935,34 @@ public class ImmutableRulesEngine<T>
     /// <summary>
     /// Returns a new engine with multiple rules added
     /// </summary>
+    /// <exception cref="ArgumentNullException">Thrown when rules array is null or contains null</exception>
+    /// <exception cref="RuleValidationException">Thrown when any rule fails validation</exception>
     public ImmutableRulesEngine<T> WithRules(params IRule<T>[] rules)
     {
+        if (rules == null) throw new ArgumentNullException(nameof(rules));
+
+        // Validate all rules first
+        foreach (var rule in rules)
+        {
+            if (rule == null) throw new ArgumentNullException(nameof(rules), "Rules array contains null element");
+            if (string.IsNullOrEmpty(rule.Id))
+                throw new RuleValidationException("Rule ID cannot be null or empty");
+            if (string.IsNullOrEmpty(rule.Name))
+                throw new RuleValidationException("Rule name cannot be null or empty", rule.Id);
+        }
+
+        // Check for duplicates if configured
+        if (!_options.AllowDuplicateRuleIds)
+        {
+            var existingIds = _rules.Select(r => r.Id).ToHashSet();
+            foreach (var rule in rules)
+            {
+                if (existingIds.Contains(rule.Id))
+                    throw new RuleValidationException($"Rule with ID '{rule.Id}' already exists", rule.Id);
+                existingIds.Add(rule.Id); // Also check within the new rules
+            }
+        }
+
         var newRules = _rules.AddRange(rules);
         return new ImmutableRulesEngine<T>(newRules, _options, _metrics);
     }
@@ -1078,17 +1120,20 @@ public class ImmutableRulesEngine<T>
             },
             (_, existing) =>
             {
-                existing.ExecutionCount++;
-                existing.TotalExecutionTime += duration;
-                existing.AverageExecutionTime = TimeSpan.FromTicks(
-                    existing.TotalExecutionTime.Ticks / existing.ExecutionCount);
-                existing.MinExecutionTime = duration < existing.MinExecutionTime
-                    ? duration
-                    : existing.MinExecutionTime;
-                existing.MaxExecutionTime = duration > existing.MaxExecutionTime
-                    ? duration
-                    : existing.MaxExecutionTime;
-                return existing;
+                // Create a NEW object to avoid race conditions - AddOrUpdate's update
+                // factory may be called multiple times concurrently, so mutating
+                // the existing object in place would corrupt the metrics.
+                var newCount = existing.ExecutionCount + 1;
+                var newTotal = existing.TotalExecutionTime + duration;
+                return new RulePerformanceMetrics
+                {
+                    RuleId = ruleId,
+                    ExecutionCount = newCount,
+                    TotalExecutionTime = newTotal,
+                    AverageExecutionTime = TimeSpan.FromTicks(newTotal.Ticks / newCount),
+                    MinExecutionTime = duration < existing.MinExecutionTime ? duration : existing.MinExecutionTime,
+                    MaxExecutionTime = duration > existing.MaxExecutionTime ? duration : existing.MaxExecutionTime
+                };
             }
         );
     }

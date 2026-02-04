@@ -346,35 +346,46 @@ public class MessageQueueMiddleware : MiddlewareBase, IDisposable
     
     private async void ProcessBatch(object? state)
     {
-        if (_next == null) return;
-        
-        var batch = new List<(AgentMessage message, TaskCompletionSource<MessageResult> tcs)>();
-        
-        // Dequeue up to batchSize messages
-        while (batch.Count < _batchSize && _queue.TryDequeue(out var item))
+        // CRITICAL: async void methods must have try-catch at the top level.
+        // Without this, any unhandled exception will crash the application
+        // because Timer callbacks cannot propagate exceptions.
+        try
         {
-            batch.Add(item);
+            if (_next == null) return;
+
+            var batch = new List<(AgentMessage message, TaskCompletionSource<MessageResult> tcs)>();
+
+            // Dequeue up to batchSize messages
+            while (batch.Count < _batchSize && _queue.TryDequeue(out var item))
+            {
+                batch.Add(item);
+            }
+
+            if (batch.Count == 0) return;
+
+            Console.WriteLine($"[Queue] Processing batch of {batch.Count} messages");
+
+            // Process batch in parallel
+            var tasks = batch.Select(async item =>
+            {
+                try
+                {
+                    var result = await _next(item.message, default);
+                    item.tcs.SetResult(result);
+                }
+                catch (Exception ex)
+                {
+                    item.tcs.SetResult(MessageResult.Fail($"Batch processing error: {ex.Message}"));
+                }
+            });
+
+            await Task.WhenAll(tasks);
         }
-        
-        if (batch.Count == 0) return;
-        
-        Console.WriteLine($"[Queue] Processing batch of {batch.Count} messages");
-        
-        // Process batch in parallel
-        var tasks = batch.Select(async item =>
+        catch (Exception ex)
         {
-            try
-            {
-                var result = await _next(item.message, default);
-                item.tcs.SetResult(result);
-            }
-            catch (Exception ex)
-            {
-                item.tcs.SetResult(MessageResult.Fail($"Batch processing error: {ex.Message}"));
-            }
-        });
-        
-        await Task.WhenAll(tasks);
+            // Log the error but don't let it crash the application
+            Console.WriteLine($"[Queue] CRITICAL: Batch processing failed: {ex.Message}");
+        }
     }
 }
 
@@ -384,8 +395,7 @@ public class MessageQueueMiddleware : MiddlewareBase, IDisposable
 public class ABTestingMiddleware : MiddlewareBase
 {
     private readonly Dictionary<string, ExperimentConfig> _experiments = new();
-    private readonly Random _random = new();
-    
+
     public void RegisterExperiment(string experimentName, double probabilityA, string variantATag, string variantBTag)
     {
         _experiments[experimentName] = new ExperimentConfig
@@ -395,7 +405,7 @@ public class ABTestingMiddleware : MiddlewareBase
             VariantBTag = variantBTag
         };
     }
-    
+
     public override async Task<MessageResult> InvokeAsync(
         AgentMessage message,
         MessageDelegate next,
@@ -403,14 +413,18 @@ public class ABTestingMiddleware : MiddlewareBase
     {
         foreach (var (experimentName, config) in _experiments)
         {
-            var randomValue = _random.NextDouble();
+            // Use Random.Shared which is thread-safe in .NET 6+
+            // The previous instance field `new Random()` was NOT thread-safe
+            // and could produce duplicate values or corrupt internal state
+            // when called concurrently from multiple threads.
+            var randomValue = Random.Shared.NextDouble();
             var variant = randomValue < config.ProbabilityA ? config.VariantATag : config.VariantBTag;
-            
+
             message.Metadata[$"Experiment_{experimentName}"] = variant;
-            
+
             Console.WriteLine($"[A/B Test] {experimentName}: Assigned variant {variant}");
         }
-        
+
         return await next(message, ct);
     }
     
@@ -542,23 +556,34 @@ public class AgentHealthCheckMiddleware : MiddlewareBase, IDisposable
     
     private async void PerformHealthChecks(object? state)
     {
-        foreach (var (agentId, status) in _health)
+        // CRITICAL: async void methods must have try-catch at the top level.
+        // Without this, any unhandled exception will crash the application
+        // because Timer callbacks cannot propagate exceptions.
+        try
         {
-            try
+            foreach (var (agentId, status) in _health)
             {
-                status.IsHealthy = await status.HealthCheck();
-                status.LastCheck = DateTime.UtcNow;
-                
-                if (!status.IsHealthy)
+                try
                 {
-                    Console.WriteLine($"[Health] Agent {agentId} failed health check");
+                    status.IsHealthy = await status.HealthCheck();
+                    status.LastCheck = DateTime.UtcNow;
+
+                    if (!status.IsHealthy)
+                    {
+                        Console.WriteLine($"[Health] Agent {agentId} failed health check");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    status.IsHealthy = false;
+                    Console.WriteLine($"[Health] Health check error for {agentId}: {ex.Message}");
                 }
             }
-            catch (Exception ex)
-            {
-                status.IsHealthy = false;
-                Console.WriteLine($"[Health] Health check error for {agentId}: {ex.Message}");
-            }
+        }
+        catch (Exception ex)
+        {
+            // Log the error but don't let it crash the application
+            Console.WriteLine($"[Health] CRITICAL: Health check loop failed: {ex.Message}");
         }
     }
     

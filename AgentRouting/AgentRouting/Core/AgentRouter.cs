@@ -16,6 +16,7 @@ public class AgentRouter
     private readonly Dictionary<string, IAgent> _agentById = new();
     private readonly IMiddlewarePipeline _pipeline;
     private readonly object _pipelineLock = new();
+    private readonly object _agentLock = new();
     private volatile MessageDelegate? _builtPipeline;
 
     /// <summary>
@@ -41,8 +42,11 @@ public class AgentRouter
     /// </summary>
     public AgentRouter UseMiddleware(IAgentMiddleware middleware)
     {
-        _pipeline.Use(middleware);
-        _builtPipeline = null; // Invalidate cached pipeline
+        lock (_pipelineLock)
+        {
+            _pipeline.Use(middleware);
+            _builtPipeline = null; // Invalidate cached pipeline
+        }
         return this;
     }
 
@@ -51,18 +55,25 @@ public class AgentRouter
     /// </summary>
     public AgentRouter UseMiddleware(Func<MessageDelegate, MessageDelegate> middleware)
     {
-        _pipeline.Use(middleware);
-        _builtPipeline = null;
+        lock (_pipelineLock)
+        {
+            _pipeline.Use(middleware);
+            _builtPipeline = null;
+        }
         return this;
     }
 
     /// <summary>
-    /// Register an agent with the router
+    /// Register an agent with the router.
+    /// Thread-safe: multiple threads can register agents concurrently.
     /// </summary>
     public void RegisterAgent(IAgent agent)
     {
-        _agents.Add(agent);
-        _agentById[agent.Id] = agent;
+        lock (_agentLock)
+        {
+            _agents.Add(agent);
+            _agentById[agent.Id] = agent;
+        }
     }
     
     /// <summary>
@@ -145,10 +156,16 @@ public class AgentRouter
         AgentMessage message,
         CancellationToken ct)
     {
+        List<IAgent> availableAgents;
+        lock (_agentLock)
+        {
+            availableAgents = _agents.Where(a => a.Status == AgentStatus.Available).ToList();
+        }
+
         var context = new RoutingContext
         {
             Message = message,
-            AvailableAgents = _agents.Where(a => a.Status == AgentStatus.Available).ToList()
+            AvailableAgents = availableAgents
         };
 
         // Apply routing rules
@@ -165,7 +182,12 @@ public class AgentRouter
             return MessageResult.Fail("No agent available to handle this message");
         }
 
-        if (!_agentById.TryGetValue(context.TargetAgentId, out var targetAgent))
+        IAgent? targetAgent;
+        lock (_agentLock)
+        {
+            _agentById.TryGetValue(context.TargetAgentId, out targetAgent);
+        }
+        if (targetAgent == null)
         {
             return MessageResult.Fail($"Target agent {context.TargetAgentId} not found");
         }
@@ -185,9 +207,13 @@ public class AgentRouter
         Func<IAgent, bool>? agentFilter = null,
         CancellationToken ct = default)
     {
-        var agents = agentFilter != null 
-            ? _agents.Where(agentFilter).ToList()
-            : _agents;
+        List<IAgent> agents;
+        lock (_agentLock)
+        {
+            agents = agentFilter != null
+                ? _agents.Where(agentFilter).ToList()
+                : _agents.ToList();
+        }
         
         var tasks = agents.Select(async agent =>
         {
@@ -204,22 +230,34 @@ public class AgentRouter
     /// </summary>
     public IAgent? GetAgent(string agentId)
     {
-        return _agentById.TryGetValue(agentId, out var agent) ? agent : null;
+        lock (_agentLock)
+        {
+            return _agentById.TryGetValue(agentId, out var agent) ? agent : null;
+        }
     }
-    
+
     /// <summary>
     /// Get all agents
     /// </summary>
-    public IReadOnlyList<IAgent> GetAllAgents() => _agents.AsReadOnly();
-    
+    public IReadOnlyList<IAgent> GetAllAgents()
+    {
+        lock (_agentLock)
+        {
+            return _agents.ToList().AsReadOnly();
+        }
+    }
+
     /// <summary>
     /// Get agents by capability
     /// </summary>
     public List<IAgent> GetAgentsByCapability(string skill)
     {
-        return _agents
-            .Where(a => a.Capabilities.HasSkill(skill))
-            .ToList();
+        lock (_agentLock)
+        {
+            return _agents
+                .Where(a => a.Capabilities.HasSkill(skill))
+                .ToList();
+        }
     }
     
     /// <summary>
@@ -232,11 +270,14 @@ public class AgentRouter
     
     private IAgent? FindDefaultAgent(AgentMessage message)
     {
-        // Try to find an agent that can handle this message
-        return _agents
-            .Where(a => a.CanHandle(message))
-            .OrderBy(a => a.Status == AgentStatus.Busy ? 1 : 0) // Prefer available
-            .FirstOrDefault();
+        lock (_agentLock)
+        {
+            // Try to find an agent that can handle this message
+            return _agents
+                .Where(a => a.CanHandle(message))
+                .OrderBy(a => a.Status == AgentStatus.Busy ? 1 : 0) // Prefer available
+                .FirstOrDefault();
+        }
     }
     
     private AgentMessage CloneMessage(AgentMessage message)
