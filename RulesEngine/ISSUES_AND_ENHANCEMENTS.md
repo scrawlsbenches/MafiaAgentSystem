@@ -16,9 +16,12 @@ Strengthening the base before building on top. These gaps cause silent failures 
 | CompositeRuleBuilder structure validation at Build() | New | [ ] |
 | Expression combination closure fix | Issue 2 below | [ ] |
 | DynamicRuleFactory type safety (catch type mismatches at build time) | New | [ ] |
-| Tests for all above with high coverage | — | [ ] |
+| ImmutableRulesEngine validation parity | J-2b | [ ] |
+| Tests for all above with high coverage | — | [x] Written |
 
 **Why this order**: Composition and expression merging are foundational. Everything else builds on them.
+
+**Foundation Tests**: `Tests/RulesEngine.Tests/FoundationTests.cs` contains comprehensive TDD tests defining expected behavior. Many tests will fail until the implementation is fixed. See the file header for instructions on how to work with these tests.
 
 **Context**: This work emerged from a theoretical discussion about expression trees and game engines, leading to a code review that found these gaps. See Issue 2, Issue 3 clarifications, and the DynamicRuleFactory limitations documented below.
 
