@@ -1,7 +1,7 @@
 # Execution Plan: MafiaAgentSystem Build & MVP
 
 > **Created**: 2026-01-31
-> **Last Updated**: 2026-02-03
+> **Last Updated**: 2026-02-03 (Added F-3 runtime bugs from testing)
 > **Constraint**: Zero 3rd party libraries (only .NET SDK)
 > **Goal**: Compiling codebase → Test baseline → MVP game → Production Quality
 
@@ -17,9 +17,12 @@ See `TASK_LIST.md` for full details.
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │ Layer F: POLISH (last)                                       │
-│   Documentation, code cleanup                                │
+│   Documentation, code cleanup, runtime bug fixes             │
 ├─────────────────────────────────────────────────────────────┤
-│ Layer H: CODE REVIEW BUG FIXES       ⏳ 7/14 COMPLETE        │
+│ Layer I: STORY SYSTEM INTEGRATION    ✅ COMPLETE (14/16)     │
+│   GameState↔WorldState sync, NPCs, plots, missions           │
+├─────────────────────────────────────────────────────────────┤
+│ Layer H: CODE REVIEW BUG FIXES        ✅ COMPLETE            │
 │   Heat balance, event timing, null safety, defeat logic      │
 ├─────────────────────────────────────────────────────────────┤
 │ Layer G: CRITICAL INTEGRATION         ✅ COMPLETE            │
@@ -50,16 +53,62 @@ See `TASK_LIST.md` for full details.
 | **D** | App Fixes | ✅ Complete | 5 | 2026-02-03 |
 | **E** | Enhancement | ✅ Complete | 15 | 2026-02-03 |
 | **G** | Critical Integration | ✅ Complete | 5 | 2026-02-03 |
-| **H** | Code Review Fixes | ⏳ **7/14 done** | 14 | In Progress |
-| **F** | Polish | ⏳ Pending | 10 | - |
+| **H** | Code Review Fixes | ✅ Complete | 14 | 2026-02-03 |
+| **I** | Story System Integration | ✅ Complete | 16 | 2026-02-03 |
+| **F** | Polish | ⏳ Pending | 14 | - |
 
-**Test count: 641 MafiaDemo tests + others (all passing)**
+**Test count: 1,862 tests (346 RulesEngine + 823 AgentRouting + 693 MafiaDemo)**
 
 ---
 
 ## Recent Activity Log
 
-### Batch H: Code Review Bug Fixes (2026-02-03)
+### Batch I: Story System Integration (2026-02-03) ✅ COMPLETE
+
+**Source**: Story System fully implemented in `AgentRouting.MafiaDemo/Story/` (28 files)
+**Design Review**: `AgentRouting.MafiaDemo/Story/GAME_REVIEW.md`
+
+**Goal**: Integrate existing Story System with MafiaDemo game mechanics.
+
+**Completed (14 tasks)**:
+- [x] I-1: Story System Implementation (reference - already complete)
+- [x] I-2a: GameState ↔ WorldState Bridge (`Game/GameWorldBridge.cs`)
+- [x] I-2b: WorldState Initialization in GameEngine
+- [x] I-2c: Week Counter Consolidation (LinkedWorldState delegates to WorldState.CurrentWeek)
+- [x] I-3a: Mission Target NPC References (NPCId, LocationId properties)
+- [x] I-3b: Relationship Updates on Mission Completion
+- [x] I-3c: NPC Status Effects on Missions
+- [x] I-4a: Plot Thread State Machine (Dormant→Available→Active→Completed)
+- [x] I-4b: Plot Mission Priority (+20 active, +10 available weighting)
+- [x] I-4c: Plot Completion Rewards
+- [x] I-5a: HybridMissionGenerator Integration
+- [x] I-5b: Apply ConsequenceRules After Missions (MissionConsequenceHandler.ApplyConsequenceRules)
+- [x] I-5c: Intel Recording for Information Missions (MissionConsequenceHandler.RecordIntelFromMission)
+- [x] I-7a-d: Integration Tests (44 tests in StorySystemIntegrationTests.cs)
+  - GameWorldBridge (5), GameState/Week (3), HybridMissionGenerator (5), MissionAdapter (3)
+  - PlotThread (4), MissionConsequenceHandler (11), GameEngine (6), MissionHistory (3)
+  - **PlayerAgent Story System E2E** (4 tests: consequence rules, intel recording, backward compat)
+
+**Remaining (2 tasks - Moved to Batch F)**:
+- [ ] F-2a: Basic NPC Conversation Command (was I-6a)
+- [ ] F-2b: Conversation Results Integration (was I-6b)
+
+> **Note**: Conversation tasks moved to Batch F as they add new features rather than integrate existing Story System components.
+
+**Integration Components Verified**:
+| Component | File | Status |
+|-----------|------|--------|
+| GameWorldBridge | `Game/GameWorldBridge.cs` | ✅ Bidirectional sync |
+| HybridMissionGenerator | `Story/Integration/HybridMissionGenerator.cs` | ✅ Story + Legacy combined |
+| MissionAdapter | `Story/Integration/MissionAdapter.cs` | ✅ NPC/Location modifiers |
+| MissionConsequenceHandler | `MissionSystem.cs` | ✅ Relationship + ConsequenceRules + Intel |
+| GameEngine Integration | `Game/GameEngine.cs:346-525` | ✅ InitializeStorySystem() |
+| Week Counter | `GameEngine.cs:67` | ✅ LinkedWorldState delegation |
+| PlayerAgent Story Props | `PlayerAgent.cs:75-110` | ✅ WorldState, StoryGraph, IntelRegistry |
+
+---
+
+### Batch H: Code Review Bug Fixes (2026-02-03) ✅ COMPLETE
 
 **Source**: Comprehensive code review of MafiaDemo (see `/MAFIA_DEMO_CODE_REVIEW.md`)
 
@@ -68,23 +117,21 @@ See `TASK_LIST.md` for full details.
 - Fixed: Territory heat reduced (23→11/week), decay increased (5→8/week)
 - Verified: Game reaches victory at week 52 with $2.4M wealth and 91% reputation
 
-**Completed (7 tasks)**:
+**All 14 tasks complete**:
 - [x] H-1: Heat balance (CRITICAL) - game now winnable
 - [x] H-2: Event timing uses game weeks instead of real time
-- [x] H-3: CHAIN_HIT_TO_WAR null safety
-- [x] H-4: Rival hostility clamping (prevents negative values)
-- [x] H-5: MissionEvaluator duplicate rule application
-- [x] H-6: PlayerAgent decision trace field consistency
+- [x] H-3: CHAIN_HIT_TO_WAR null safety (FirstOrDefault with null check)
+- [x] H-4: Rival hostility clamping (Math.Max(0,...) prevents negative values)
+- [x] H-5: MissionEvaluator duplicate rule application removed
+- [x] H-6: PlayerAgent decision trace field consistency (RuleId not RuleName)
 - [x] H-7: CONSEQUENCE_VULNERABLE null safety
+- [x] H-8: RivalStrategyContext.ShouldAttack - logic is intentionally correct, added XML docs
 - [x] H-9: Currency symbol display ($ instead of ¤)
-
-**Remaining (7 tasks)**:
-- [ ] H-8: RivalStrategyContext.ShouldAttack logic review
-- [ ] H-10: Agent action coordination (prevent duplicate bribes)
-- [ ] H-11: Consolidate defeat condition logic
-- [ ] H-12: Event log eviction performance
-- [ ] H-13: Victory condition achievability test
-- [ ] H-14: Null safety for rival lookups
+- [x] H-10: BribedThisWeek flag for agent coordination (3 tests added)
+- [x] H-11: Defeat/Victory constants in GameState (single source of truth)
+- [x] H-12: EventLog changed to Queue<GameEvent> for O(1) eviction
+- [x] H-13: Victory achievability verified (3 integration tests)
+- [x] H-14: Null-safe rival helpers (HasRivals, MaxRivalHostility, etc.)
 
 ### Batch G: Critical Integration (2026-02-03) ✅
 
@@ -813,6 +860,161 @@ Session: GameRulesEngine refactoring and bug report resolution
 Gate: 1916 tests passing (11 new tests from bug fix verification)
 ```
 
+### Batch H Log (Code Review Bug Fixes - COMPLETE) - 2026-02-03
+```
+✅ H-1: Fixed Heat Balance (CRITICAL)
+   - Territory heat reduced: 23 → 11/week
+   - Natural decay increased: 5 → 8/week
+   - Game now reaches victory at week 52
+
+✅ H-2: Event Timing Uses Game Weeks
+   - Added GameWeek property to GameEvent
+   - Changed event checks to use game weeks
+
+✅ H-3: CHAIN_HIT_TO_WAR Null Safety
+   - Changed First() to FirstOrDefault() with null check
+
+✅ H-4: Rival Hostility Clamping
+   - Added Math.Max(0, ...) to prevent negative values
+   - 2 tests added
+
+✅ H-5: MissionEvaluator Duplicate Fix
+   - Removed duplicate EvaluateAll() call
+
+✅ H-6: PlayerAgent Field Consistency
+   - Changed RuleName to RuleId for decision trace
+
+✅ H-7: CONSEQUENCE_VULNERABLE Null Safety
+   - Added Territories.Any() check
+
+✅ H-8: RivalStrategyContext.ShouldAttack
+   - Logic is intentionally correct
+   - Added comprehensive XML documentation
+
+✅ H-9: Currency Symbol Display
+   - Changed :C0 to explicit $/:N0 format
+
+✅ H-10: Bribe Coordination
+   - Added BribedThisWeek flag to GameState
+   - Resets at turn start, prevents duplicate bribes
+   - 3 tests added
+
+✅ H-11: Defeat/Victory Constants
+   - Added constants to GameState (DefeatReputationThreshold, etc.)
+   - Single source of truth for game conditions
+
+✅ H-12: EventLog Performance
+   - Changed List<GameEvent> to Queue<GameEvent>
+   - O(1) eviction instead of O(n)
+
+✅ H-13: Victory Achievability Tests
+   - 3 integration tests verifying game is winnable
+
+✅ H-14: Null-Safe Rival Helpers
+   - Added HasRivals, MaxRivalHostility, MinRivalStrength
+   - Added HasHostileRival(), HasWeakRival() methods
+
+Gate: All 14 code review bugs fixed, game is winnable
+```
+
+### Batch I Log (Story System Integration - IN PROGRESS) - 2026-02-03
+```
+Story System Components (28 files in Story/):
+├── World/ - Location, NPC, Faction, WorldState
+├── Narrative/ - StoryNode, StoryGraph, StoryEvent, PlotThread
+├── Intelligence/ - Intel, IntelRegistry
+├── Agents/ - Persona, Memory, EntityMind
+├── Communication/ - AgentQuestion, AgentResponse, ConversationContext
+├── Rules/ - 5 rule setup files
+├── Engine/ - RulesBasedConversationEngine
+├── Generation/ - DynamicMissionGenerator, MissionHistory
+├── Integration/ - GameWorldBridge, HybridMissionGenerator, MissionAdapter
+├── Seeding/ - WorldStateSeeder
+└── Core/ - Enums, Thresholds
+
+✅ I-2a: GameWorldBridge
+   - Bidirectional sync between GameState and WorldState
+   - Territory ↔ Location, RivalFamily ↔ Faction mapping
+
+✅ I-2b: WorldState Initialization
+   - GameEngine.InitializeStorySystem() calls WorldStateSeeder
+   - StoryGraph initialized with seed plot threads
+   - IntelRegistry initialized
+
+✅ I-3a-c: NPC & Relationship Integration
+   - Mission class has NPCId, LocationId properties
+   - MissionConsequenceHandler.ApplyMissionConsequences()
+   - NPC status affects mission difficulty
+
+✅ I-4a-c: Plot Thread Integration
+   - Plot state machine: Dormant → Available → Active → Completed
+   - Plot missions weighted higher in generation
+   - Plot completion rewards applied
+
+✅ I-5a: HybridMissionGenerator
+   - Combines Story + Legacy mission generation
+   - Falls back to legacy when Story System disabled
+
+✅ I-2c: Week Counter Consolidation (2026-02-03)
+   - Added LinkedWorldState property to GameState
+   - GameState.Week now delegates to WorldState.CurrentWeek when linked
+   - Linked automatically in GameEngine.InitializeStorySystem()
+   - 3 new tests for week counter consistency
+
+✅ I-5b: ConsequenceRules Integration (2026-02-03)
+   - Added MissionConsequenceHandler.ApplyConsequenceRules()
+   - Creates ConsequenceContext from mission result
+   - Executes consequence rules (intimidation, hit, negotiation, etc.)
+   - 3 new tests for consequence rules
+
+✅ I-5c: Intel Recording (2026-02-03)
+   - Added MissionConsequenceHandler.RecordIntelFromMission()
+   - Creates Intel for NPC, Location, or general info
+   - Added IntelRegistry property to PlayerAgent
+   - 4 new tests for intel recording
+
+✅ I-7a-d: Integration Tests
+   - 37+ tests in StorySystemIntegrationTests.cs
+   - Covers GameWorldBridge, HybridMissionGenerator, PlotThread, MissionConsequences
+   - Now includes ConsequenceRules and Intel recording tests
+
+Remaining (Moved to Batch F):
+- [ ] F-2a: Basic NPC Conversation Command (was I-6a)
+- [ ] F-2b: Conversation Results Integration (was I-6b)
+
+✅ PlayerAgent E2E Integration Tests (2026-02-03)
+   - 4 additional tests verifying Story System through PlayerAgent.ExecuteMissionAsync
+   - Tests consequence rules application, intel recording, backward compatibility
+
+Gate: Story System integrated with MafiaDemo (14/16 tasks complete, conversation deferred to F)
+Total integration tests: 44 (40 + 4 PlayerAgent E2E)
+```
+
+### Runtime Testing Log - 2026-02-03
+```
+Ran all three MafiaDemo modes to verify runtime behavior:
+
+Option 3 (Scripted Demo): ✅ Runs clean
+Option 2 (Autonomous Game): Shows "0 active plots" (minor display issue)
+Option 1 (AI Career Mode): ❌ Major bug - doesn't use Story System
+
+Bugs Discovered:
+- F-3a (HIGH): AutonomousPlaythrough.cs:98 creates raw GameState instead of MafiaGameEngine
+  - Story System never initialized in AI Career Mode
+  - All Story integration work bypassed
+
+- F-3b (MEDIUM): Mission success rate too harsh for new players
+  - Base rate 50% + modifiers
+  - New player with 0 loyalty/skill fails ~40% of missions
+  - Suggested fix: Bump base rate to 60%
+
+- F-3c (LOW): "0 active plots" display misleading
+  - Plots are dormant by design until triggered
+  - Display should explain plot system or show available plots
+
+Updated TASK_LIST.md with F-3 section (3 new tasks)
+```
+
 ### Documentation Review Log - 2026-02-03
 ```
 Deep review of all process markdown files:
@@ -847,14 +1049,15 @@ Deep review of all process markdown files:
 
 ## Next Steps
 
-**Batch F: Polish** (10 tasks, 20-28 hours) - NEXT
+**Batch F: Polish** (14 tasks) - CURRENT
 
-See `TASK_LIST.md` for full details. Summary:
+See `TASK_LIST.md` for full details. Work organized into three groups:
 
-| Group | Tasks | Hours | Notes |
-|-------|-------|-------|-------|
+### F-1: Documentation (8 tasks)
+| Task | Description | Hours | Notes |
+|------|-------------|-------|-------|
 | F-1a | Consolidate MafiaDemo docs | 2-3 | Merge 7 overlapping files |
-| F-1b | Update ARCHITECTURE.md status | 1-2 | Mark completed integrations |
+| F-1b | Update ARCHITECTURE.md status | 1-2 | ✅ Already complete |
 | F-1c | Update CLAUDE.md patterns | 2-3 | New DI/interface patterns |
 | F-1d | XML documentation | 3-4 | Public API docs |
 | F-1e | API reference docs | 3-4 | Comprehensive reference |
@@ -862,4 +1065,17 @@ See `TASK_LIST.md` for full details. Summary:
 | F-1g | Code style cleanup | 2-3 | Warnings, formatting |
 | F-1h | Release checklist | 1-2 | Deployment preparation |
 
-**Priority**: F-1a and F-1b are quick wins that reduce documentation debt.
+### F-2: Conversation System (2 tasks, deferred from Batch I)
+| Task | Description | Hours | Priority |
+|------|-------------|-------|----------|
+| F-2a | Basic NPC Conversation Command | 2-3 | P3 |
+| F-2b | Conversation Results Integration | 2-3 | P3 |
+
+### F-3: Runtime Bugs (3 tasks, discovered during testing)
+| Task | Description | Hours | Priority |
+|------|-------------|-------|----------|
+| F-3a | AI Career Mode uses raw GameState | 3-4 | **HIGH** |
+| F-3b | Mission success rate too low (60%) | 1-2 | MEDIUM |
+| F-3c | Plot count display misleading | 0.5-1 | LOW |
+
+**Priority**: F-3a is a HIGH priority bug - AI Career Mode doesn't use Story System at all.

@@ -313,7 +313,7 @@ dotnet build Tests/AgentRouting.Tests/ --no-restore
 dotnet build Tests/MafiaDemo.Tests/ --no-restore
 dotnet build Tests/TestRunner/ --no-restore
 
-# Run all tests (~1905 tests)
+# Run all tests (1,862 tests)
 dotnet run --project Tests/TestRunner/ --no-build
 ```
 
@@ -464,22 +464,26 @@ The project uses a **layered batch structure** for development. See [EXECUTION_P
 | B | Resource Stability | Complete |
 | D | Application Fixes | Complete |
 | E | Enhancement | Complete |
-| **F** | **Polish** | **Pending** |
+| G | Critical Integration | Complete |
+| H | Code Review Bug Fixes | Complete |
+| I | Story System Integration | Complete |
+| **F** | **Polish** | **Pending (14 tasks)** |
 
 **Completed Features:**
 - [x] 8 rule engines integrated with ~98 total rules
 - [x] Agent message handling connected to routing pipeline
 - [x] Event generation rules (`_eventRules` engine)
-- [x] AI Career Mode with rules-driven autopilot
 - [x] Async rule support (`IAsyncRule<T>`, `AsyncRuleBuilder<T>`)
 - [x] Thread-safe core libraries
 - [x] Game economy balancing
+- [x] Story System integration (WorldState, StoryGraph, IntelRegistry)
+- [x] HybridMissionGenerator combining Story + Legacy systems
+- [x] Mission consequences and intel recording
 
-**Remaining Work (Batch F - Polish):**
-- [ ] Documentation consolidation (merge overlapping MafiaDemo docs)
-- [ ] Update ARCHITECTURE.md integration status
-- [ ] Add XML documentation to public APIs
-- [ ] Create API reference documentation
+**Remaining Work (Batch F - Polish, 14 tasks):**
+- [ ] F-1: Documentation (8 tasks) - consolidation, XML docs, API reference
+- [ ] F-2: Conversation System (2 tasks) - NPC dialogue commands
+- [ ] F-3: Runtime Bugs (3 tasks) - **F-3a HIGH**: AI Career Mode missing Story System integration
 
 #### Design Decisions (Resolved)
 

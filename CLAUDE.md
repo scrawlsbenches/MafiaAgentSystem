@@ -143,7 +143,7 @@ dotnet exec tools/coverage/coverlet/tools/net6.0/any/coverlet.console.dll \
 | LCOV | `-f lcov` | IDE integration, line highlighting |
 | JSON | `-f json` | Programmatic analysis |
 
-### Current Coverage (as of 2026-02-02, ~1905 tests)
+### Current Coverage (as of 2026-02-03, 1,862 tests)
 
 | Module | Line | Branch | Method |
 |--------|------|--------|--------|

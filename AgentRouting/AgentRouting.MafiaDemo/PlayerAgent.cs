@@ -73,6 +73,8 @@ public class PlayerAgent
     private readonly RulesEngineCore<PlayerDecisionContext> _decisionRules;
     private readonly AgentRouter? _router;
     private WorldState? _worldState;
+    private StoryGraph? _storyGraph;
+    private IntelRegistry? _intelRegistry;
 
     public PlayerCharacter Character => _character;
     public AgentRouter? Router => _router;
@@ -85,6 +87,26 @@ public class PlayerAgent
     {
         get => _worldState;
         set => _worldState = value;
+    }
+
+    /// <summary>
+    /// Optional StoryGraph for Story System integration.
+    /// When set (along with WorldState), rule-based consequences are applied after missions.
+    /// </summary>
+    public StoryGraph? StoryGraph
+    {
+        get => _storyGraph;
+        set => _storyGraph = value;
+    }
+
+    /// <summary>
+    /// Optional IntelRegistry for Story System integration.
+    /// When set (along with WorldState), successful Information missions record intel.
+    /// </summary>
+    public IntelRegistry? IntelRegistry
+    {
+        get => _intelRegistry;
+        set => _intelRegistry = value;
     }
 
     public PlayerAgent(string name, PlayerPersonality? personality = null, AgentRouter? router = null)
@@ -459,6 +481,28 @@ public class PlayerAgent
         if (consequenceDescription != null)
         {
             result.Message += $" ({consequenceDescription})";
+        }
+
+        // Apply rule-based consequences (richer world state changes)
+        if (_worldState != null && _storyGraph != null)
+        {
+            var consequences = MissionConsequenceHandler.ApplyConsequenceRules(
+                mission, result, _worldState, _storyGraph, gameState);
+            if (consequences.Count > 0)
+            {
+                result.Message += $" [{string.Join(", ", consequences)}]";
+            }
+        }
+
+        // Record intel from successful Information missions
+        if (_worldState != null && _intelRegistry != null && mission.Type == MissionType.Information && result.Success)
+        {
+            var intel = MissionConsequenceHandler.RecordIntelFromMission(
+                mission, result, _worldState, _intelRegistry, _character.Name);
+            if (intel != null)
+            {
+                result.Message += $" [Intel recorded: {intel.Summary}]";
+            }
         }
 
         // Check for promotion

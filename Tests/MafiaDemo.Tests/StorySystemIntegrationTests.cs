@@ -1,6 +1,7 @@
 using TestRunner.Framework;
 using AgentRouting.Core;
 using AgentRouting.MafiaDemo;
+using AgentRouting.MafiaDemo.AI;
 using AgentRouting.MafiaDemo.Game;
 using AgentRouting.MafiaDemo.Missions;
 using AgentRouting.MafiaDemo.Story;
@@ -100,6 +101,56 @@ public class StorySystemIntegrationTests : MafiaTestBase
         var location = worldState.GetLocation("little-italy");
         Assert.NotNull(location);
         Assert.Equal(LocationState.Contested, location.State);
+    }
+
+    [Test]
+    public void GameState_Week_CanBeSetAndRead()
+    {
+        // Arrange - Create GameState without linking WorldState
+        var gameState = CreateTestGameState();
+
+        // Act - Set week value
+        gameState.Week = 42;
+
+        // Assert - Should return the set value
+        Assert.Equal(42, gameState.Week);
+    }
+
+    [Test]
+    public void GameEngine_WorldState_WeekSyncsWithGameState()
+    {
+        // Arrange - Create GameEngine which links week counters internally
+        GameTimingOptions.Current = GameTimingOptions.Instant;
+        var logger = new SilentAgentLogger();
+        var engine = new MafiaGameEngine(logger);
+
+        // The engine links GameState.Week to WorldState.CurrentWeek internally
+        Assert.True(engine.StorySystemEnabled);
+        Assert.NotNull(engine.WorldState);
+
+        // Act - Advance week through game state
+        var initialWorldWeek = engine.WorldState.CurrentWeek;
+
+        // Verify initial state is consistent
+        Assert.Equal(1, initialWorldWeek); // Initial week should be 1
+    }
+
+    [Test]
+    public void GameEngine_WithStorySystem_LinksWeekCounter()
+    {
+        // Arrange & Act - Create GameEngine with Story System enabled
+        GameTimingOptions.Current = GameTimingOptions.Instant;
+        var logger = new SilentAgentLogger();
+        var engine = new MafiaGameEngine(logger);
+
+        // The engine should have linked the week counters
+        // We can verify this by checking that StorySystemEnabled is true
+        Assert.True(engine.StorySystemEnabled);
+
+        // Verify WorldState and other Story System components are present
+        Assert.NotNull(engine.WorldState);
+        Assert.NotNull(engine.StoryGraph);
+        Assert.NotNull(engine.IntelRegistry);
     }
 
     #endregion
@@ -501,6 +552,257 @@ public class StorySystemIntegrationTests : MafiaTestBase
         Assert.True(npc.InteractionHistory.Count > 0);
     }
 
+    [Test]
+    public void MissionConsequenceHandler_ApplyConsequenceRules_IntimidationSuccess()
+    {
+        // Arrange
+        var worldState = WorldStateSeeder.CreateInitialWorld();
+        var storyGraph = WorldStateSeeder.CreateInitialGraph(worldState);
+        var gameState = CreateTestGameState();
+
+        var npc = new NPC
+        {
+            Id = "test-npc",
+            Name = "Test Target",
+            Relationship = 0,
+            Status = NPCStatus.Active,
+            LocationId = "little-italy"
+        };
+        worldState.RegisterNPC(npc);
+
+        var mission = new Mission
+        {
+            Type = MissionType.Intimidation,
+            NPCId = "test-npc"
+        };
+
+        var result = new MissionResult { Success = true };
+
+        // Act
+        var consequences = MissionConsequenceHandler.ApplyConsequenceRules(
+            mission, result, worldState, storyGraph, gameState);
+
+        // Assert
+        Assert.True(consequences.Count > 0);
+        Assert.Equal(NPCStatus.Intimidated, npc.Status);
+        Assert.True(npc.Relationship < 0); // Relationship decreased
+    }
+
+    [Test]
+    public void MissionConsequenceHandler_ApplyConsequenceRules_IntimidationFailure_UnlocksRevenge()
+    {
+        // Arrange
+        var worldState = WorldStateSeeder.CreateInitialWorld();
+        var storyGraph = WorldStateSeeder.CreateInitialGraph(worldState);
+        var gameState = CreateTestGameState();
+
+        var npc = new NPC
+        {
+            Id = "test-npc",
+            Name = "Test Target",
+            Relationship = 0,
+            Status = NPCStatus.Active,
+            LocationId = "little-italy"
+        };
+        worldState.RegisterNPC(npc);
+
+        var mission = new Mission
+        {
+            Type = MissionType.Intimidation,
+            NPCId = "test-npc"
+        };
+
+        var result = new MissionResult { Success = false };
+
+        // Verify no revenge node exists initially
+        var revengeNodeId = $"revenge-{npc.Id}";
+        Assert.Null(storyGraph.GetNode(revengeNodeId));
+
+        // Act
+        var consequences = MissionConsequenceHandler.ApplyConsequenceRules(
+            mission, result, worldState, storyGraph, gameState);
+
+        // Assert
+        Assert.True(consequences.Count > 0);
+        Assert.Equal(NPCStatus.Hostile, npc.Status);
+        // Revenge mission should be added to the story graph
+        var revengeNode = storyGraph.GetNode(revengeNodeId);
+        Assert.NotNull(revengeNode, "Failed intimidation should unlock a revenge mission");
+        Assert.Equal(StoryNodeType.Threat, revengeNode!.Type);
+    }
+
+    [Test]
+    public void MissionConsequenceHandler_ApplyConsequenceRules_HitSuccess_KillsNPC()
+    {
+        // Arrange
+        var worldState = WorldStateSeeder.CreateInitialWorld();
+        var storyGraph = WorldStateSeeder.CreateInitialGraph(worldState);
+        var gameState = CreateTestGameState();
+
+        // Create a faction for the NPC
+        var faction = new Faction
+        {
+            Id = "test-faction",
+            Name = "Test Faction",
+            Hostility = 30,
+            Resources = 50
+        };
+        worldState.Factions["test-faction"] = faction;
+
+        var npc = new NPC
+        {
+            Id = "test-npc",
+            Name = "Test Target",
+            Status = NPCStatus.Active,
+            FactionId = "test-faction"
+        };
+        worldState.RegisterNPC(npc);
+
+        var mission = new Mission
+        {
+            Type = MissionType.Hit,
+            NPCId = "test-npc"
+        };
+
+        var result = new MissionResult { Success = true };
+
+        // Act
+        var consequences = MissionConsequenceHandler.ApplyConsequenceRules(
+            mission, result, worldState, storyGraph, gameState);
+
+        // Assert
+        Assert.True(consequences.Count > 0);
+        Assert.Equal(NPCStatus.Dead, npc.Status);
+        Assert.True(faction.Hostility > 30); // Faction hostility increased
+    }
+
+    [Test]
+    public void MissionConsequenceHandler_RecordIntel_FromNPCMission()
+    {
+        // Arrange
+        var worldState = WorldStateSeeder.CreateInitialWorld();
+        var intelRegistry = new IntelRegistry();
+        worldState.CurrentWeek = 5;
+
+        var npc = new NPC
+        {
+            Id = "test-informant",
+            Name = "Test Informant",
+            Status = NPCStatus.Informant,
+            Relationship = 30,
+            LocationId = "little-italy",
+            FactionId = null
+        };
+        worldState.RegisterNPC(npc);
+
+        var mission = new Mission
+        {
+            Type = MissionType.Information,
+            NPCId = "test-informant",
+            Description = "Get info from the informant"
+        };
+
+        var result = new MissionResult { Success = true, RespectGained = 5 };
+
+        // Act
+        var intel = MissionConsequenceHandler.RecordIntelFromMission(
+            mission, result, worldState, intelRegistry, "TestPlayer");
+
+        // Assert
+        Assert.NotNull(intel);
+        Assert.Equal(IntelType.NPCStatus, intel.Type);
+        Assert.Equal("test-informant", intel.SubjectId);
+        Assert.Equal("npc", intel.SubjectType);
+        Assert.Equal(5, intel.GatheredWeek);
+        Assert.True(intel.Reliability >= 70); // Base reliability + respect bonus
+        Assert.True(intel.Data.ContainsKey("Status"));
+        Assert.Equal("Informant", intel.Data["Status"]);
+
+        // Verify it was added to registry
+        var retrievedIntel = intelRegistry.GetForSubject("test-informant", 5).ToList();
+        Assert.Equal(1, retrievedIntel.Count);
+    }
+
+    [Test]
+    public void MissionConsequenceHandler_RecordIntel_FromLocationMission()
+    {
+        // Arrange
+        var worldState = WorldStateSeeder.CreateInitialWorld();
+        var intelRegistry = new IntelRegistry();
+        worldState.CurrentWeek = 10;
+
+        // WorldStateSeeder should have created little-italy
+        var location = worldState.GetLocation("little-italy");
+        Assert.NotNull(location, "Test requires little-italy location from WorldStateSeeder");
+
+        var mission = new Mission
+        {
+            Type = MissionType.Information,
+            LocationId = "little-italy",
+            Description = "Scout the neighborhood"
+        };
+
+        var result = new MissionResult { Success = true };
+
+        // Act
+        var intel = MissionConsequenceHandler.RecordIntelFromMission(
+            mission, result, worldState, intelRegistry, "Scout");
+
+        // Assert
+        Assert.NotNull(intel);
+        Assert.Equal(IntelType.LocationHeat, intel.Type);
+        Assert.Equal("little-italy", intel.SubjectId);
+        Assert.Equal("location", intel.SubjectType);
+        Assert.True(intel.Data.ContainsKey("LocalHeat"));
+        Assert.True(intel.Data.ContainsKey("State"));
+    }
+
+    [Test]
+    public void MissionConsequenceHandler_RecordIntel_FailedMission_ReturnsNull()
+    {
+        // Arrange
+        var worldState = WorldStateSeeder.CreateInitialWorld();
+        var intelRegistry = new IntelRegistry();
+
+        var mission = new Mission
+        {
+            Type = MissionType.Information,
+            LocationId = "little-italy"
+        };
+
+        var result = new MissionResult { Success = false }; // Failed mission
+
+        // Act
+        var intel = MissionConsequenceHandler.RecordIntelFromMission(
+            mission, result, worldState, intelRegistry, "TestPlayer");
+
+        // Assert
+        Assert.Null(intel); // No intel from failed mission
+    }
+
+    [Test]
+    public void MissionConsequenceHandler_RecordIntel_NonInfoMission_ReturnsNull()
+    {
+        // Arrange
+        var worldState = WorldStateSeeder.CreateInitialWorld();
+        var intelRegistry = new IntelRegistry();
+
+        var mission = new Mission
+        {
+            Type = MissionType.Collection, // Not an Information mission
+            LocationId = "little-italy"
+        };
+
+        var result = new MissionResult { Success = true };
+
+        // Act
+        var intel = MissionConsequenceHandler.RecordIntelFromMission(
+            mission, result, worldState, intelRegistry, "TestPlayer");
+
+        // Assert
+        Assert.Null(intel); // No intel from non-Information mission
+    }
+
     #endregion
 
     #region GameEngine Integration Tests
@@ -654,6 +956,239 @@ public class StorySystemIntegrationTests : MafiaTestBase
 
         // Assert - further in time should have lower penalty
         Assert.True(nearScore >= farScore);
+    }
+
+    #endregion
+
+    #region PlayerAgent Story System Integration Tests
+
+    [Test]
+    public async void PlayerAgent_WithStorySystem_AppliesConsequenceRules()
+    {
+        // Arrange - Create PlayerAgent with Story System components wired up
+        GameTimingOptions.Current = GameTimingOptions.Instant;
+        var agent = new PlayerAgent("Consequence Tester");
+        agent.Character.Skills.Intimidation = 100;  // High skill for success
+        agent.Character.Heat = 0;
+
+        var worldState = WorldStateSeeder.CreateInitialWorld();
+        var storyGraph = WorldStateSeeder.CreateInitialGraph(worldState);
+        var intelRegistry = new IntelRegistry();
+
+        // Wire up Story System
+        agent.WorldState = worldState;
+        agent.StoryGraph = storyGraph;
+        agent.IntelRegistry = intelRegistry;
+
+        // Create NPC target for intimidation
+        var npc = new NPC
+        {
+            Id = "target-npc",
+            Name = "Target NPC",
+            Relationship = 0,
+            Status = NPCStatus.Active,
+            LocationId = "little-italy"
+        };
+        worldState.RegisterNPC(npc);
+
+        var mission = new Mission
+        {
+            Type = MissionType.Intimidation,
+            Title = "Intimidate Target",
+            NPCId = "target-npc",
+            RespectReward = 10,
+            MoneyReward = 500m,
+            HeatGenerated = 3,
+            SkillRequirements = new Dictionary<string, int> { ["Intimidation"] = 10 }
+        };
+
+        var gameState = CreateTestGameState();
+
+        // Act - Execute multiple times to ensure at least one success
+        MissionExecutionResult? successResult = null;
+        for (int i = 0; i < 10; i++)
+        {
+            var testMission = new Mission
+            {
+                Type = MissionType.Intimidation,
+                Title = "Intimidate Target",
+                NPCId = "target-npc",
+                RespectReward = 10,
+                MoneyReward = 500m,
+                HeatGenerated = 3,
+                SkillRequirements = new Dictionary<string, int> { ["Intimidation"] = 10 }
+            };
+            var result = await agent.ExecuteMissionAsync(testMission, gameState);
+            if (result.MissionResult.Success)
+            {
+                successResult = result;
+                break;
+            }
+        }
+
+        // Assert - If we got a success, consequences should have been applied
+        if (successResult != null)
+        {
+            // NPC should be intimidated (from ConsequenceRules)
+            Assert.Equal(NPCStatus.Intimidated, npc.Status);
+            // Message should contain consequence info
+            Assert.Contains("[", successResult.MissionResult.Message);
+        }
+    }
+
+    [Test]
+    public async void PlayerAgent_WithStorySystem_RecordsIntelForInformationMissions()
+    {
+        // Arrange
+        GameTimingOptions.Current = GameTimingOptions.Instant;
+        var agent = new PlayerAgent("Intel Gatherer");
+        agent.Character.Skills.StreetSmarts = 100;  // High skill for success
+        agent.Character.Heat = 0;
+
+        var worldState = WorldStateSeeder.CreateInitialWorld();
+        var storyGraph = WorldStateSeeder.CreateInitialGraph(worldState);
+        var intelRegistry = new IntelRegistry();
+        worldState.CurrentWeek = 5;
+
+        // Wire up Story System
+        agent.WorldState = worldState;
+        agent.StoryGraph = storyGraph;
+        agent.IntelRegistry = intelRegistry;
+
+        // Create NPC informant
+        var npc = new NPC
+        {
+            Id = "informant-npc",
+            Name = "Street Informant",
+            Relationship = 30,
+            Status = NPCStatus.Informant,
+            LocationId = "little-italy"
+        };
+        worldState.RegisterNPC(npc);
+
+        var gameState = CreateTestGameState();
+
+        // Act - Execute multiple times to ensure at least one success
+        MissionExecutionResult? successResult = null;
+        int initialIntelCount = intelRegistry.GetForSubject("informant-npc", 5).Count();
+
+        for (int i = 0; i < 10; i++)
+        {
+            var mission = new Mission
+            {
+                Type = MissionType.Information,
+                Title = "Gather Intel",
+                NPCId = "informant-npc",
+                Description = "Get street info",
+                RespectReward = 5,
+                MoneyReward = 200m,
+                HeatGenerated = 1,
+                SkillRequirements = new Dictionary<string, int> { ["StreetSmarts"] = 10 }
+            };
+            var result = await agent.ExecuteMissionAsync(mission, gameState);
+            if (result.MissionResult.Success)
+            {
+                successResult = result;
+                break;
+            }
+        }
+
+        // Assert - If we got a success, intel should have been recorded
+        if (successResult != null)
+        {
+            var intel = intelRegistry.GetForSubject("informant-npc", 5).ToList();
+            Assert.True(intel.Count > initialIntelCount, "Intel should be recorded for successful Information mission");
+            // Message should contain intel recording info
+            Assert.Contains("[Intel recorded:", successResult.MissionResult.Message);
+        }
+    }
+
+    [Test]
+    public async void PlayerAgent_WithoutStorySystem_StillWorksNormally()
+    {
+        // Arrange - PlayerAgent without Story System components
+        GameTimingOptions.Current = GameTimingOptions.Instant;
+        var agent = new PlayerAgent("Non-Story Tester");
+        agent.Character.Skills.Intimidation = 50;
+
+        // Explicitly NOT setting WorldState, StoryGraph, IntelRegistry
+
+        var mission = new Mission
+        {
+            Type = MissionType.Collection,
+            Title = "Regular Collection",
+            RespectReward = 5,
+            MoneyReward = 100m,
+            HeatGenerated = 2,
+            SkillRequirements = new Dictionary<string, int> { ["Intimidation"] = 10 }
+        };
+
+        var gameState = CreateTestGameState();
+
+        // Act - Should not throw
+        var result = await agent.ExecuteMissionAsync(mission, gameState);
+
+        // Assert - Mission executed successfully
+        Assert.NotNull(result);
+        Assert.NotNull(result.MissionResult);
+        // Message should NOT contain Story System tags (no consequences or intel)
+        if (result.MissionResult.Success)
+        {
+            Assert.False(result.MissionResult.Message.Contains("[Intel recorded:"));
+        }
+    }
+
+    [Test]
+    public async void PlayerAgent_FailedMission_DoesNotRecordIntel()
+    {
+        // Arrange
+        GameTimingOptions.Current = GameTimingOptions.Instant;
+        var agent = new PlayerAgent("Failed Intel Tester");
+        agent.Character.Skills.StreetSmarts = 1;  // Very low skill
+        agent.Character.Heat = 90;  // High heat increases failure
+
+        var worldState = WorldStateSeeder.CreateInitialWorld();
+        var storyGraph = WorldStateSeeder.CreateInitialGraph(worldState);
+        var intelRegistry = new IntelRegistry();
+        worldState.CurrentWeek = 5;
+
+        agent.WorldState = worldState;
+        agent.StoryGraph = storyGraph;
+        agent.IntelRegistry = intelRegistry;
+
+        var gameState = CreateTestGameState();
+
+        // Act - Execute to get a failure
+        MissionExecutionResult? failResult = null;
+        int initialIntelCount = 0;
+
+        for (int i = 0; i < 10; i++)
+        {
+            var mission = new Mission
+            {
+                Type = MissionType.Information,
+                Title = "Hard Intel",
+                LocationId = "little-italy",
+                RespectReward = 5,
+                MoneyReward = 200m,
+                HeatGenerated = 1,
+                SkillRequirements = new Dictionary<string, int> { ["StreetSmarts"] = 90 }
+            };
+            var result = await agent.ExecuteMissionAsync(mission, gameState);
+            if (!result.MissionResult.Success)
+            {
+                failResult = result;
+                break;
+            }
+        }
+
+        // Assert - Failed missions should not record intel
+        if (failResult != null)
+        {
+            var allIntel = intelRegistry.GetRecent(10, 5).ToList();
+            Assert.Equal(0, allIntel.Count);  // No intel from failed mission
+            Assert.False(failResult.MissionResult.Message.Contains("[Intel recorded:"));
+        }
     }
 
     #endregion

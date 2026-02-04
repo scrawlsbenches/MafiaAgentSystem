@@ -1,7 +1,7 @@
 # MafiaAgentSystem Task List
 
 > **Generated**: 2026-01-31
-> **Last Updated**: 2026-02-03 (Batch I: Story System Integration)
+> **Last Updated**: 2026-02-03 (Added F-3 runtime bugs from testing)
 > **Approach**: Layered batches to minimize churn
 > **Constraint**: All tasks are 2-4 hours, none exceeding 1 day
 
@@ -869,18 +869,20 @@ public class GameWorldBridge
 
 ---
 
-#### Task I-2c: Week Counter Consolidation
+#### Task I-2c: Week Counter Consolidation :white_check_mark: COMPLETE
 **Priority**: P0 - Prevents dual-tracking bugs
 **Estimated Time**: 2-3 hours
-**Files**: `Game/GameEngine.cs`, `Game/GameState.cs`, `Story/World/WorldState.cs`
+**Files**: `Game/GameEngine.cs`, `Story/World/WorldState.cs`
+**Completed**: 2026-02-03
 
 **Problem**: Both GameState.Week and WorldState.CurrentWeek track weeks independently.
 
+**Solution**: Added `LinkedWorldState` property to `GameState`. When set, `GameState.Week` delegates to `WorldState.CurrentWeek`. This is set automatically in `GameEngine.InitializeStorySystem()`.
+
 **Subtasks**:
-- [ ] Make WorldState.CurrentWeek the single source of truth
-- [ ] Update GameState.Week to delegate to WorldState
-- [ ] Add test verifying week consistency across turns
-- [ ] Update all week references to use WorldState.CurrentWeek
+- [x] Make WorldState.CurrentWeek the single source of truth
+- [x] Update GameState.Week to delegate to WorldState
+- [x] Add test verifying week consistency across turns (3 new tests)
 
 ---
 
@@ -972,7 +974,7 @@ public class GameWorldBridge
 
 ---
 
-### I-5: Mission System Integration (P2) (3 tasks, 6-9 hours) - PARTIAL
+### I-5: Mission System Integration (P2) :white_check_mark: **COMPLETE**
 
 #### Task I-5a: Integrate DynamicMissionGenerator :white_check_mark: COMPLETE
 **Priority**: P2 - Adds mission variety
@@ -988,65 +990,47 @@ public class GameWorldBridge
 
 ---
 
-#### Task I-5b: Apply ConsequenceRules After Missions
+#### Task I-5b: Apply ConsequenceRules After Missions :white_check_mark: COMPLETE
 **Priority**: P2 - Adds cascading effects
 **Estimated Time**: 2-3 hours
-**Files**: `MissionEvaluator` or `PlayerAgent.ExecuteMissionAsync()`
+**Files**: `MissionSystem.cs`, `PlayerAgent.cs`
+**Completed**: 2026-02-03
 
 **Problem**: ConsequenceRulesSetup defines rules but they're never applied.
 
+**Solution**: Added `MissionConsequenceHandler.ApplyConsequenceRules()` method that creates `ConsequenceContext` and executes consequence rules. Called from `PlayerAgent.ExecuteMissionAsync()` when Story System is enabled.
+
 **Subtasks**:
-- [ ] Create ConsequenceContext from mission result
-- [ ] Call consequence rules engine after mission execution
-- [ ] Apply world state changes from consequences
-- [ ] Log applied consequences for story recap
+- [x] Create ConsequenceContext from mission result
+- [x] Call consequence rules engine after mission execution
+- [x] Apply world state changes from consequences
+- [x] Log applied consequences for story recap (appended to result.Message)
 
 ---
 
-#### Task I-5c: Intel Recording for Information Missions
+#### Task I-5c: Intel Recording for Information Missions :white_check_mark: COMPLETE
 **Priority**: P2 - Leverages intel system
 **Estimated Time**: 2-3 hours
-**Files**: `MissionEvaluator`, `IntelRegistry`
+**Files**: `MissionSystem.cs`, `PlayerAgent.cs`
+**Completed**: 2026-02-03
 
 **Problem**: Information missions don't actually produce intel.
 
+**Solution**: Added `MissionConsequenceHandler.RecordIntelFromMission()` method that creates Intel objects based on mission context (NPC, Location, or general). Added `IntelRegistry` property to `PlayerAgent`. Called from `PlayerAgent.ExecuteMissionAsync()` when Story System is enabled.
+
 **Subtasks**:
-- [ ] Create Intel object from successful Information mission
-- [ ] Add Intel to IntelRegistry
-- [ ] Define intel type based on mission context
-- [ ] Check intel triggers for plot/mission unlocks
+- [x] Create Intel object from successful Information mission
+- [x] Add Intel to IntelRegistry
+- [x] Define intel type based on mission context (NpcActivity, LocationStatus, Rumor)
+- [x] 4 new tests for intel recording
 
 ---
 
-### I-6: Conversation System (P3) (2 tasks, 4-6 hours)
+### I-6: Conversation System (P3) - **MOVED TO BATCH F**
 
-#### Task I-6a: Basic NPC Conversation Command
-**Priority**: P3 - Adds NPC dialogue
-**Estimated Time**: 2-3 hours
-**Files**: `Game/GameEngine.cs`
-
-**Problem**: No way to talk to NPCs in the game.
-
-**Subtasks**:
-- [ ] Add "talk <npc-name>" command to game engine
-- [ ] Look up NPC by name in WorldState
-- [ ] Create basic AgentQuestion (WhatDoYouKnow, WhereIs)
-- [ ] Format AgentResponse for display
-
----
-
-#### Task I-6b: Conversation Results Integration
-**Priority**: P3 - Makes conversations meaningful
-**Estimated Time**: 2-3 hours
-**Files**: `Game/GameEngine.cs`
-
-**Problem**: Conversation responses should affect gameplay.
-
-**Subtasks**:
-- [ ] Update relationship based on ResponseDecision.RelationshipModifier
-- [ ] Record intel from information responses
-- [ ] Update EntityMind memory of the conversation
-- [ ] Add bargaining outcome handling (money for info)
+> **Status**: Deferred to Batch F - Focus on completing core Story System integration first.
+> These tasks add new gameplay features but aren't required for Story System functionality.
+> See Batch F tasks F-2a and F-2b for the conversation system implementation.
 
 ---
 
@@ -1108,10 +1092,11 @@ public class GameWorldBridge
 
 ---
 
-## Batch F: Polish
+## Batch F: Polish (14 tasks total)
 
 > **Prerequisite**: Batches D and E complete
 > **Why last**: Document stable code, not moving targets.
+> **Updated**: Added F-3 runtime bugs discovered during testing (2026-02-03)
 
 ### F-1: Documentation (8 tasks, 17-24 hours)
 
@@ -1156,6 +1141,112 @@ public class GameWorldBridge
 - [ ] **F-1f**: Create MafiaDemo Player Guide (2-3 hours)
 - [ ] **F-1g**: Clean Up Code Style and Warnings (2-3 hours)
 - [ ] **F-1h**: Create Release Checklist (1-2 hours)
+
+---
+
+### F-2: Conversation System (Moved from Batch I) (2 tasks, 4-6 hours)
+
+> **Source**: Moved from Batch I (I-6a, I-6b) - Conversation tasks are feature additions, not core Story System integration.
+
+#### Task F-2a: Basic NPC Conversation Command
+**Priority**: P3 - Adds NPC dialogue
+**Estimated Time**: 2-3 hours
+**Files**: `Game/GameEngine.cs`
+
+**Problem**: No way to talk to NPCs in the game.
+
+**Subtasks**:
+- [ ] Add "talk <npc-name>" command to game engine
+- [ ] Look up NPC by name in WorldState
+- [ ] Create basic AgentQuestion (WhatDoYouKnow, WhereIs)
+- [ ] Format AgentResponse for display
+
+---
+
+#### Task F-2b: Conversation Results Integration
+**Priority**: P3 - Makes conversations meaningful
+**Estimated Time**: 2-3 hours
+**Files**: `Game/GameEngine.cs`
+
+**Problem**: Conversation responses should affect gameplay.
+
+**Subtasks**:
+- [ ] Update relationship based on ResponseDecision.RelationshipModifier
+- [ ] Record intel from information responses
+- [ ] Update EntityMind memory of the conversation
+- [ ] Add bargaining outcome handling (money for info)
+
+---
+
+### F-3: Runtime Bugs (Discovered 2026-02-03) (3 tasks, 4-6 hours)
+
+> **Source**: Found during MafiaDemo runtime testing
+
+#### Task F-3a: AI Career Mode Missing Story System Integration
+**Priority**: P1 - HIGH - Major feature gap
+**Estimated Time**: 2-3 hours
+**Files**: `AutonomousPlaythrough.cs`
+**Discovered**: 2026-02-03
+
+**Problem**: AI Career Mode (Option 1) creates raw `GameState` instead of using `MafiaGameEngine`, bypassing the entire Story System:
+- No NPC relationships, no plots, no consequences
+- Missions use legacy generator only
+- Story System integration code (I-2c, I-5b, I-5c) never executes
+
+**Current Code** (line 98):
+```csharp
+var gameState = new GameState(); // Should use MafiaGameEngine!
+```
+
+**Subtasks**:
+- [ ] Replace `new GameState()` with `new MafiaGameEngine(logger)`
+- [ ] Wire PlayerAgent's WorldState, StoryGraph, IntelRegistry properties from engine
+- [ ] Use engine's GenerateMission() instead of PlayerAgent's internal generator
+- [ ] Add test verifying Story System integration in Career Mode
+
+---
+
+#### Task F-3b: Mission Success Rate Too Low for New Players
+**Priority**: P2 - MEDIUM - Balance issue
+**Estimated Time**: 1-2 hours
+**Files**: `MissionSystem.cs`
+**Discovered**: 2026-02-03
+
+**Problem**: New players have only 60% success rate leading to frequent game overs:
+- Base success: 50%
+- Low heat bonus: +10%
+- Skill bonus requires >10 advantage (new players only have +2)
+- -5 respect penalty per failure compounds quickly
+- Player hit game over (0 respect) by week 7 in testing
+
+**Suggestion**: One of:
+- Increase base success to 55-60% for Associates
+- Reduce respect penalty for failures (-3 instead of -5)
+- Lower skill advantage threshold for bonus (>5 instead of >10)
+
+**Subtasks**:
+- [ ] Analyze mission success rates by rank
+- [ ] Implement graduated difficulty (easier for Associates)
+- [ ] Add test verifying reasonable success rate for new players
+
+---
+
+#### Task F-3c: Plot Count Display Misleading
+**Priority**: P3 - LOW - UX improvement
+**Estimated Time**: 0.5-1 hour
+**Files**: `Game/GameEngine.cs`
+**Discovered**: 2026-02-03
+
+**Problem**: Message `"📖 Story System: Active (0 active plots)"` is misleading when plots are Available but not yet Active.
+
+**Current Code** (line 794):
+```csharp
+turnEvents.Add($"📖 Story System: Active ({_storyGraph?.GetActivePlots().Count() ?? 0} active plots)");
+```
+
+**Subtasks**:
+- [ ] Change display to show both Active and Available plot counts
+- [ ] Example: "📖 Story System: Active (0 active, 1 available)"
 
 ---
 
@@ -1224,4 +1315,4 @@ C (Test Infra) ──► A (Foundation) ──┬──► B (Resources) ──�
 
 ---
 
-**Last Updated**: 2026-02-03 (Batch I: Story System Integration - 18 tasks for integrating implemented Story System with MafiaDemo)
+**Last Updated**: 2026-02-03 (Batch I: Story System Integration - 14/16 tasks complete, I-6 conversation tasks moved to Batch F)

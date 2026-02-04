@@ -55,7 +55,34 @@ public class GameState
     public decimal FamilyWealth { get; set; } = 100000m;
     public int Reputation { get; set; } = 50; // 0-100
     public int HeatLevel { get; set; } = 0; // Police attention 0-100
-    public int Week { get; set; } = 1;
+
+    // Week counter - delegates to WorldState when linked for single source of truth
+    private int _week = 1;
+
+    /// <summary>
+    /// Optional link to WorldState for consolidated week tracking.
+    /// When set, Week property delegates to WorldState.CurrentWeek.
+    /// This ensures a single source of truth for game time.
+    /// </summary>
+    internal WorldState? LinkedWorldState { get; set; }
+
+    /// <summary>
+    /// Current game week. When LinkedWorldState is set, this delegates to
+    /// WorldState.CurrentWeek to maintain a single source of truth.
+    /// Otherwise uses internal backing field (for tests, standalone usage).
+    /// </summary>
+    public int Week
+    {
+        get => LinkedWorldState?.CurrentWeek ?? _week;
+        set
+        {
+            if (LinkedWorldState != null)
+                LinkedWorldState.CurrentWeek = value;
+            else
+                _week = value;
+        }
+    }
+
     public DateTime GameStartTime { get; set; } = DateTime.UtcNow;
 
     public Dictionary<string, Territory> Territories { get; set; } = new();
@@ -504,7 +531,12 @@ public class MafiaGameEngine
             _worldBridge = new GameWorldBridge();
             _worldBridge.Initialize(_state, _worldState);
 
+            // Link WorldState to GameState for consolidated week tracking
+            // This makes GameState.Week delegate to WorldState.CurrentWeek
+            _state.LinkedWorldState = _worldState;
+
             // Initial sync from GameState to WorldState
+            // Note: Week is now automatically synced via the linked WorldState
             _worldBridge.SyncToWorldState(_state, _worldState);
 
             // Create hybrid mission generator combining Story + Legacy systems

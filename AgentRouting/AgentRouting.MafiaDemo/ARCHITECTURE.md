@@ -356,11 +356,21 @@ var investigation = new AsyncRuleBuilder<AsyncEventContext>()
 ### Recently Completed (2026-02-03)
 - [x] **Agent personality rules**: 47 rules implemented (exceeds target of 45)
 - [x] **AgentRouter game loop integration**: `RouteAgentActionAsync()` now routes all agent actions through middleware pipeline during `ProcessAutonomousActions()`
+- [x] **Story System integration** (Batch I): WorldState, StoryGraph, IntelRegistry wired into MafiaGameEngine
+- [x] **HybridMissionGenerator**: Combines Story + Legacy mission systems
+- [x] **Mission consequences**: ConsequenceRules applied after mission completion
+- [x] **Intel recording**: Information missions now record intel to IntelRegistry
+
+### Known Issues (Batch F)
+- [ ] **F-3a (HIGH)**: AI Career Mode (`AutonomousPlaythrough.cs:98`) creates raw `GameState` instead of `MafiaGameEngine`, bypassing Story System integration
+- [ ] **F-3b (MEDIUM)**: Mission success rate (60%) too harsh for new players
+- [ ] **F-3c (LOW)**: "0 active plots" display misleading (plots are Dormant until triggered)
 
 ### Enhancement Opportunities
 - [ ] Save/load game state persistence
 - [ ] Inter-agent relationships and loyalty dynamics (beyond basic traits)
 - [ ] Territory disputes with other families (more sophisticated AI)
+- [ ] F-2: NPC conversation commands (talk to NPCs for intel/relationships)
 
 ---
 
@@ -369,13 +379,20 @@ var investigation = new AsyncRuleBuilder<AsyncEventContext>()
 ```
 AgentRouting.MafiaDemo/
 ├── Game/
-│   └── GameEngine.cs              # MafiaGameEngine, GameState, AutonomousAgent base
+│   ├── GameEngine.cs              # MafiaGameEngine, GameState, AutonomousAgent base
+│   └── GameWorldBridge.cs         # Bidirectional sync between GameState ↔ WorldState
 ├── Rules/
 │   ├── RuleContexts.cs            # 8 context classes for rule evaluation
 │   ├── RuleConfiguration.cs       # Support classes (AgentRuleDefinition, etc.)
 │   ├── GameRulesEngine.cs         # Core partial class: constructor, public API
 │   ├── GameRulesEngine.Setup.cs   # 7 rule setup methods
 │   └── GameRulesEngine.Analysis.cs # Analysis, debugging, validation
+├── Story/                         # Story System (28 files)
+│   ├── World/                     # Location, NPC, Faction, WorldState
+│   ├── Narrative/                 # StoryNode, StoryGraph, PlotThread
+│   ├── Intelligence/              # Intel, IntelRegistry
+│   ├── Integration/               # HybridMissionGenerator, MissionAdapter
+│   └── Seeding/                   # WorldStateSeeder
 ├── MafiaAgents.cs                 # All agent implementations (Godfather, etc.)
 ├── PlayerAgent.cs                 # Player-controlled agent with decision rules
 ├── MissionSystem.cs               # Mission/quest system with difficulty rules
@@ -390,9 +407,15 @@ AgentRouting.MafiaDemo/
 
 ## Next Steps
 
-Remaining enhancement opportunities:
+**Batch F: Polish** (14 tasks) - see `TASK_LIST.md` for full details:
 
-1. **Save/Load Game State**: Persist game progress to disk
-2. **Deeper Agent Relationships**: Track loyalty shifts and betrayals based on actions
-3. **Sophisticated Rival AI**: Territory disputes, alliances, and multi-front wars
-4. **Additional Documentation**: Consolidate overlapping markdown files (see TASK_LIST.md F-1a)
+1. **F-3a (HIGH PRIORITY)**: Fix AI Career Mode to use MafiaGameEngine + Story System
+2. **F-3b**: Balance mission success rate for new players
+3. **F-3c**: Fix plot count display to show Available plots
+4. **F-1**: Documentation consolidation (merge overlapping MafiaDemo docs)
+5. **F-2**: NPC conversation commands
+
+**Future Enhancement Opportunities:**
+- Save/Load game state persistence
+- Deeper agent relationships (loyalty shifts, betrayals)
+- Sophisticated rival AI (alliances, multi-front wars)
