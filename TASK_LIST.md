@@ -1,9 +1,31 @@
 # MafiaAgentSystem Task List
 
 > **Generated**: 2026-01-31
-> **Last Updated**: 2026-02-04 (F-3 runtime bugs fixed, Story System bugs fixed)
+> **Last Updated**: 2026-02-04 (Batch J added - Critical bug fixes from deep code review)
 > **Approach**: Layered batches to minimize churn
 > **Constraint**: All tasks are 2-4 hours, none exceeding 1 day
+
+---
+
+## ⚠️ IMMEDIATE PRIORITY: Batch J
+
+**Batch J contains P0 CRITICAL bugs that must be fixed before any other work.**
+
+These are thread-safety bugs, logic errors, and memory leaks in core libraries that were
+either missed in earlier batches or have regressed. See `CODE_REVIEW_BUGS.txt` for details.
+
+| Priority | Task | Impact |
+|----------|------|--------|
+| **P0** | J-1a: TrackPerformance race condition | Data corruption under load |
+| **P0** | J-1b: ServiceContainer singleton race | Multiple "singleton" instances |
+| **P0** | J-2c: MessageQueueMiddleware async void | App crashes on exceptions |
+| **P1** | J-1c: AgentRouter.RegisterAgent | Concurrent registration corruption |
+| **P1** | J-1d: ABTestingMiddleware Random | Non-deterministic behavior |
+| **P1** | J-2a: CompositeRule double evaluation | Performance degradation |
+| **P1** | J-2b: ImmutableRulesEngine validation | Silent failures |
+| **P1** | J-3a: MetricsMiddleware unbounded | Memory leak |
+
+**Do Batch J first. Then Batch F (Polish).**
 
 ---
 
@@ -16,14 +38,12 @@ Previous organization grouped by *category* (thread safety, MafiaDemo, tests), w
 
 **New approach**: Tasks organized by **what blocks what**. Complete each layer before moving up.
 
-**Key insight**: Test Infrastructure has NO production code dependencies and benefits ALL other batches. Do it first.
-
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ Layer F: POLISH (last)                                  │
+│ Layer F: POLISH (after J)                               │
 │   Documentation, code cleanup                           │
 ├─────────────────────────────────────────────────────────┤
-│ Layer J: CRITICAL BUG FIXES             ⚠️ NEEDS FIX   │
+│ Layer J: CRITICAL BUG FIXES             🔴 DO NOW      │
 │   Thread-safety regressions, memory leaks, logic errors │
 ├─────────────────────────────────────────────────────────┤
 │ Layer I: STORY SYSTEM INTEGRATION        ✅ COMPLETE    │
@@ -58,16 +78,16 @@ Previous organization grouped by *category* (thread safety, MafiaDemo, tests), w
 
 | Batch | Layer | Status | Tasks | Hours |
 |-------|-------|--------|-------|-------|
-| **C** | Test Infra | :white_check_mark: **COMPLETE** | 2 tasks | 5-7 |
-| **A** | Foundation | :white_check_mark: **COMPLETE** | 4 tasks | 8-11 |
-| **B** | Resources | :white_check_mark: **COMPLETE** | 3 tasks | 5-8 |
-| **D** | App Fixes | :white_check_mark: **COMPLETE** | 5 tasks | 10-14 |
-| **E** | Enhancement | :white_check_mark: **COMPLETE** | 15 tasks | 35-47 |
-| **G** | Critical Integration | :white_check_mark: **COMPLETE** | 5 tasks | 11-16 |
-| **H** | Code Review Bug Fixes | :white_check_mark: **COMPLETE** | 14 tasks | 20-30 |
-| **I** | **Story System Integration** | :white_check_mark: **COMPLETE** | 16 tasks | 36-52 |
-| **J** | **Critical Bug Fixes** | :warning: **NEEDS FIXING** | 12 tasks | 17-26 |
-| **F** | Polish | :hourglass: In Progress | 11 tasks remaining | 18-26 |
+| **J** | **Critical Bug Fixes** | :rotating_light: **DO NOW** | 12 tasks | 17-26 |
+| **F** | Polish | :hourglass: After J | 11 tasks | 18-26 |
+| **C** | Test Infra | :white_check_mark: COMPLETE | 2 tasks | 5-7 |
+| **A** | Foundation | :white_check_mark: COMPLETE | 4 tasks | 8-11 |
+| **B** | Resources | :white_check_mark: COMPLETE | 3 tasks | 5-8 |
+| **D** | App Fixes | :white_check_mark: COMPLETE | 5 tasks | 10-14 |
+| **E** | Enhancement | :white_check_mark: COMPLETE | 15 tasks | 35-47 |
+| **G** | Critical Integration | :white_check_mark: COMPLETE | 5 tasks | 11-16 |
+| **H** | Code Review Bug Fixes | :white_check_mark: COMPLETE | 14 tasks | 20-30 |
+| **I** | Story System Integration | :white_check_mark: COMPLETE | 16 tasks | 36-52 |
 | | | **TOTAL** | **82 tasks** | **159-227** |
 
 ### Completed (Reference)
@@ -1496,6 +1516,13 @@ These are REGRESSIONS or INCOMPLETE FIXES that need immediate attention.
 
 ### Batch Summary
 
+**Remaining Work:**
+| Order | Batch | Focus | Tasks | Hours | Key Deliverable |
+|-------|-------|-------|-------|-------|-----------------|
+| **NOW** | **J** | **Critical Bugs** | **12** | **17-26** | **Thread-safety, memory, logic fixes** |
+| NEXT | F | Polish | 10 | 20-28 | Clean docs, stable release |
+
+**Completed Batches (for reference):**
 | Order | Batch | Focus | Tasks | Hours | Key Deliverable |
 |-------|-------|-------|-------|-------|-----------------|
 | 1 | C | Test Infra | 2 | 5-7 | Setup/Teardown, isolation |
@@ -1506,8 +1533,6 @@ These are REGRESSIONS or INCOMPLETE FIXES that need immediate attention.
 | 6 | G | Integration | 5 | 11-16 | AgentRouter, 47 personality rules |
 | 7 | H | Code Review | 14 | 20-30 | Bug fixes from code review |
 | 8 | I | Story Integration | 18 | 36-52 | GameState↔WorldState, NPCs, plots |
-| **9** | **J** | **Critical Bugs** | **12** | **17-26** | **Thread-safety, memory, logic fixes** |
-| 10 | F | Polish | 10 | 20-28 | Clean docs, stable release |
 
 ### Critical Files by Batch
 
