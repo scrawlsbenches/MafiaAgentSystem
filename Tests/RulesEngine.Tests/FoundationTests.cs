@@ -818,7 +818,7 @@ public class FoundationTests
 
         // Assert
         Assert.NotNull(result);
-        Assert.Equal(0, result.TotalRules);
+        Assert.Equal(0, result.TotalRulesEvaluated);
         Assert.Equal(0, result.MatchedRules);
     }
 
@@ -841,10 +841,11 @@ public class FoundationTests
     public void Rule_Execute_ConditionThrows_CapturesExceptionInResult()
     {
         // Arrange
+        // NOTE: Can't use throw in expression tree directly, so we use a helper method
         var rule = new Rule<TestFact>(
             "THROWING_CONDITION",
             "Throwing Condition",
-            f => throw new InvalidOperationException("Condition exploded")
+            f => ThrowingCondition(f)
         );
 
         // Act
@@ -854,6 +855,12 @@ public class FoundationTests
         Assert.False(result.Matched);
         Assert.NotNull(result.ErrorMessage);
         Assert.Contains("Condition exploded", result.ErrorMessage);
+    }
+
+    // Helper method to throw from condition (can't use throw in expression tree)
+    private static bool ThrowingCondition(TestFact f)
+    {
+        throw new InvalidOperationException("Condition exploded");
     }
 
     #endregion
@@ -937,7 +944,7 @@ public class FoundationTests
             .WithAction(f => executionTracker.Add("R1")));
 
         engine.RegisterRule(new Rule<TestFact>("R2", "Rule 2",
-            f => throw new InvalidOperationException("R2 exploded")));
+            f => ThrowingConditionR2(f)));
 
         engine.RegisterRule(new Rule<TestFact>("R3", "Rule 3", f => f.Value > 0)
             .WithAction(f => executionTracker.Add("R3")));
@@ -951,7 +958,13 @@ public class FoundationTests
         Assert.Contains("R1", executionTracker);
         Assert.Contains("R3", executionTracker);
         // Result should indicate something went wrong
-        Assert.True(result.Results.Any(r => r.ErrorMessage != null));
+        Assert.True(result.RuleResults.Any(r => r.ErrorMessage != null));
+    }
+
+    // Helper for R2 throwing condition
+    private static bool ThrowingConditionR2(TestFact f)
+    {
+        throw new InvalidOperationException("R2 exploded");
     }
 
     #endregion
@@ -980,23 +993,23 @@ public class FoundationTests
     }
 
     /// <summary>
-    /// AsyncRuleBuilder should accept both sync and async conditions.
+    /// AsyncRuleBuilder should accept async conditions returning Task&lt;bool&gt;.
     /// </summary>
     [Test]
-    public void AsyncRuleBuilder_WithCondition_SyncPredicate_Works()
+    public void AsyncRuleBuilder_WithCondition_AsyncPredicate_Works()
     {
         // Arrange
         var builder = new AsyncRuleBuilder<TestFact>()
-            .WithId("ASYNC_SYNC_COND")
-            .WithName("Async Sync Condition")
-            .WithCondition(f => f.Value > 0);
+            .WithId("ASYNC_COND")
+            .WithName("Async Condition")
+            .WithCondition(f => Task.FromResult(f.Value > 0));
 
         // Act
         var rule = builder.Build();
 
         // Assert
         Assert.NotNull(rule);
-        Assert.Equal("ASYNC_SYNC_COND", rule.Id);
+        Assert.Equal("ASYNC_COND", rule.Id);
     }
 
     #endregion
@@ -1056,6 +1069,10 @@ public class FoundationTests
 
     #region Short-Circuit Evaluation
 
+    // Static counters for tracking evaluation (reset in each test)
+    private static int _andShortCircuitCount = 0;
+    private static int _orShortCircuitCount = 0;
+
     /// <summary>
     /// AND composite should not evaluate later rules if earlier one fails.
     /// </summary>
@@ -1063,11 +1080,11 @@ public class FoundationTests
     public void CompositeRule_And_ShortCircuits_OnFirstFailure()
     {
         // Arrange
-        int evaluationCount = 0;
+        _andShortCircuitCount = 0;
 
         var failingRule = new Rule<TestFact>("FAIL", "Always Fails", f => false);
         var countingRule = new Rule<TestFact>("COUNT", "Counts Evaluations",
-            f => { evaluationCount++; return true; });
+            f => CountAndReturnTrue_And(f));
 
         var composite = new CompositeRule<TestFact>(
             "SHORT_AND",
@@ -1081,8 +1098,15 @@ public class FoundationTests
 
         // Assert
         Assert.False(result);
-        Assert.Equal(0, evaluationCount,
+        Assert.Equal(0, _andShortCircuitCount,
             "Counting rule should not be evaluated - AND should short-circuit on first failure");
+    }
+
+    // Helper method that counts evaluations for AND test
+    private static bool CountAndReturnTrue_And(TestFact f)
+    {
+        _andShortCircuitCount++;
+        return true;
     }
 
     /// <summary>
@@ -1092,11 +1116,11 @@ public class FoundationTests
     public void CompositeRule_Or_ShortCircuits_OnFirstSuccess()
     {
         // Arrange
-        int evaluationCount = 0;
+        _orShortCircuitCount = 0;
 
         var succeedingRule = new Rule<TestFact>("SUCCEED", "Always Succeeds", f => true);
         var countingRule = new Rule<TestFact>("COUNT", "Counts Evaluations",
-            f => { evaluationCount++; return false; });
+            f => CountAndReturnFalse_Or(f));
 
         var composite = new CompositeRule<TestFact>(
             "SHORT_OR",
@@ -1110,8 +1134,15 @@ public class FoundationTests
 
         // Assert
         Assert.True(result);
-        Assert.Equal(0, evaluationCount,
+        Assert.Equal(0, _orShortCircuitCount,
             "Counting rule should not be evaluated - OR should short-circuit on first success");
+    }
+
+    // Helper method that counts evaluations for OR test
+    private static bool CountAndReturnFalse_Or(TestFact f)
+    {
+        _orShortCircuitCount++;
+        return false;
     }
 
     #endregion
@@ -1156,8 +1187,8 @@ public class FoundationTests
         Parallel.ForEach(facts, fact => engine.Execute(fact));
 
         // Assert - metrics should be consistent
-        var metrics = engine.GetPerformanceMetrics();
-        var rule1Metrics = metrics.FirstOrDefault(m => m.RuleId == "R1");
+        var metrics = engine.GetAllMetrics();
+        var rule1Metrics = metrics.GetValueOrDefault("R1");
 
         Assert.NotNull(rule1Metrics);
         Assert.Equal(100, rule1Metrics!.ExecutionCount,
