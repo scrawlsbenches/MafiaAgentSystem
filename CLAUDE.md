@@ -428,13 +428,9 @@ using var engine = new RulesEngineCore<Order>();
 // Safe for concurrent access
 ```
 
-**⚠️ CAVEAT:** The `TrackPerformance` method has a thread-safety bug - see Known Issues below.
-
 ## Immutable Rules Engine
 
 For lock-free concurrent access, use `ImmutableRulesEngine<T>`:
-
-**⚠️ CAVEAT:** `ImmutableRulesEngine` is missing validation and has the same `TrackPerformance` bug.
 
 ```csharp
 var engine1 = new ImmutableRulesEngine<Order>();
@@ -528,47 +524,3 @@ Key transcripts:
 | `AgentRouting/MIDDLEWARE_EXPLAINED.md` | Middleware concepts tutorial |
 | `AgentRouting/MIDDLEWARE_POTENTIAL.md` | Advanced middleware patterns |
 | `AgentRouting/AgentRouting.MafiaDemo/ARCHITECTURE.md` | Game architecture |
-
-## Known Issues and Caveats
-
-**IMPORTANT:** Review these before modifying related code. See `CODE_REVIEW_BUGS.txt` for full details.
-
-### Critical Thread-Safety Bugs
-
-| Component | Issue | Location |
-|-----------|-------|----------|
-| `RulesEngineCore.TrackPerformance` | `ConcurrentDictionary.AddOrUpdate` mutates existing object in place - race condition | `RulesEngineCore.cs:666-693` |
-| `ImmutableRulesEngine.TrackPerformance` | Same bug as above | `RulesEngineCore.cs:1066-1094` |
-| `ServiceContainer.Resolve` | Singleton factory may be invoked multiple times concurrently | `ServiceContainer.cs:72-84` |
-| `AgentRouter.RegisterAgent` | Not thread-safe - no synchronization | `AgentRouter.cs:62-66` |
-
-### Logic Errors
-
-| Component | Issue |
-|-----------|-------|
-| `CompositeRule.Execute` | Evaluates child rules 2-3 times unnecessarily |
-| `ImmutableRulesEngine.WithRule` | Missing validation (null check, ID/Name validation, duplicate check) |
-
-### Memory/Resource Issues
-
-| Component | Issue |
-|-----------|-------|
-| `MetricsMiddleware._processingTimes` | `ConcurrentBag<long>` grows unboundedly |
-| `StoryGraph._eventLog` | `List<StoryEvent>` grows unboundedly |
-| `DistributedTracingMiddleware._spans` | `ConcurrentBag<TraceSpan>` grows unboundedly |
-
-### Weak Implementations
-
-| Component | Issue |
-|-----------|-------|
-| `SystemClock.Instance` | Static mutable state causes test interference in parallel execution |
-| `ABTestingMiddleware._random` | Uses non-thread-safe `System.Random` - use `Random.Shared` instead |
-| `MessageQueueMiddleware.ProcessBatch` | Uses `async void` - exceptions crash application |
-| `SanitizationMiddleware.SanitizeInput` | Trivially bypassable XSS filter |
-
-### Test Considerations
-
-When writing tests that modify global state:
-- `SystemClock.Instance` - restore after test, or use DI instead
-- `GameTimingOptions.Current` - restore after test
-- Parallel test execution may cause interference with these singletons

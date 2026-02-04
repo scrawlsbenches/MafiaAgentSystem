@@ -23,6 +23,9 @@ Previous organization grouped by *category* (thread safety, MafiaDemo, tests), w
 │ Layer F: POLISH (last)                                  │
 │   Documentation, code cleanup                           │
 ├─────────────────────────────────────────────────────────┤
+│ Layer J: CRITICAL BUG FIXES             ⚠️ NEEDS FIX   │
+│   Thread-safety regressions, memory leaks, logic errors │
+├─────────────────────────────────────────────────────────┤
 │ Layer I: STORY SYSTEM INTEGRATION        ✅ COMPLETE    │
 │   GameState↔WorldState sync, NPC relationships, plots   │
 ├─────────────────────────────────────────────────────────┤
@@ -63,8 +66,9 @@ Previous organization grouped by *category* (thread safety, MafiaDemo, tests), w
 | **G** | Critical Integration | :white_check_mark: **COMPLETE** | 5 tasks | 11-16 |
 | **H** | Code Review Bug Fixes | :white_check_mark: **COMPLETE** | 14 tasks | 20-30 |
 | **I** | **Story System Integration** | :white_check_mark: **COMPLETE** | 16 tasks | 36-52 |
+| **J** | **Critical Bug Fixes** | :warning: **NEEDS FIXING** | 12 tasks | 17-26 |
 | **F** | Polish | :hourglass: In Progress | 11 tasks remaining | 18-26 |
-| | | **TOTAL** | **70 tasks** | **142-201** |
+| | | **TOTAL** | **82 tasks** | **159-227** |
 
 ### Completed (Reference)
 - [x] **Batch G: Critical Integration** (2026-02-03) **COMPLETE**
@@ -1092,6 +1096,203 @@ public class GameWorldBridge
 
 ---
 
+## Batch J: Critical Bug Fixes (Code Review 2026-02-04)
+
+> **Prerequisite**: None - Critical bugs found during deep code review
+> **Priority**: P0/P1 - These bugs were supposedly fixed but still exist or were reintroduced
+> **Full Report**: `/CODE_REVIEW_BUGS.txt`
+> **Status**: NEEDS FIXING
+
+### J-1: Thread-Safety Bugs (4 tasks, 8-12 hours)
+
+#### Task J-1a: Fix TrackPerformance Race Condition (RulesEngineCore)
+**Priority**: P0 - CRITICAL
+**Estimated Time**: 2-3 hours
+**File**: `RulesEngine/RulesEngine/Core/RulesEngineCore.cs:666-693`
+
+**Problem**: `ConcurrentDictionary.AddOrUpdate` mutates existing `RulePerformanceMetrics` object in place:
+```csharp
+(_, existing) =>
+{
+    existing.ExecutionCount++;          // NOT THREAD-SAFE
+    existing.TotalExecutionTime += duration;  // NOT THREAD-SAFE
+    ...
+    return existing;
+}
+```
+The update factory can be called multiple times concurrently, causing data corruption.
+
+**Subtasks**:
+- [ ] Use Interlocked operations OR create new immutable metrics object in update factory
+- [ ] Add concurrency test to verify fix
+- [ ] Apply same fix to ImmutableRulesEngine.TrackPerformance (lines 1066-1094)
+
+---
+
+#### Task J-1b: Fix ServiceContainer Singleton Race Condition
+**Priority**: P0 - CRITICAL
+**Estimated Time**: 2-3 hours
+**File**: `AgentRouting/AgentRouting/DependencyInjection/ServiceContainer.cs:72-84`
+
+**Problem**: Multiple threads can invoke the factory simultaneously, creating multiple "singleton" instances:
+```csharp
+var instance = (TService)descriptor.Factory(this);  // Called by multiple threads
+if (_singletons.TryAdd(type, instance))
+    return instance;
+return (TService)_singletons[type];  // Discard extra instances
+```
+
+**Subtasks**:
+- [ ] Use double-checked locking OR Lazy<T> for singleton creation
+- [ ] Add concurrency test to verify only one instance created
+- [ ] Fix same issue in ServiceScope.Resolve (lines 210-213)
+
+---
+
+#### Task J-1c: Fix AgentRouter.RegisterAgent Thread-Safety
+**Priority**: P1 - HIGH
+**Estimated Time**: 1-2 hours
+**File**: `AgentRouting/AgentRouting/Core/AgentRouter.cs:62-66`
+
+**Problem**: Registration operations are not synchronized:
+```csharp
+_agents.Add(agent);           // Not thread-safe
+_agentById[agent.Id] = agent; // Not thread-safe
+```
+
+**Subtasks**:
+- [ ] Add lock around registration operations OR use concurrent collections properly
+- [ ] Add concurrency test for simultaneous registrations
+
+---
+
+#### Task J-1d: Fix ABTestingMiddleware Non-Thread-Safe Random
+**Priority**: P1 - HIGH
+**Estimated Time**: 1 hour
+**File**: `AgentRouting/AgentRouting/Middleware/AdvancedMiddleware.cs:386, 406`
+
+**Problem**: `System.Random` is not thread-safe. Concurrent calls corrupt internal state.
+
+**Subtasks**:
+- [ ] Replace `new Random()` with `Random.Shared` (thread-safe in .NET 6+)
+
+---
+
+### J-2: Logic Errors (3 tasks, 4-6 hours)
+
+#### Task J-2a: Fix CompositeRule.Execute Double Evaluation
+**Priority**: P1 - HIGH
+**Estimated Time**: 2-3 hours
+**File**: `RulesEngine/RulesEngine/Core/Rule.cs:262-292`
+
+**Problem**: Child rules are evaluated 2-3 times:
+1. In `Evaluate(fact)` call (line 266)
+2. Explicitly in foreach loop (line 274)
+3. Inside `Execute(fact)` which calls `Evaluate` again
+
+**Subtasks**:
+- [ ] Cache evaluation results or refactor to evaluate once
+- [ ] Add performance test to verify improvement
+
+---
+
+#### Task J-2b: Fix ImmutableRulesEngine Missing Validation
+**Priority**: P1 - HIGH
+**Estimated Time**: 1-2 hours
+**File**: `RulesEngine/RulesEngine/Core/RulesEngineCore.cs:913-926`
+
+**Problem**: `ImmutableRulesEngine.WithRule()` doesn't validate:
+- Rule is not null
+- Rule.Id is not null/empty
+- Rule.Name is not null/empty
+- No duplicate rule IDs
+
+**Subtasks**:
+- [ ] Add validation consistent with RulesEngineCore.RegisterRule()
+- [ ] Add tests for validation
+
+---
+
+#### Task J-2c: Fix MessageQueueMiddleware async void
+**Priority**: P0 - CRITICAL
+**Estimated Time**: 1 hour
+**File**: `AgentRouting/AgentRouting/Middleware/AdvancedMiddleware.cs:347`
+
+**Problem**: `async void ProcessBatch(object? state)` - exceptions crash application.
+
+**Subtasks**:
+- [ ] Change to async Task with proper exception handling
+- [ ] Wrap Timer callback appropriately
+
+---
+
+### J-3: Memory/Resource Issues (3 tasks, 3-5 hours)
+
+#### Task J-3a: Fix MetricsMiddleware Unbounded Growth
+**Priority**: P1 - HIGH
+**Estimated Time**: 1-2 hours
+**File**: `AgentRouting/AgentRouting/Middleware/CommonMiddleware.cs:574-617`
+
+**Problem**: `ConcurrentBag<long> _processingTimes` grows unboundedly.
+
+**Subtasks**:
+- [ ] Implement ring buffer OR periodic cleanup OR reservoir sampling
+- [ ] Add test for memory bounds
+
+---
+
+#### Task J-3b: Fix StoryGraph Event Log Unbounded Growth
+**Priority**: P2 - MEDIUM
+**Estimated Time**: 1 hour
+**File**: `AgentRouting/AgentRouting.MafiaDemo/Story/Narrative/StoryGraph.cs:23`
+
+**Problem**: `List<StoryEvent> _eventLog` grows unboundedly.
+
+**Subtasks**:
+- [ ] Add max size and eviction (similar to GameState.EventLog)
+
+---
+
+#### Task J-3c: Fix DistributedTracingMiddleware Unbounded Spans
+**Priority**: P2 - MEDIUM
+**Estimated Time**: 1-2 hours
+**File**: `AgentRouting/AgentRouting/Middleware/AdvancedMiddleware.cs:17, 75`
+
+**Problem**: `ConcurrentBag<TraceSpan> _spans` grows unboundedly.
+
+**Subtasks**:
+- [ ] Implement span rotation OR max size OR external export with cleanup
+
+---
+
+### J-4: Weak Implementations (2 tasks, 2-3 hours)
+
+#### Task J-4a: Fix SystemClock Static Mutable State
+**Priority**: P2 - MEDIUM
+**Estimated Time**: 1-2 hours
+**File**: `AgentRouting/AgentRouting/Infrastructure/SystemClock.cs:23`
+
+**Problem**: Static mutable `Instance` causes test interference in parallel execution.
+
+**Subtasks**:
+- [ ] Use AsyncLocal<ISystemClock> OR proper DI pattern
+- [ ] Update tests to use new pattern
+
+---
+
+#### Task J-4b: Fix SanitizationMiddleware Incomplete XSS Filter
+**Priority**: P2 - MEDIUM
+**Estimated Time**: 1 hour
+**File**: `AgentRouting/AgentRouting/Middleware/AdvancedMiddleware.cs:248-259`
+
+**Problem**: Current filter is trivially bypassable (case variations, encoding, nesting).
+
+**Subtasks**:
+- [ ] Use proper HTML encoding OR allowlist approach
+- [ ] Add test cases for bypass attempts
+
+---
+
 ## Batch F: Polish (14 tasks total)
 
 > **Prerequisite**: Batches D and E complete
@@ -1285,8 +1486,13 @@ C (Test Infra) ──► A (Foundation) ──┬──► B (Resources) ──�
                                                                                                    │
                                                                        I (Story System) ◄─────────┤
                                                                                                    │
-                                                                       F (Polish) ◄────────────────┘
+                                                           ┌───► J (Critical Bugs) ◄───────────────┤
+                                                           │                                       │
+                                                           └───► F (Polish) ◄──────────────────────┘
 ```
+
+**NOTE**: Batch J contains bugs that were supposedly fixed in earlier batches but still exist.
+These are REGRESSIONS or INCOMPLETE FIXES that need immediate attention.
 
 ### Batch Summary
 
@@ -1299,8 +1505,9 @@ C (Test Infra) ──► A (Foundation) ──┬──► B (Resources) ──�
 | 5 | E | Enhancement | 15 | 35-47 | DI, interfaces, more tests |
 | 6 | G | Integration | 5 | 11-16 | AgentRouter, 47 personality rules |
 | 7 | H | Code Review | 14 | 20-30 | Bug fixes from code review |
-| 8 | **I** | **Story Integration** | **18** | **36-52** | **GameState↔WorldState, NPCs, plots** |
-| 9 | F | Polish | 10 | 20-28 | Clean docs, stable release |
+| 8 | I | Story Integration | 18 | 36-52 | GameState↔WorldState, NPCs, plots |
+| **9** | **J** | **Critical Bugs** | **12** | **17-26** | **Thread-safety, memory, logic fixes** |
+| 10 | F | Polish | 10 | 20-28 | Clean docs, stable release |
 
 ### Critical Files by Batch
 
@@ -1314,8 +1521,9 @@ C (Test Infra) ──► A (Foundation) ──┬──► B (Resources) ──�
 | G | `GameEngine.cs`, `GameRulesEngine.Setup.cs` |
 | H | `GameEngine.cs`, `GameRulesEngine.cs`, `MissionSystem.cs`, `PlayerAgent.cs`, `RuleContexts.cs` |
 | I | `Story/WorldState.cs`, `Story/StoryGraph.cs`, `Story/IntelSystem.cs`, `MissionSystem.cs`, `Autonomous/*.cs` |
+| J | `RulesEngineCore.cs`, `ServiceContainer.cs`, `AgentRouter.cs`, `AdvancedMiddleware.cs`, `CommonMiddleware.cs` |
 | F | All markdown documentation |
 
 ---
 
-**Last Updated**: 2026-02-04 (Batch F-3 complete, Story System bugs fixed, 1,977 tests passing)
+**Last Updated**: 2026-02-04 (Batch J added - Critical bug fixes from deep code review)
