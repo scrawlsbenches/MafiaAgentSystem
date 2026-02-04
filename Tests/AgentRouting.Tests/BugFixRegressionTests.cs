@@ -108,6 +108,19 @@ public class AgentRoutingBugFixRegressionTests
         Assert.Equal(1, service2Count);
     }
 
+    [Test]
+    public void J1b_ServiceContainer_SingletonFactoryThrows_ExceptionPropagates()
+    {
+        // Edge case: What happens when singleton factory throws?
+        using var container = new ServiceContainer();
+        container.AddSingleton<ITestService>(c =>
+        {
+            throw new InvalidOperationException("Factory failed");
+        });
+
+        Assert.Throws<InvalidOperationException>(() => container.Resolve<ITestService>());
+    }
+
     #endregion
 
     #region J-1c: AgentRouter Thread-Safety Tests
@@ -331,6 +344,58 @@ public class AgentRoutingBugFixRegressionTests
 
         // Success rate should be ~75%
         Assert.True(snapshot.SuccessRate > 0.7 && snapshot.SuccessRate < 0.8);
+    }
+
+    [Test]
+    public async Task J3a_MetricsMiddleware_ConcurrentReadsAndWrites_NoCorruption()
+    {
+        // Edge case: Reading snapshot while writing concurrently
+        var middleware = new MetricsMiddleware();
+        var cts = new CancellationTokenSource();
+        var snapshots = new ConcurrentBag<MetricsSnapshot>();
+
+        // Writer task
+        var writerTask = Task.Run(async () =>
+        {
+            for (int i = 0; i < 1000 && !cts.Token.IsCancellationRequested; i++)
+            {
+                var message = new AgentMessage
+                {
+                    Id = i.ToString(),
+                    SenderId = "test",
+                    Subject = "Test",
+                    Content = "Test"
+                };
+
+                await middleware.InvokeAsync(message, (msg, ct) =>
+                    Task.FromResult(MessageResult.Ok("ok")), CancellationToken.None);
+            }
+        });
+
+        // Reader task
+        var readerTask = Task.Run(async () =>
+        {
+            while (!cts.Token.IsCancellationRequested)
+            {
+                var snapshot = middleware.GetSnapshot();
+                snapshots.Add(snapshot);
+                await Task.Delay(1);
+            }
+        });
+
+        await writerTask;
+        cts.Cancel();
+
+        try { await readerTask; } catch (OperationCanceledException) { }
+
+        // All snapshots should be valid (no corrupted data)
+        foreach (var snapshot in snapshots)
+        {
+            Assert.True(snapshot.TotalMessages >= 0);
+            Assert.True(snapshot.SuccessCount >= 0);
+            Assert.True(snapshot.FailureCount >= 0);
+            Assert.True(snapshot.AverageProcessingTimeMs >= 0);
+        }
     }
 
     #endregion

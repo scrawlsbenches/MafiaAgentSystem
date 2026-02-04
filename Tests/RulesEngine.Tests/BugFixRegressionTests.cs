@@ -247,5 +247,79 @@ public class BugFixRegressionTests
         Assert.Throws<RuleValidationException>(() => engine.WithRules(rules));
     }
 
+    [Test]
+    public void J2b_ImmutableEngine_WithRules_EmptyArray_ReturnsUnchangedEngine()
+    {
+        // Edge case: Empty array should work without errors
+        var engine = new ImmutableRulesEngine<int>()
+            .WithRule(new Rule<int>("R1", "Rule 1", x => true));
+
+        var newEngine = engine.WithRules(Array.Empty<IRule<int>>());
+
+        Assert.Equal(1, newEngine.GetRules().Count);
+    }
+
+    [Test]
+    public void J2b_ImmutableEngine_WithRules_ValidRules_AddsAll()
+    {
+        var engine = new ImmutableRulesEngine<int>();
+        var rules = new IRule<int>[]
+        {
+            new Rule<int>("R1", "Rule 1", x => x > 5),
+            new Rule<int>("R2", "Rule 2", x => x > 10),
+            new Rule<int>("R3", "Rule 3", x => x > 15)
+        };
+
+        var newEngine = engine.WithRules(rules);
+
+        Assert.Equal(3, newEngine.GetRules().Count);
+    }
+
+    #endregion
+
+    #region J-2a: CompositeRule Additional Edge Cases
+
+    [Test]
+    public void J2a_CompositeRule_EmptyRules_And_ReturnsTrue()
+    {
+        // Edge case: Empty rules collection with AND operator
+        // Uses vacuous truth: AND of zero conditions is true (all zero conditions are met)
+        var composite = new CompositeRule<int>(
+            "empty-and", "Empty And",
+            CompositeOperator.And,
+            Array.Empty<IRule<int>>());
+
+        var result = composite.Execute(10);
+        Assert.True(result.Matched); // Vacuous truth
+    }
+
+    [Test]
+    public void J2a_CompositeRule_EmptyRules_Or_ReturnsFalse()
+    {
+        // Edge case: Empty rules collection with OR operator
+        var composite = new CompositeRule<int>(
+            "empty-or", "Empty Or",
+            CompositeOperator.Or,
+            Array.Empty<IRule<int>>());
+
+        // OR with no rules should return false
+        var result = composite.Execute(10);
+        Assert.False(result.Matched);
+    }
+
+    [Test]
+    public void J2a_CompositeRule_Not_WithAllNonMatching_ReturnsTrue()
+    {
+        // Edge case: NOT operator when child doesn't match
+        var nonMatching = new Rule<int>("R1", "Non-matching", x => x > 100);
+        var composite = new CompositeRule<int>(
+            "not-composite", "Not Composite",
+            CompositeOperator.Not,
+            new IRule<int>[] { nonMatching });
+
+        var result = composite.Execute(10); // 10 is not > 100, so NOT should return true
+        Assert.True(result.Matched);
+    }
+
     #endregion
 }
