@@ -114,11 +114,17 @@ namespace RulesEngine.Linq
         protected override Expression VisitMember(MemberExpression node)
         {
             // Detect closure captures
-            if (!_capabilities.SupportsClosures)
+            if (node.Expression is ConstantExpression ce && !IsPrimitiveType(ce.Type))
             {
-                if (node.Expression is ConstantExpression ce && !IsPrimitiveType(ce.Type))
+                if (!_capabilities.SupportsClosures)
                 {
                     _errors!.Add($"Closure capture of '{node.Member.Name}' not supported");
+                }
+
+                // Check if the captured member is a queryable (subquery via closure)
+                if (!_capabilities.SupportsSubqueries && IsQueryableType(node.Type))
+                {
+                    _errors!.Add($"Subquery reference to '{node.Member.Name}' not supported");
                 }
             }
 

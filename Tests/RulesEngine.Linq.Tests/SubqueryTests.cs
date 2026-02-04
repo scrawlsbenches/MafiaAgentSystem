@@ -27,16 +27,23 @@ namespace RulesEngine.Linq.Tests
             public decimal Total { get; set; }
         }
 
-        private class Category
+        private class OrderItem
+        {
+            public string ProductId { get; set; } = string.Empty;
+            public int Quantity { get; set; }
+            public decimal UnitPrice { get; set; }
+        }
+
+        private class OrderWithItems
         {
             public string Id { get; set; } = string.Empty;
-            public string Name { get; set; } = string.Empty;
-            public bool IsActive { get; set; }
+            public decimal Total { get; set; }
+            public List<OrderItem> Items { get; set; } = new();
         }
 
         #endregion
 
-        #region Capability Tests
+        #region ExpressionCapabilities Default Values
 
         [Test]
         public void ExpressionCapabilities_SupportsSubqueries_DefaultsToTrue()
@@ -46,43 +53,54 @@ namespace RulesEngine.Linq.Tests
         }
 
         [Test]
-        public void ExpressionCapabilities_CanDisableSubqueries()
+        public void ExpressionCapabilities_SupportsClosures_DefaultsToTrue()
         {
-            var capabilities = new ExpressionCapabilities { SupportsSubqueries = false };
-            Assert.False(capabilities.SupportsSubqueries);
+            var capabilities = new ExpressionCapabilities();
+            Assert.True(capabilities.SupportsClosures);
         }
 
         [Test]
-        public void InMemoryProvider_DefaultCapabilities_SupportsSubqueries()
+        public void ExpressionCapabilities_SupportsMethodCalls_DefaultsToTrue()
         {
-            var provider = new InMemoryRuleProvider();
-            Assert.True(provider.GetCapabilities().SupportsSubqueries);
-        }
-
-        [Test]
-        public void InMemoryProvider_CustomCapabilities_RespectsSettings()
-        {
-            var capabilities = new ExpressionCapabilities { SupportsSubqueries = false };
-            var provider = new InMemoryRuleProvider(capabilities);
-            Assert.False(provider.GetCapabilities().SupportsSubqueries);
+            var capabilities = new ExpressionCapabilities();
+            Assert.True(capabilities.SupportsMethodCalls);
         }
 
         #endregion
 
-        #region Subquery Validation Tests
+        #region InMemoryRuleProvider Capability Configuration
 
         [Test]
-        public void Validator_WithSubqueriesEnabled_AcceptsQueryableReference()
+        public void InMemoryProvider_DefaultConstructor_HasAllCapabilitiesEnabled()
         {
-            var validator = new ExpressionValidator();
-            var capabilities = new ExpressionCapabilities { SupportsSubqueries = true };
+            var provider = new InMemoryRuleProvider();
+            var caps = provider.GetCapabilities();
 
-            // Simple expression without subquery should pass
-            Expression<Func<Order, bool>> expr = o => o.Total > 100;
-            var errors = validator.GetErrors(expr, capabilities);
-
-            Assert.Equal(0, errors.Count);
+            Assert.True(caps.SupportsSubqueries);
+            Assert.True(caps.SupportsClosures);
+            Assert.True(caps.SupportsMethodCalls);
         }
+
+        [Test]
+        public void InMemoryProvider_CustomCapabilities_ReturnsExactCapabilities()
+        {
+            var capabilities = new ExpressionCapabilities
+            {
+                SupportsSubqueries = false,
+                SupportsClosures = false,
+                SupportsMethodCalls = true
+            };
+            var provider = new InMemoryRuleProvider(capabilities);
+            var caps = provider.GetCapabilities();
+
+            Assert.False(caps.SupportsSubqueries);
+            Assert.False(caps.SupportsClosures);
+            Assert.True(caps.SupportsMethodCalls);
+        }
+
+        #endregion
+
+        #region Closure Capability Enforcement
 
         [Test]
         public void Validator_WithClosuresDisabled_RejectsClosureCapture()
@@ -111,114 +129,41 @@ namespace RulesEngine.Linq.Tests
             Assert.Equal(0, errors.Count);
         }
 
-        #endregion
-
-        #region Cross-Set Subquery Tests
-
         [Test]
-        public void Session_CanQueryMultipleFactTypes()
+        public void Validator_WithClosuresDisabled_AcceptsLiteralValues()
         {
-            using var context = new RulesContext();
+            var validator = new ExpressionValidator();
+            var capabilities = new ExpressionCapabilities { SupportsClosures = false };
 
-            // Add rules for both types
-            var orderRules = context.GetRuleSet<Order>();
-            orderRules.Add(new Rule<Order>("HighValue", "High value order", o => o.Total > 500));
+            // Literal 100m is not a closure - it's a constant
+            Expression<Func<Order, bool>> expr = o => o.Total > 100m;
+            var errors = validator.GetErrors(expr, capabilities);
 
-            var productRules = context.GetRuleSet<Product>();
-            productRules.Add(new Rule<Product>("Expensive", "Expensive product", p => p.Price > 100));
-
-            using var session = context.CreateSession();
-
-            // Insert facts of different types
-            session.Insert(new Order { Id = "O1", Total = 600 });
-            session.Insert(new Order { Id = "O2", Total = 200 });
-            session.Insert(new Product { Id = "P1", Price = 150 });
-            session.Insert(new Product { Id = "P2", Price = 50 });
-
-            // Evaluate orders
-            var orderResults = session.Evaluate<Order>();
-            Assert.Equal(1, orderResults.FactsWithMatches.Count);
-            Assert.Equal("O1", orderResults.FactsWithMatches[0].Id);
-
-            // Evaluate products
-            var productResults = session.Evaluate<Product>();
-            Assert.Equal(1, productResults.FactsWithMatches.Count);
-            Assert.Equal("P1", productResults.FactsWithMatches[0].Id);
+            Assert.Equal(0, errors.Count);
         }
 
         [Test]
-        public void Session_EvaluateAll_IncludesAllFactTypes()
+        public void Provider_WithClosuresDisabled_ThrowsOnClosureExpression()
         {
-            using var context = new RulesContext();
-
-            var orderRules = context.GetRuleSet<Order>();
-            orderRules.Add(new Rule<Order>("HighValue", "High value order", o => o.Total > 500));
-
-            var productRules = context.GetRuleSet<Product>();
-            productRules.Add(new Rule<Product>("Expensive", "Expensive product", p => p.Price > 100));
-
-            using var session = context.CreateSession();
-
-            session.Insert(new Order { Id = "O1", Total = 600 });
-            session.Insert(new Product { Id = "P1", Price = 150 });
-
-            var results = session.Evaluate();
-
-            Assert.Equal(2, results.TotalFactsEvaluated);
-            Assert.Equal(2, results.TotalMatches);
-        }
-
-        #endregion
-
-        #region Provider with Restricted Capabilities
-
-        [Test]
-        public void Context_WithRestrictedProvider_EnforcesCapabilities()
-        {
-            var capabilities = new ExpressionCapabilities
-            {
-                SupportsClosures = false,
-                SupportsSubqueries = true
-            };
+            var capabilities = new ExpressionCapabilities { SupportsClosures = false };
             var provider = new InMemoryRuleProvider(capabilities);
-            using var context = new RulesContext(provider);
 
-            var rules = context.GetRuleSet<Order>();
+            var threshold = 100m;
+            Expression<Func<Order, bool>> expr = o => o.Total > threshold;
 
-            // This should work - no closure
-            var rule1 = new Rule<Order>("Simple", "Simple rule", o => o.Total > 100);
-            rules.Add(rule1);
-
-            Assert.Equal(1, rules.Count);
-        }
-
-        [Test]
-        public void RulesContext_AcceptsCustomProvider()
-        {
-            var capabilities = new ExpressionCapabilities
-            {
-                SupportsClosures = true,
-                SupportsMethodCalls = true,
-                SupportsSubqueries = true
-            };
-            var provider = new InMemoryRuleProvider(capabilities);
-            using var context = new RulesContext(provider);
-
-            Assert.True(context.Provider.GetCapabilities().SupportsSubqueries);
+            Assert.Throws<InvalidOperationException>(() => provider.ValidateExpression(expr));
         }
 
         #endregion
 
-        #region Collection Subqueries (Navigation Properties)
+        #region Collection Navigation Subqueries
 
         [Test]
-        public void Rule_WithCollectionAny_IsValidSubquery()
+        public void Validator_CollectionAny_AcceptedWithSubqueriesEnabled()
         {
-            using var context = new RulesContext();
             var validator = new ExpressionValidator();
             var capabilities = new ExpressionCapabilities { SupportsSubqueries = true };
 
-            // This is a subquery on a collection property
             Expression<Func<OrderWithItems, bool>> expr =
                 o => o.Items.Any(i => i.Quantity > 10);
 
@@ -227,7 +172,7 @@ namespace RulesEngine.Linq.Tests
         }
 
         [Test]
-        public void Rule_WithCollectionAll_IsValidSubquery()
+        public void Validator_CollectionAll_AcceptedWithSubqueriesEnabled()
         {
             var validator = new ExpressionValidator();
             var capabilities = new ExpressionCapabilities { SupportsSubqueries = true };
@@ -240,7 +185,7 @@ namespace RulesEngine.Linq.Tests
         }
 
         [Test]
-        public void Rule_WithNestedCollectionQuery_IsValid()
+        public void Validator_CollectionWhereSum_AcceptedWithSubqueriesEnabled()
         {
             var validator = new ExpressionValidator();
             var capabilities = new ExpressionCapabilities { SupportsSubqueries = true };
@@ -252,56 +197,304 @@ namespace RulesEngine.Linq.Tests
             Assert.Equal(0, errors.Count);
         }
 
-        private class OrderItem
+        [Test]
+        public void Validator_CollectionCount_AcceptedWithSubqueriesEnabled()
         {
-            public string ProductId { get; set; } = string.Empty;
-            public int Quantity { get; set; }
-            public decimal UnitPrice { get; set; }
-        }
+            var validator = new ExpressionValidator();
+            var capabilities = new ExpressionCapabilities { SupportsSubqueries = true };
 
-        private class OrderWithItems
-        {
-            public string Id { get; set; } = string.Empty;
-            public List<OrderItem> Items { get; set; } = new();
+            Expression<Func<OrderWithItems, bool>> expr =
+                o => o.Items.Count(i => i.Quantity > 0) >= 3;
+
+            var errors = validator.GetErrors(expr, capabilities);
+            Assert.Equal(0, errors.Count);
         }
 
         #endregion
 
-        #region Capability Enforcement Integration
+        #region Cross-Set Subquery Detection
 
         [Test]
-        public void LinqCompatibleConstraint_UsesDefaultCapabilities()
+        public void Validator_QueryableConstant_DetectedAsSubquery()
+        {
+            var validator = new ExpressionValidator();
+            var capabilities = new ExpressionCapabilities { SupportsSubqueries = false };
+
+            // Create a queryable that would be captured as a constant
+            var products = new List<Product>().AsQueryable();
+
+            // This expression references an external IQueryable - a true subquery
+            Expression<Func<Order, bool>> expr =
+                o => products.Any(p => p.Id == o.ProductId);
+
+            var errors = validator.GetErrors(expr, capabilities);
+
+            Assert.True(errors.Count > 0);
+            Assert.True(errors.Any(e => e.Contains("Subquery") || e.Contains("subquery")));
+        }
+
+        [Test]
+        public void Validator_QueryableConstant_AcceptedWhenSubqueriesEnabled()
+        {
+            var validator = new ExpressionValidator();
+            var capabilities = new ExpressionCapabilities { SupportsSubqueries = true };
+
+            var products = new List<Product>().AsQueryable();
+
+            Expression<Func<Order, bool>> expr =
+                o => products.Any(p => p.Id == o.ProductId);
+
+            var errors = validator.GetErrors(expr, capabilities);
+
+            Assert.Equal(0, errors.Count);
+        }
+
+        #endregion
+
+        #region Session Multi-Type Evaluation
+
+        [Test]
+        public void Session_CanInsertAndEvaluateMultipleFactTypes()
         {
             using var context = new RulesContext();
-            context.ConfigureRuleSet<Order>()
-                .RequireLinqCompatible()
-                .Build();
+
+            var orderRules = context.GetRuleSet<Order>();
+            orderRules.Add(new Rule<Order>("HighValue", "High value order", o => o.Total > 500));
+
+            var productRules = context.GetRuleSet<Product>();
+            productRules.Add(new Rule<Product>("Expensive", "Expensive product", p => p.Price > 100));
+
+            using var session = context.CreateSession();
+
+            session.Insert(new Order { Id = "O1", Total = 600 });
+            session.Insert(new Order { Id = "O2", Total = 200 });
+            session.Insert(new Product { Id = "P1", Price = 150 });
+            session.Insert(new Product { Id = "P2", Price = 50 });
+
+            var orderResults = session.Evaluate<Order>();
+            Assert.Equal(1, orderResults.FactsWithMatches.Count);
+            Assert.Equal("O1", orderResults.FactsWithMatches[0].Id);
+            Assert.Equal(1, orderResults.FactsWithoutMatches.Count);
+            Assert.Equal("O2", orderResults.FactsWithoutMatches[0].Id);
+
+            var productResults = session.Evaluate<Product>();
+            Assert.Equal(1, productResults.FactsWithMatches.Count);
+            Assert.Equal("P1", productResults.FactsWithMatches[0].Id);
+        }
+
+        [Test]
+        public void Session_EvaluateAll_AggregatesAllFactTypes()
+        {
+            using var context = new RulesContext();
+
+            context.GetRuleSet<Order>()
+                .Add(new Rule<Order>("HighValue", "High value", o => o.Total > 500));
+
+            context.GetRuleSet<Product>()
+                .Add(new Rule<Product>("Expensive", "Expensive", p => p.Price > 100));
+
+            using var session = context.CreateSession();
+
+            session.Insert(new Order { Id = "O1", Total = 600 });
+            session.Insert(new Product { Id = "P1", Price = 150 });
+
+            var results = session.Evaluate();
+
+            Assert.Equal(2, results.TotalFactsEvaluated);
+            Assert.Equal(2, results.TotalMatches);
+            Assert.False(results.HasErrors);
+        }
+
+        #endregion
+
+        #region Provider Capability Enforcement Through Context
+
+        [Test]
+        public void Context_WithRestrictedClosures_RejectsClosureRule()
+        {
+            var capabilities = new ExpressionCapabilities { SupportsClosures = false };
+            var provider = new InMemoryRuleProvider(capabilities);
+            using var context = new RulesContext(provider);
+
+            var threshold = 500m;
+
+            // Rule with closure should fail validation when used
+            var rule = new Rule<Order>("WithClosure", "Has closure", o => o.Total > threshold);
+
+            // The rule itself compiles, but provider validation should catch it
+            // when the expression is validated through the provider
+            Assert.Throws<InvalidOperationException>(() =>
+                provider.ValidateExpression(rule.Condition));
+        }
+
+        [Test]
+        public void Context_WithRestrictedClosures_AcceptsLiteralRule()
+        {
+            var capabilities = new ExpressionCapabilities { SupportsClosures = false };
+            var provider = new InMemoryRuleProvider(capabilities);
+            using var context = new RulesContext(provider);
 
             var rules = context.GetRuleSet<Order>();
 
-            // Simple rule should work
-            var rule = new Rule<Order>("Simple", "Test", o => o.Total > 100);
+            // Rule without closure should work
+            var rule = new Rule<Order>("NoClosures", "No closures", o => o.Total > 500);
             rules.Add(rule);
 
             Assert.Equal(1, rules.Count);
         }
 
+        #endregion
+
+        #region Method Call Capability Enforcement
+
         [Test]
-        public void Provider_ValidatesExpressionWithCapabilities()
+        public void Validator_StringContains_AcceptedWithMethodCallsEnabled()
         {
+            var validator = new ExpressionValidator();
+            var capabilities = new ExpressionCapabilities { SupportsMethodCalls = true };
+
+            Expression<Func<Product, bool>> expr = p => p.Name.Contains("test");
+            var errors = validator.GetErrors(expr, capabilities);
+
+            Assert.Equal(0, errors.Count);
+        }
+
+        [Test]
+        public void Validator_CustomMethod_RejectedEvenWithMethodCallsEnabled()
+        {
+            var validator = new ExpressionValidator();
+            var capabilities = new ExpressionCapabilities { SupportsMethodCalls = true };
+
+            Expression<Func<Order, bool>> expr = o => IsHighValue(o.Total);
+            var errors = validator.GetErrors(expr, capabilities);
+
+            Assert.True(errors.Count > 0);
+            Assert.True(errors.Any(e => e.Contains("not translatable")));
+        }
+
+        private static bool IsHighValue(decimal total) => total > 1000;
+
+        #endregion
+
+        #region Combined Capability Scenarios
+
+        [Test]
+        public void Validator_AllCapabilitiesDisabled_RejectsComplexExpression()
+        {
+            var validator = new ExpressionValidator();
+            var capabilities = new ExpressionCapabilities
+            {
+                SupportsClosures = false,
+                SupportsSubqueries = false,
+                SupportsMethodCalls = true // Keep method calls to test closures specifically
+            };
+
+            var minPrice = 100m;
+            Expression<Func<Product, bool>> expr =
+                p => p.Price > minPrice && p.Name.Contains("Premium");
+
+            var errors = validator.GetErrors(expr, capabilities);
+
+            // Should have closure error
+            Assert.True(errors.Count > 0);
+            Assert.True(errors.Any(e => e.Contains("Closure")));
+        }
+
+        [Test]
+        public void Validator_AllCapabilitiesEnabled_AcceptsComplexExpression()
+        {
+            var validator = new ExpressionValidator();
             var capabilities = new ExpressionCapabilities
             {
                 SupportsClosures = true,
-                SupportsMethodCalls = true,
-                SupportsSubqueries = true
+                SupportsSubqueries = true,
+                SupportsMethodCalls = true
             };
-            var provider = new InMemoryRuleProvider(capabilities);
 
-            // Should not throw
-            Expression<Func<Order, bool>> expr = o => o.Total > 100;
-            provider.ValidateExpression(expr);
+            var minPrice = 100m;
+            Expression<Func<Product, bool>> expr =
+                p => p.Price > minPrice && p.Name.Contains("Premium");
 
-            Assert.True(true); // If we get here, validation passed
+            var errors = validator.GetErrors(expr, capabilities);
+
+            Assert.Equal(0, errors.Count);
+        }
+
+        #endregion
+
+        #region Rule Evaluation with Collection Subqueries
+
+        [Test]
+        public void Rule_WithCollectionAny_EvaluatesCorrectly()
+        {
+            using var context = new RulesContext();
+            var rules = context.GetRuleSet<OrderWithItems>();
+
+            rules.Add(new Rule<OrderWithItems>("HasBulkItem", "Has bulk item",
+                o => o.Items.Any(i => i.Quantity > 100)));
+
+            using var session = context.CreateSession();
+
+            session.Insert(new OrderWithItems
+            {
+                Id = "O1",
+                Items = new List<OrderItem>
+                {
+                    new() { ProductId = "P1", Quantity = 150 },
+                    new() { ProductId = "P2", Quantity = 10 }
+                }
+            });
+
+            session.Insert(new OrderWithItems
+            {
+                Id = "O2",
+                Items = new List<OrderItem>
+                {
+                    new() { ProductId = "P3", Quantity = 5 }
+                }
+            });
+
+            var results = session.Evaluate<OrderWithItems>();
+
+            Assert.Equal(1, results.FactsWithMatches.Count);
+            Assert.Equal("O1", results.FactsWithMatches[0].Id);
+            Assert.Equal(1, results.FactsWithoutMatches.Count);
+            Assert.Equal("O2", results.FactsWithoutMatches[0].Id);
+        }
+
+        [Test]
+        public void Rule_WithCollectionSum_EvaluatesCorrectly()
+        {
+            using var context = new RulesContext();
+            var rules = context.GetRuleSet<OrderWithItems>();
+
+            rules.Add(new Rule<OrderWithItems>("HighValueOrder", "Total items value > 1000",
+                o => o.Items.Sum(i => i.Quantity * i.UnitPrice) > 1000));
+
+            using var session = context.CreateSession();
+
+            session.Insert(new OrderWithItems
+            {
+                Id = "O1",
+                Items = new List<OrderItem>
+                {
+                    new() { Quantity = 10, UnitPrice = 150 } // 1500 total
+                }
+            });
+
+            session.Insert(new OrderWithItems
+            {
+                Id = "O2",
+                Items = new List<OrderItem>
+                {
+                    new() { Quantity = 5, UnitPrice = 50 } // 250 total
+                }
+            });
+
+            var results = session.Evaluate<OrderWithItems>();
+
+            Assert.Equal(1, results.FactsWithMatches.Count);
+            Assert.Equal("O1", results.FactsWithMatches[0].Id);
         }
 
         #endregion
