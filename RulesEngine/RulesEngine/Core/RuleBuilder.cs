@@ -123,57 +123,46 @@ public class RuleBuilder<T>
         return rule;
     }
     
+    /// <summary>
+    /// Combines two expressions with AND using Expression.Invoke.
+    /// This approach correctly handles closures by invoking the original
+    /// expressions rather than replacing parameters (which can miss closures).
+    /// </summary>
     private static Expression<Func<T, bool>> CombineWithAnd(
         Expression<Func<T, bool>> left,
         Expression<Func<T, bool>> right)
     {
         var parameter = Expression.Parameter(typeof(T), "x");
-        
-        var leftBody = ReplaceParameter(left.Body, left.Parameters[0], parameter);
-        var rightBody = ReplaceParameter(right.Body, right.Parameters[0], parameter);
-        
-        var andExpression = Expression.AndAlso(leftBody, rightBody);
-        
+
+        // Use Invoke to call each expression with the new parameter
+        // This preserves closures in the original expressions
+        var invokeLeft = Expression.Invoke(left, parameter);
+        var invokeRight = Expression.Invoke(right, parameter);
+
+        var andExpression = Expression.AndAlso(invokeLeft, invokeRight);
+
         return Expression.Lambda<Func<T, bool>>(andExpression, parameter);
     }
-    
+
+    /// <summary>
+    /// Combines two expressions with OR using Expression.Invoke.
+    /// This approach correctly handles closures by invoking the original
+    /// expressions rather than replacing parameters (which can miss closures).
+    /// </summary>
     private static Expression<Func<T, bool>> CombineWithOr(
         Expression<Func<T, bool>> left,
         Expression<Func<T, bool>> right)
     {
         var parameter = Expression.Parameter(typeof(T), "x");
-        
-        var leftBody = ReplaceParameter(left.Body, left.Parameters[0], parameter);
-        var rightBody = ReplaceParameter(right.Body, right.Parameters[0], parameter);
-        
-        var orExpression = Expression.OrElse(leftBody, rightBody);
-        
+
+        // Use Invoke to call each expression with the new parameter
+        // This preserves closures in the original expressions
+        var invokeLeft = Expression.Invoke(left, parameter);
+        var invokeRight = Expression.Invoke(right, parameter);
+
+        var orExpression = Expression.OrElse(invokeLeft, invokeRight);
+
         return Expression.Lambda<Func<T, bool>>(orExpression, parameter);
-    }
-    
-    private static Expression ReplaceParameter(
-        Expression expression,
-        ParameterExpression oldParameter,
-        ParameterExpression newParameter)
-    {
-        return new ParameterReplacer(oldParameter, newParameter).Visit(expression);
-    }
-    
-    private class ParameterReplacer : ExpressionVisitor
-    {
-        private readonly ParameterExpression _oldParameter;
-        private readonly ParameterExpression _newParameter;
-        
-        public ParameterReplacer(ParameterExpression oldParameter, ParameterExpression newParameter)
-        {
-            _oldParameter = oldParameter;
-            _newParameter = newParameter;
-        }
-        
-        protected override Expression VisitParameter(ParameterExpression node)
-        {
-            return node == _oldParameter ? _newParameter : base.VisitParameter(node);
-        }
     }
 }
 

@@ -26,7 +26,7 @@ Strengthened the base before building on top. All foundation tests pass (506 tes
 - `Rule.cs`: Modified `Execute()` to call `_compiledCondition` directly instead of `Evaluate()` to capture exceptions
 - `FoundationTests.cs`: Adjusted 3 tests to match .NET Expression API exception types
 
-**Expression combination closure fix (Issue 2)**: Still pending. This is a complex fix involving the ParameterReplacer. Current behavior works correctly for most use cases but may produce unexpected results with closures.
+**Expression combination closure fix (Issue 2)**: ✅ RESOLVED (2026-02-04). Switched from ParameterReplacer to Expression.Invoke in `CombineWithAnd` and `CombineWithOr`. See `RuleBuilder.cs:131-166`.
 
 **Context**: This work emerged from a theoretical discussion about expression trees and game engines, leading to a code review that found these gaps.
 
@@ -66,9 +66,9 @@ public RulesEngineCore<T> WithRule(IRule<T> rule)
 }
 ```
 
-### Issue 2: Parameter Replacement Can Fail ⏳ PENDING
+### Issue 2: Parameter Replacement Can Fail ✅ RESOLVED (2026-02-04)
 
-> **Status (2026-02-04):** The current implementation in `RuleBuilder.cs:159-174` uses a simple `ParameterReplacer` that only handles direct parameter references. The `Expression.Invoke` solution shown below has NOT been implemented. For most use cases (non-closure expressions), the current implementation works correctly.
+> **Resolution (2026-02-04):** Implemented the `Expression.Invoke` approach in `RuleBuilder.cs:131-166`. The `CombineWithAnd` and `CombineWithOr` methods now use `Expression.Invoke` to call the original expressions with a shared parameter, rather than attempting parameter replacement. This correctly handles closures because the original expression trees (with their closure references) are preserved intact.
 
 **Problem:**
 ```csharp

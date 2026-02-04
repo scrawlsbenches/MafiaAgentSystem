@@ -273,20 +273,19 @@ public class FoundationTests
 
     #endregion
 
-    #region Expression Combination - Closure Cases (Currently Broken)
+    #region Expression Combination - Closure Cases (FIXED 2026-02-04)
 
     /// <summary>
-    /// CRITICAL BUG TEST: Combining expressions that capture local variables.
+    /// Combining expressions that capture local variables (closures).
     ///
-    /// This is the core Issue 2 scenario. When a lambda captures a variable,
-    /// the expression tree contains a closure reference. The simple parameter
-    /// replacement doesn't handle this correctly.
+    /// RESOLVED (2026-02-04): Issue 2 has been fixed by switching from
+    /// ParameterReplacer to Expression.Invoke in RuleBuilder.cs.
     ///
-    /// EXPECTED: The combined rule should use the captured value correctly.
-    /// CURRENT: Fails silently or produces incorrect results.
+    /// The Expression.Invoke approach preserves the original expression trees
+    /// (including their closures) and invokes them with a shared parameter,
+    /// rather than trying to rewrite the expression bodies.
     ///
-    /// DO NOT: Delete this test or weaken the assertion.
-    /// DO: Implement Expression.Invoke approach as documented in ISSUES_AND_ENHANCEMENTS.md
+    /// See RuleBuilder.cs:CombineWithAnd() and CombineWithOr() for the fix.
     /// </summary>
     [Test]
     public void RuleBuilder_And_WithClosure_HandlesCapuredVariableCorrectly()
