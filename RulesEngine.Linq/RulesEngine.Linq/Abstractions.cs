@@ -116,7 +116,7 @@ namespace RulesEngine.Linq
     {
         public bool SupportsClosures { get; init; } = true;
         public bool SupportsMethodCalls { get; init; } = true;
-        public bool SupportsSubqueries { get; init; } = false;
+        public bool SupportsSubqueries { get; init; } = true;
         public IReadOnlySet<string> SupportedMethods { get; init; } = new HashSet<string>();
     }
 

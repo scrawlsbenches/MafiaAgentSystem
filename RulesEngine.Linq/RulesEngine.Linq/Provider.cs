@@ -16,25 +16,27 @@ namespace RulesEngine.Linq
     {
         private readonly ConcurrentDictionary<Expression, Delegate> _compiledCache = new();
         private readonly ExpressionValidator _validator = new();
+        private readonly ExpressionCapabilities _capabilities;
 
-        public ExpressionCapabilities GetCapabilities() => new()
+        public InMemoryRuleProvider() : this(new ExpressionCapabilities()) { }
+
+        public InMemoryRuleProvider(ExpressionCapabilities capabilities)
         {
-            SupportsClosures = true,
-            SupportsMethodCalls = true,
-            SupportsSubqueries = true,
-            SupportedMethods = ExpressionValidator.TranslatableMethods
-        };
+            _capabilities = capabilities;
+        }
+
+        public ExpressionCapabilities GetCapabilities() => _capabilities;
 
         public void ValidateExpression(Expression expression)
         {
-            _validator.Validate(expression);
+            _validator.Validate(expression, _capabilities);
         }
 
         public Func<T, bool> CompileCondition<T>(Expression<Func<T, bool>> condition)
         {
             return (Func<T, bool>)_compiledCache.GetOrAdd(condition, expr =>
             {
-                ValidateExpression(expr);
+                _validator.Validate(expr, _capabilities);
                 return ((Expression<Func<T, bool>>)expr).Compile();
             });
         }
