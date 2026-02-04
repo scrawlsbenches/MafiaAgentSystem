@@ -17,6 +17,7 @@ namespace RulesEngine.Linq
         IRuleSet<T> GetRuleSet<T>() where T : class;
         void RegisterRuleSet<T>(IRuleSet<T> ruleSet) where T : class;
         bool HasRuleSet<T>() where T : class;
+        ISchemaBuilder<T> ConfigureRuleSet<T>() where T : class;
     }
 
     /// <summary>
@@ -69,6 +70,11 @@ namespace RulesEngine.Linq
         IRule<T>? FindById(string ruleId);
         bool Contains(string ruleId);
         int Count { get; }
+
+        bool HasConstraints { get; }
+        IReadOnlyList<IRuleConstraint<T>> GetConstraints();
+        bool HasConstraint(string constraintName);
+        bool TryAdd(IRule<T> rule, out IReadOnlyList<ConstraintViolation> violations);
     }
 
     /// <summary>
@@ -218,6 +224,119 @@ namespace RulesEngine.Linq
         public required string RuleId { get; init; }
         public required object Fact { get; init; }
         public required Exception Exception { get; init; }
+    }
+
+    #endregion
+
+    #region Schema Constraints
+
+    /// <summary>
+    /// Validation mode determines when constraints are checked.
+    /// </summary>
+    public enum ValidationMode
+    {
+        /// <summary>Validate when rules are added to the rule set.</summary>
+        OnAdd,
+        /// <summary>Validate when session evaluation occurs.</summary>
+        OnEvaluate,
+        /// <summary>Validate at both add time and evaluation time.</summary>
+        Both
+    }
+
+    /// <summary>
+    /// A constraint that validates rules during registration or evaluation.
+    /// </summary>
+    public interface IRuleConstraint<T> where T : class
+    {
+        string Name { get; }
+        ConstraintResult Validate(IRule<T> rule);
+    }
+
+    /// <summary>
+    /// Result of a constraint validation.
+    /// </summary>
+    public class ConstraintResult
+    {
+        public bool IsValid { get; private init; }
+        public IReadOnlyList<string> Errors { get; private init; } = Array.Empty<string>();
+
+        private ConstraintResult() { }
+
+        public static ConstraintResult Success() => new() { IsValid = true };
+
+        public static ConstraintResult Failure(string error) => new()
+        {
+            IsValid = false,
+            Errors = new[] { error }
+        };
+
+        public static ConstraintResult Failure(IEnumerable<string> errors) => new()
+        {
+            IsValid = false,
+            Errors = errors.ToList()
+        };
+    }
+
+    /// <summary>
+    /// Represents a constraint violation containing details about what failed.
+    /// </summary>
+    public class ConstraintViolation
+    {
+        public required string ConstraintName { get; init; }
+        public required string Message { get; init; }
+    }
+
+    /// <summary>
+    /// Exception thrown when a rule violates one or more constraints.
+    /// </summary>
+    public class ConstraintViolationException : Exception
+    {
+        public string? RuleId { get; }
+        public string? ConstraintName { get; }
+        public IReadOnlyList<ConstraintViolation> Violations { get; }
+
+        public ConstraintViolationException(string ruleId, IEnumerable<ConstraintViolation> violations)
+            : base($"Rule '{ruleId}' violates constraints: {string.Join(", ", violations.Select(v => v.Message))}")
+        {
+            RuleId = ruleId;
+            Violations = violations.ToList();
+            ConstraintName = Violations.FirstOrDefault()?.ConstraintName;
+        }
+
+        public ConstraintViolationException(string ruleId, string constraintName, string message)
+            : base(message)
+        {
+            RuleId = ruleId;
+            ConstraintName = constraintName;
+            Violations = new[] { new ConstraintViolation { ConstraintName = constraintName, Message = message } };
+        }
+    }
+
+    /// <summary>
+    /// Builder for configuring rule set schema constraints.
+    /// </summary>
+    public interface ISchemaBuilder<T> where T : class
+    {
+        ISchemaBuilder<T> RequireLinqCompatible();
+        ISchemaBuilder<T> RequirePriorityRange(int min, int max);
+        ISchemaBuilder<T> MaxExpressionDepth(int maxDepth);
+        ISchemaBuilder<T> DisallowClosures();
+        ISchemaBuilder<T> AllowMethods(Type declaringType, params string[] methodNames);
+        ISchemaBuilder<T> WithConstraint(IRuleConstraint<T> constraint);
+        ISchemaBuilder<T> ValidateOn(ValidationMode mode);
+        void Build();
+    }
+
+    /// <summary>
+    /// Extended rule set interface with constraint support.
+    /// </summary>
+    public interface IConstrainedRuleSet<T> : IRuleSet<T> where T : class
+    {
+        bool HasConstraints { get; }
+        IReadOnlyList<IRuleConstraint<T>> GetConstraints();
+        bool HasConstraint(string constraintName);
+        bool TryAdd(IRule<T> rule, out IReadOnlyList<ConstraintViolation> violations);
+        ValidationMode ValidationMode { get; }
     }
 
     #endregion

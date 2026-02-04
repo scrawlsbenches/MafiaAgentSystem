@@ -42,6 +42,11 @@ namespace RulesEngine.Linq
 
         public bool HasRuleSet<T>() where T : class => _ruleSets.ContainsKey(typeof(T));
 
+        public ISchemaBuilder<T> ConfigureRuleSet<T>() where T : class
+        {
+            return new SchemaBuilder<T>(this);
+        }
+
         public IRuleSession CreateSession() => new RuleSession(this);
 
         public void Dispose()
@@ -131,6 +136,19 @@ namespace RulesEngine.Linq
         public bool Contains(string ruleId)
         {
             lock (_lock) return _rulesById.ContainsKey(ruleId);
+        }
+
+        public virtual bool HasConstraints => false;
+
+        public virtual IReadOnlyList<IRuleConstraint<T>> GetConstraints() => Array.Empty<IRuleConstraint<T>>();
+
+        public virtual bool HasConstraint(string constraintName) => false;
+
+        public virtual bool TryAdd(IRule<T> rule, out IReadOnlyList<ConstraintViolation> violations)
+        {
+            violations = Array.Empty<ConstraintViolation>();
+            Add(rule);
+            return true;
         }
 
         public IEnumerator<IRule<T>> GetEnumerator()
@@ -311,6 +329,12 @@ namespace RulesEngine.Linq
         private EvaluationResultImpl<T> EvaluateFactSet<T>(FactSet<T> factSet) where T : class
         {
             var ruleSet = _context.GetRuleSet<T>();
+
+            if (ruleSet is ConstrainedRuleSet<T> constrainedRuleSet)
+            {
+                constrainedRuleSet.ValidateForEvaluation();
+            }
+
             var rules = ((RuleSet<T>)ruleSet).GetOrderedRules();
             var matches = new List<FactRuleMatch<T>>();
             var factsWithMatches = new List<T>();
