@@ -664,28 +664,39 @@ public class MissionEvaluator
             priority: 1000
         );
         
-        // Bonus for high skills
+        // Bonus for high skills (lowered threshold from >10 to >5 to help new players)
         _rules.AddRule(
             "SKILL_BONUS",
             "Skill Bonus",
-            ctx => ctx.SkillAdvantage > 10,
+            ctx => ctx.SkillAdvantage > 5,
             ctx => {
                 ctx.SuccessChance += ctx.SkillAdvantage;
                 ctx.BonusRespect = ctx.SkillAdvantage / 5;
             },
             priority: 800
         );
-        
-        // Penalty for low skills
+
+        // Penalty for low skills (also eased threshold from <-10 to <-5)
         _rules.AddRule(
             "SKILL_PENALTY",
             "Insufficient Skills",
-            ctx => ctx.SkillAdvantage < -10,
+            ctx => ctx.SkillAdvantage < -5,
             ctx => {
                 ctx.SuccessChance += ctx.SkillAdvantage; // Negative
                 ctx.HeatPenalty = Math.Abs(ctx.SkillAdvantage) / 2;
             },
             priority: 800
+        );
+
+        // Early career boost - Associates learning the ropes get a small advantage
+        _rules.AddRule(
+            "EARLY_CAREER_BOOST",
+            "Learning the Ropes",
+            ctx => ctx.Player.Rank == PlayerRank.Associate,
+            ctx => {
+                ctx.SuccessChance += 10;
+            },
+            priority: 750
         );
         
         // High risk = higher potential rewards but also danger

@@ -28,7 +28,7 @@ public class StoryNode
     public bool HasExpired(int currentWeek) =>
         ExpiresAfterWeeks.HasValue &&
         UnlockedAtWeek.HasValue &&
-        (currentWeek - UnlockedAtWeek.Value) > ExpiresAfterWeeks.Value;
+        (currentWeek - UnlockedAtWeek.Value) >= ExpiresAfterWeeks.Value;
 
     // Completion tracking
     public bool IsCompleted { get; set; }

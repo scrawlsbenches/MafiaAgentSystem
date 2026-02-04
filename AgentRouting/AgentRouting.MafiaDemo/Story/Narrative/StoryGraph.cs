@@ -22,6 +22,9 @@ public class StoryGraph
     // Event history for narrative recap
     private readonly List<StoryEvent> _eventLog = new();
 
+    // Pending delayed triggers (nodeId -> targetWeek)
+    private readonly List<(string TargetNodeId, int TriggerAtWeek)> _pendingTriggers = new();
+
     #region Node Management
 
     public void AddNode(StoryNode node)
@@ -33,6 +36,12 @@ public class StoryGraph
 
     public void AddEdge(StoryEdge edge)
     {
+        // Validate that both nodes exist in the graph
+        if (!_nodes.ContainsKey(edge.FromNodeId))
+            throw new ArgumentException($"Source node '{edge.FromNodeId}' does not exist in the story graph", nameof(edge));
+        if (!_nodes.ContainsKey(edge.ToNodeId))
+            throw new ArgumentException($"Target node '{edge.ToNodeId}' does not exist in the story graph", nameof(edge));
+
         if (!_outgoingEdges.ContainsKey(edge.FromNodeId))
             _outgoingEdges[edge.FromNodeId] = new List<StoryEdge>();
         if (!_incomingEdges.ContainsKey(edge.ToNodeId))
@@ -126,6 +135,29 @@ public class StoryGraph
     {
         var newlyUnlocked = new List<StoryNode>();
 
+        // 0. Process any pending delayed triggers whose time has come
+        var triggersToProcess = _pendingTriggers
+            .Where(t => t.TriggerAtWeek <= world.CurrentWeek)
+            .ToList();
+        foreach (var trigger in triggersToProcess)
+        {
+            _pendingTriggers.Remove(trigger);
+            var targetNode = GetNode(trigger.TargetNodeId);
+            if (targetNode != null && !targetNode.IsUnlocked && !targetNode.IsCompleted && !targetNode.IsFailed)
+            {
+                targetNode.IsUnlocked = true;
+                targetNode.UnlockedAtWeek = world.CurrentWeek;
+                newlyUnlocked.Add(targetNode);
+                LogEvent(new StoryEvent
+                {
+                    Type = StoryEventType.NodeUnlocked,
+                    SubjectId = targetNode.Id,
+                    Week = world.CurrentWeek,
+                    Data = new Dictionary<string, object> { ["Trigger"] = "Delayed" }
+                });
+            }
+        }
+
         // 1. Check plot thread activations
         foreach (var plot in _plotThreads.Values.Where(p => p.State == PlotState.Dormant))
         {
@@ -188,7 +220,12 @@ public class StoryGraph
                         targetNode.UnlockedAtWeek = world.CurrentWeek;
                     }
                 }
-                // Delayed triggers handled elsewhere
+                else
+                {
+                    // Queue delayed trigger for future processing
+                    int triggerWeek = world.CurrentWeek + edge.DelayWeeks;
+                    _pendingTriggers.Add((edge.ToNodeId, triggerWeek));
+                }
             }
         }
 

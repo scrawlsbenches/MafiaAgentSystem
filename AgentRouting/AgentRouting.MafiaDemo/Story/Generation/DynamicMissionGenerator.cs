@@ -183,7 +183,7 @@ public class DynamicMissionGenerator
 
         // Allied NPCs we haven't visited create relationship missions
         foreach (var npc in _world.NPCs.Values
-            .Where(n => n.IsAlly && n.LastInteractionWeek < _world.CurrentWeek - 4)
+            .Where(n => n.IsAlly && (n.LastInteractionWeek ?? 0) < _world.CurrentWeek - 4)
             .Take(1))
         {
             yield return new MissionCandidate

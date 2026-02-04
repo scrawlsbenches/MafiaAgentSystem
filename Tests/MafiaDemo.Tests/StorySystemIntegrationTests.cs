@@ -1193,6 +1193,289 @@ public class StorySystemIntegrationTests : MafiaTestBase
 
     #endregion
 
+    #region Bug Fix Verification Tests
+
+    [Test]
+    public void WorldState_GetNPCsNeedingAttention_HandlesNullLastInteractionWeek()
+    {
+        // Arrange - This tests fix for null reference on LastInteractionWeek
+        var worldState = new WorldState();
+        worldState.CurrentWeek = 10;
+
+        // Create NPC with null LastInteractionWeek (never interacted)
+        var npc = new NPC
+        {
+            Id = "never-interacted",
+            Name = "New Contact",
+            Relationship = 60,  // Above Friend (50) threshold makes IsAlly = true
+            Status = NPCStatus.Active,
+            LastInteractionWeek = null,  // Explicitly null - never interacted
+            LocationId = "little-italy"
+        };
+        worldState.RegisterNPC(npc);
+
+        // Act - Should not throw NullReferenceException
+        var npcsNeedingAttention = worldState.GetNPCsNeedingAttention(10).ToList();
+
+        // Assert - NPC should be included since null defaults to 0 (week 0 < week 10 - 4)
+        Assert.Contains(npc, npcsNeedingAttention);
+    }
+
+    [Test]
+    public void WorldState_GetNPCsAtLocation_HandlesMissingNPCInIndex()
+    {
+        // Arrange - This tests fix for KeyNotFoundException
+        var worldState = new WorldState();
+
+        // Register NPC
+        var npc = new NPC
+        {
+            Id = "test-npc",
+            Name = "Test NPC",
+            LocationId = "little-italy"
+        };
+        worldState.RegisterNPC(npc);
+
+        // Manually remove NPC from dictionary but leave location index stale
+        // (simulating inconsistent state)
+        worldState.NPCs.Remove("test-npc");
+
+        // Act - Should not throw KeyNotFoundException
+        var npcsAtLocation = worldState.GetNPCsAtLocation("little-italy").ToList();
+
+        // Assert - Should return empty (NPC was removed)
+        Assert.Equal(0, npcsAtLocation.Count);
+    }
+
+    [Test]
+    public void MissionHistory_DecayCounters_DecaysNPCInteractions()
+    {
+        // Arrange - This tests fix for missing NPC decay
+        var history = new MissionHistory();
+        history.RecordMission("Collection", null, "npc-1", 1);
+        history.RecordMission("Collection", null, "npc-1", 2);
+        history.RecordMission("Collection", null, "npc-1", 3);
+
+        // Initial score should have NPC penalty
+        var initialScore = history.GetRepetitionScore("Collection", null, "npc-1", 4);
+        Assert.True(initialScore > 0, "Initial score should have NPC penalty");
+
+        // Act - Decay multiple times
+        for (int i = 0; i < 5; i++)
+        {
+            history.DecayCounters();
+        }
+
+        // Assert - Score should be lower after decay
+        var decayedScore = history.GetRepetitionScore("Collection", null, "npc-1", 4);
+        Assert.True(decayedScore < initialScore, "NPC interaction penalty should decay over time");
+    }
+
+    [Test]
+    public void StoryGraph_AddEdge_ValidatesSourceNodeExists()
+    {
+        // Arrange - This tests fix for edge validation
+        var graph = new StoryGraph();
+        var targetNode = new StoryNode { Id = "target", Title = "Target" };
+        graph.AddNode(targetNode);
+
+        var edge = new StoryEdge
+        {
+            FromNodeId = "non-existent",  // Source doesn't exist
+            ToNodeId = "target",
+            Type = StoryEdgeType.Requires
+        };
+
+        // Act & Assert - Should throw ArgumentException
+        Assert.Throws<ArgumentException>(() => graph.AddEdge(edge));
+    }
+
+    [Test]
+    public void StoryGraph_AddEdge_ValidatesTargetNodeExists()
+    {
+        // Arrange
+        var graph = new StoryGraph();
+        var sourceNode = new StoryNode { Id = "source", Title = "Source" };
+        graph.AddNode(sourceNode);
+
+        var edge = new StoryEdge
+        {
+            FromNodeId = "source",
+            ToNodeId = "non-existent",  // Target doesn't exist
+            Type = StoryEdgeType.Unlocks
+        };
+
+        // Act & Assert - Should throw ArgumentException
+        Assert.Throws<ArgumentException>(() => graph.AddEdge(edge));
+    }
+
+    [Test]
+    public void StoryNode_HasExpired_CorrectlyExpiresAtBoundary()
+    {
+        // Arrange - This tests fix for off-by-one expiration
+        var node = new StoryNode
+        {
+            Id = "expiring-node",
+            Title = "Time-Limited Opportunity",
+            ExpiresAfterWeeks = 3,
+            UnlockedAtWeek = 5
+        };
+
+        // Act & Assert
+        // Week 5: unlocked (5-5=0, 0 >= 3 is false)
+        Assert.False(node.HasExpired(5), "Should not be expired on unlock week");
+
+        // Week 6: 1 week elapsed (6-5=1, 1 >= 3 is false)
+        Assert.False(node.HasExpired(6), "Should not be expired after 1 week");
+
+        // Week 7: 2 weeks elapsed (7-5=2, 2 >= 3 is false)
+        Assert.False(node.HasExpired(7), "Should not be expired after 2 weeks");
+
+        // Week 8: 3 weeks elapsed (8-5=3, 3 >= 3 is TRUE - expires NOW)
+        Assert.True(node.HasExpired(8), "Should be expired after exactly 3 weeks (at boundary)");
+
+        // Week 9: 4 weeks elapsed (9-5=4, 4 >= 3 is true)
+        Assert.True(node.HasExpired(9), "Should be expired after 4 weeks");
+    }
+
+    [Test]
+    public void StoryGraph_DelayedTriggers_QueueAndProcess()
+    {
+        // Arrange - This tests the delayed triggers implementation
+        var graph = new StoryGraph();
+        var worldState = new WorldState { CurrentWeek = 1 };
+
+        // Create source node that will unlock at week 1 and trigger a delayed unlock
+        var sourceNode = new StoryNode
+        {
+            Id = "source",
+            Title = "Source Event",
+            IsUnlocked = false,
+            UnlockCondition = w => w.CurrentWeek >= 1  // Unlocks immediately at week 1
+        };
+        graph.AddNode(sourceNode);
+
+        // Create target node that will be triggered after delay
+        // UnlockCondition returns false so it can ONLY be unlocked via trigger
+        var delayedNode = new StoryNode
+        {
+            Id = "delayed-target",
+            Title = "Delayed Event",
+            IsUnlocked = false,
+            UnlockCondition = w => false  // Never unlocks by normal conditions - only via trigger
+        };
+        graph.AddNode(delayedNode);
+
+        // Create delayed trigger edge (3 week delay)
+        var edge = new StoryEdge
+        {
+            FromNodeId = "source",
+            ToNodeId = "delayed-target",
+            Type = StoryEdgeType.Triggers,
+            DelayWeeks = 3
+        };
+        graph.AddEdge(edge);
+
+        // Act - Call UpdateUnlocks to unlock source node and queue the delayed trigger
+        var unlocked = graph.UpdateUnlocks(worldState);
+
+        // Assert - Source node should be unlocked
+        Assert.True(sourceNode.IsUnlocked, "Source node should be unlocked");
+        Assert.Contains(sourceNode, unlocked);
+        // Delayed node should NOT be unlocked yet
+        Assert.False(delayedNode.IsUnlocked, "Delayed node should not be unlocked immediately");
+
+        // Advance to week 3 (still before trigger week 4)
+        worldState.CurrentWeek = 3;
+        graph.UpdateUnlocks(worldState);
+        Assert.False(delayedNode.IsUnlocked, "Delayed node should not be unlocked before delay completes");
+
+        // Advance to week 4 (trigger week = 1 + 3 delay)
+        worldState.CurrentWeek = 4;
+        graph.UpdateUnlocks(worldState);
+
+        // Assert - Delayed node should now be unlocked
+        Assert.True(delayedNode.IsUnlocked, "Delayed node should be unlocked after delay period");
+        Assert.Equal(4, delayedNode.UnlockedAtWeek);
+    }
+
+    [Test]
+    public void StoryGraph_ImmediateTriggers_StillWork()
+    {
+        // Arrange - Ensure immediate triggers (DelayWeeks=0) still work
+        var graph = new StoryGraph();
+        var worldState = new WorldState { CurrentWeek = 5 };
+
+        var sourceNode = new StoryNode
+        {
+            Id = "source",
+            Title = "Source",
+            IsUnlocked = false,
+            UnlockCondition = w => w.CurrentWeek >= 5  // Unlocks at week 5
+        };
+        graph.AddNode(sourceNode);
+
+        // Target node can ONLY be unlocked via trigger (UnlockCondition returns false)
+        var immediateNode = new StoryNode
+        {
+            Id = "immediate-target",
+            Title = "Immediate Target",
+            IsUnlocked = false,
+            UnlockCondition = w => false  // Only unlocks via trigger
+        };
+        graph.AddNode(immediateNode);
+
+        var edge = new StoryEdge
+        {
+            FromNodeId = "source",
+            ToNodeId = "immediate-target",
+            Type = StoryEdgeType.Triggers,
+            DelayWeeks = 0  // Immediate
+        };
+        graph.AddEdge(edge);
+
+        // Act - Call UpdateUnlocks to unlock source and trigger immediate unlock
+        graph.UpdateUnlocks(worldState);
+
+        // Assert - Source and immediate target should both be unlocked
+        Assert.True(sourceNode.IsUnlocked, "Source should be unlocked");
+        Assert.True(immediateNode.IsUnlocked, "Immediate trigger should unlock target immediately");
+        Assert.Equal(5, immediateNode.UnlockedAtWeek);
+    }
+
+    [Test]
+    public void DynamicMissionGenerator_HandleNullLastInteractionWeek()
+    {
+        // Arrange - This tests the fix in DynamicMissionGenerator
+        var worldState = WorldStateSeeder.CreateInitialWorld();
+        var storyGraph = WorldStateSeeder.CreateInitialGraph(worldState);
+        var intel = new IntelRegistry();
+        var history = new MissionHistory();
+        var generator = new DynamicMissionGenerator(worldState, storyGraph, intel, history);
+
+        // Create allied NPC with null LastInteractionWeek
+        var npc = new NPC
+        {
+            Id = "new-ally",
+            Name = "New Ally",
+            Relationship = 60,  // Above Friend (50) threshold makes IsAlly = true
+            Status = NPCStatus.Active,
+            LastInteractionWeek = null,  // Never interacted
+            LocationId = "little-italy"
+        };
+        worldState.RegisterNPC(npc);
+        worldState.CurrentWeek = 10;
+
+        // Act - Should not throw
+        var player = CreateTestPlayer();
+        var candidate = generator.GenerateMission(player);
+
+        // Assert - Should successfully generate a mission
+        Assert.NotNull(candidate);
+    }
+
+    #endregion
+
     #region Helper Methods
 
     private GameState CreateTestGameState()

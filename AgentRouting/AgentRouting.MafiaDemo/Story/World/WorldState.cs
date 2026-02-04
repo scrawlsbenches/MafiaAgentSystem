@@ -76,7 +76,7 @@ public class WorldState
 
     public IEnumerable<NPC> GetNPCsAtLocation(string locationId) =>
         _npcsByLocation.TryGetValue(locationId, out var ids)
-            ? ids.Select(id => NPCs[id])
+            ? ids.Select(id => GetNPC(id)).Where(npc => npc != null).Select(npc => npc!)
             : Enumerable.Empty<NPC>();
 
     public IEnumerable<Location> GetLocationsByState(LocationState state) =>
@@ -93,7 +93,7 @@ public class WorldState
     public IEnumerable<NPC> GetNPCsNeedingAttention(int currentWeek) =>
         NPCs.Values.Where(n =>
             n.Status == NPCStatus.Hostile ||
-            (n.IsAlly && n.LastInteractionWeek < currentWeek - 4) ||
+            (n.IsAlly && (n.LastInteractionWeek ?? 0) < currentWeek - 4) ||
             n.Status == NPCStatus.Informant);
 
     #endregion
