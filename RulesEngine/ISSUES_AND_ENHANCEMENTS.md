@@ -29,7 +29,7 @@ Strengthened the base before building on top. All foundation tests pass (506 tes
 - `RuleValidation.cs`: Fixed `DebuggableRule` to handle `InvocationExpression` and `UnaryExpression` (for combined/negated conditions)
 - `FoundationTests.cs`: Added 9 more tests for null validation and Not() method (51 total)
 
-**Expression combination closure fix (Issue 2)**: ✅ RESOLVED (2026-02-04). Switched from ParameterReplacer to Expression.Invoke in `CombineWithAnd` and `CombineWithOr`. See `RuleBuilder.cs:131-166`.
+**Expression combination closures (Issue 2)**: ✅ VERIFIED WORKING (2026-02-04). The original concern was a misunderstanding - closures are `MemberExpression` nodes (not `ParameterExpression`), so parameter replacement preserves them. Using parameter replacement for LINQ provider compatibility (EF Core, etc.).
 
 **Context**: This work emerged from a theoretical discussion about expression trees and game engines, leading to a code review that found these gaps.
 
@@ -69,9 +69,11 @@ public RulesEngineCore<T> WithRule(IRule<T> rule)
 }
 ```
 
-### Issue 2: Parameter Replacement Can Fail ✅ RESOLVED (2026-02-04)
+### Issue 2: Parameter Replacement Can Fail ✅ VERIFIED NOT AN ISSUE (2026-02-04)
 
-> **Resolution (2026-02-04):** Implemented the `Expression.Invoke` approach in `RuleBuilder.cs:131-166`. The `CombineWithAnd` and `CombineWithOr` methods now use `Expression.Invoke` to call the original expressions with a shared parameter, rather than attempting parameter replacement. This correctly handles closures because the original expression trees (with their closure references) are preserved intact.
+> **Clarification (2026-02-04):** Upon investigation, this was a theoretical concern that doesn't manifest in practice. Closures are stored as `MemberExpression` nodes accessing compiler-generated display classes (like `<>c__DisplayClass`), NOT as `ParameterExpression` nodes. The `ParameterReplacer` only replaces `ParameterExpression` nodes, so closures are preserved intact.
+>
+> The implementation uses parameter replacement (not `Expression.Invoke`) for **LINQ provider compatibility** - EF Core and other providers don't support `InvocationExpression`. All 5 closure tests pass with parameter replacement.
 
 **Problem:**
 ```csharp

@@ -273,19 +273,21 @@ public class FoundationTests
 
     #endregion
 
-    #region Expression Combination - Closure Cases (FIXED 2026-02-04)
+    #region Expression Combination - Closure Cases (VERIFIED 2026-02-04)
 
     /// <summary>
     /// Combining expressions that capture local variables (closures).
     ///
-    /// RESOLVED (2026-02-04): Issue 2 has been fixed by switching from
-    /// ParameterReplacer to Expression.Invoke in RuleBuilder.cs.
+    /// VERIFIED (2026-02-04): Closures work correctly with parameter replacement.
+    /// The original concern (Issue 2) was based on a misunderstanding.
     ///
-    /// The Expression.Invoke approach preserves the original expression trees
-    /// (including their closures) and invokes them with a shared parameter,
-    /// rather than trying to rewrite the expression bodies.
+    /// Closures are stored as MemberExpression nodes accessing compiler-generated
+    /// display classes (like &lt;&gt;c__DisplayClass), NOT as ParameterExpression nodes.
+    /// The ParameterReplacer only replaces ParameterExpression nodes, so closures
+    /// are preserved intact.
     ///
-    /// See RuleBuilder.cs:CombineWithAnd() and CombineWithOr() for the fix.
+    /// This approach is LINQ provider compatible (EF Core, etc.) because it
+    /// produces standard expression nodes without InvocationExpression.
     /// </summary>
     [Test]
     public void RuleBuilder_And_WithClosure_HandlesCapuredVariableCorrectly()

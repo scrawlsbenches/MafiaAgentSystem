@@ -145,9 +145,12 @@ public class RuleBuilder<T>
     }
     
     /// <summary>
-    /// Combines two expressions with AND using Expression.Invoke.
-    /// This approach correctly handles closures by invoking the original
-    /// expressions rather than replacing parameters (which can miss closures).
+    /// Combines two expressions with AND using parameter replacement.
+    /// This approach is compatible with LINQ providers (EF Core, etc.) because
+    /// it produces standard expression nodes without InvocationExpression.
+    ///
+    /// Closures are preserved because they're stored as MemberExpression nodes
+    /// (accessing compiler-generated display classes), not ParameterExpression nodes.
     /// </summary>
     private static Expression<Func<T, bool>> CombineWithAnd(
         Expression<Func<T, bool>> left,
@@ -155,20 +158,21 @@ public class RuleBuilder<T>
     {
         var parameter = Expression.Parameter(typeof(T), "x");
 
-        // Use Invoke to call each expression with the new parameter
-        // This preserves closures in the original expressions
-        var invokeLeft = Expression.Invoke(left, parameter);
-        var invokeRight = Expression.Invoke(right, parameter);
+        var leftBody = ReplaceParameter(left.Body, left.Parameters[0], parameter);
+        var rightBody = ReplaceParameter(right.Body, right.Parameters[0], parameter);
 
-        var andExpression = Expression.AndAlso(invokeLeft, invokeRight);
+        var andExpression = Expression.AndAlso(leftBody, rightBody);
 
         return Expression.Lambda<Func<T, bool>>(andExpression, parameter);
     }
 
     /// <summary>
-    /// Combines two expressions with OR using Expression.Invoke.
-    /// This approach correctly handles closures by invoking the original
-    /// expressions rather than replacing parameters (which can miss closures).
+    /// Combines two expressions with OR using parameter replacement.
+    /// This approach is compatible with LINQ providers (EF Core, etc.) because
+    /// it produces standard expression nodes without InvocationExpression.
+    ///
+    /// Closures are preserved because they're stored as MemberExpression nodes
+    /// (accessing compiler-generated display classes), not ParameterExpression nodes.
     /// </summary>
     private static Expression<Func<T, bool>> CombineWithOr(
         Expression<Func<T, bool>> left,
@@ -176,14 +180,37 @@ public class RuleBuilder<T>
     {
         var parameter = Expression.Parameter(typeof(T), "x");
 
-        // Use Invoke to call each expression with the new parameter
-        // This preserves closures in the original expressions
-        var invokeLeft = Expression.Invoke(left, parameter);
-        var invokeRight = Expression.Invoke(right, parameter);
+        var leftBody = ReplaceParameter(left.Body, left.Parameters[0], parameter);
+        var rightBody = ReplaceParameter(right.Body, right.Parameters[0], parameter);
 
-        var orExpression = Expression.OrElse(invokeLeft, invokeRight);
+        var orExpression = Expression.OrElse(leftBody, rightBody);
 
         return Expression.Lambda<Func<T, bool>>(orExpression, parameter);
+    }
+
+    private static Expression ReplaceParameter(
+        Expression expression,
+        ParameterExpression oldParameter,
+        ParameterExpression newParameter)
+    {
+        return new ParameterReplacer(oldParameter, newParameter).Visit(expression);
+    }
+
+    private class ParameterReplacer : ExpressionVisitor
+    {
+        private readonly ParameterExpression _oldParameter;
+        private readonly ParameterExpression _newParameter;
+
+        public ParameterReplacer(ParameterExpression oldParameter, ParameterExpression newParameter)
+        {
+            _oldParameter = oldParameter;
+            _newParameter = newParameter;
+        }
+
+        protected override Expression VisitParameter(ParameterExpression node)
+        {
+            return node == _oldParameter ? _newParameter : base.VisitParameter(node);
+        }
     }
 }
 
