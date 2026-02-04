@@ -194,8 +194,9 @@ public class ImmutableRulesEngineImmutableTests
     [Test]
     public void WithoutRule_RemovesAllMatchingRules()
     {
-        // Add same ID twice (immutable allows this)
-        var engine1 = new ImmutableRulesEngine<TestFact>()
+        // Add same ID twice (requires AllowDuplicateRuleIds option)
+        var options = new RulesEngineOptions { AllowDuplicateRuleIds = true };
+        var engine1 = new ImmutableRulesEngine<TestFact>(options)
             .WithRule(new Rule<TestFact>("R1", "Rule 1a", f => f.Value > 5))
             .WithRule(new Rule<TestFact>("R1", "Rule 1b", f => f.Value > 10));
 
