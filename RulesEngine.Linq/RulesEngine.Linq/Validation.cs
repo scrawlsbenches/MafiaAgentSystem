@@ -13,6 +13,8 @@ namespace RulesEngine.Linq
     public class ExpressionValidator : ExpressionVisitor
     {
         private List<string>? _errors;
+        private ExpressionCapabilities _capabilities = new();
+        private readonly HashSet<ParameterExpression> _lambdaParameters = new();
 
         public static readonly IReadOnlySet<string> TranslatableMethods = new HashSet<string>
         {
@@ -59,7 +61,14 @@ namespace RulesEngine.Linq
 
         public void Validate(Expression expression)
         {
+            Validate(expression, new ExpressionCapabilities());
+        }
+
+        public void Validate(Expression expression, ExpressionCapabilities capabilities)
+        {
             _errors = new List<string>();
+            _capabilities = capabilities;
+            _lambdaParameters.Clear();
             Visit(expression);
 
             if (_errors.Count > 0)
@@ -71,7 +80,14 @@ namespace RulesEngine.Linq
 
         public IReadOnlyList<string> GetErrors(Expression expression)
         {
+            return GetErrors(expression, new ExpressionCapabilities());
+        }
+
+        public IReadOnlyList<string> GetErrors(Expression expression, ExpressionCapabilities capabilities)
+        {
             _errors = new List<string>();
+            _capabilities = capabilities;
+            _lambdaParameters.Clear();
             Visit(expression);
             return _errors;
         }
@@ -82,13 +98,65 @@ namespace RulesEngine.Linq
             return base.VisitInvocation(node);
         }
 
+        protected override Expression VisitLambda<T>(Expression<T> node)
+        {
+            foreach (var param in node.Parameters)
+                _lambdaParameters.Add(param);
+
+            var result = base.VisitLambda(node);
+
+            foreach (var param in node.Parameters)
+                _lambdaParameters.Remove(param);
+
+            return result;
+        }
+
+        protected override Expression VisitMember(MemberExpression node)
+        {
+            // Detect closure captures
+            if (!_capabilities.SupportsClosures)
+            {
+                if (node.Expression is ConstantExpression ce && !IsPrimitiveType(ce.Type))
+                {
+                    _errors!.Add($"Closure capture of '{node.Member.Name}' not supported");
+                }
+            }
+
+            return base.VisitMember(node);
+        }
+
         protected override Expression VisitMethodCall(MethodCallExpression node)
         {
+            // Check method call capability
+            if (!_capabilities.SupportsMethodCalls && !IsQueryableOrEnumerable(node.Method.DeclaringType))
+            {
+                _errors!.Add($"Method calls not supported: '{node.Method.DeclaringType?.Name}.{node.Method.Name}'");
+                return base.VisitMethodCall(node);
+            }
+
             if (!IsTranslatable(node.Method))
             {
                 _errors!.Add($"Method '{node.Method.DeclaringType?.Name}.{node.Method.Name}' not translatable");
             }
+
+            // Check for subqueries - method calls on IQueryable that aren't the root
+            if (!_capabilities.SupportsSubqueries && IsSubqueryMethodCall(node))
+            {
+                _errors!.Add($"Subqueries not supported: '{node.Method.Name}' on nested queryable");
+            }
+
             return base.VisitMethodCall(node);
+        }
+
+        protected override Expression VisitConstant(ConstantExpression node)
+        {
+            // Detect subquery sources (IQueryable references that aren't the root)
+            if (!_capabilities.SupportsSubqueries && IsQueryableType(node.Type))
+            {
+                _errors!.Add($"Subquery reference to '{node.Type.Name}' not supported");
+            }
+
+            return base.VisitConstant(node);
         }
 
         private static bool IsTranslatable(MethodInfo method)
@@ -120,6 +188,58 @@ namespace RulesEngine.Linq
 
             // Enum methods
             if (declaringType == typeof(Enum)) return true;
+
+            return false;
+        }
+
+        private static bool IsPrimitiveType(Type type)
+        {
+            return type.IsPrimitive || type == typeof(string) || type == typeof(decimal)
+                || type == typeof(DateTime) || type == typeof(Guid);
+        }
+
+        private static bool IsQueryableOrEnumerable(Type? type)
+        {
+            if (type == null) return false;
+            return type == typeof(Queryable) || type == typeof(Enumerable);
+        }
+
+        private static bool IsQueryableType(Type type)
+        {
+            if (type.IsGenericType)
+            {
+                var genericDef = type.GetGenericTypeDefinition();
+                if (genericDef == typeof(IQueryable<>)) return true;
+                if (genericDef == typeof(IOrderedQueryable<>)) return true;
+            }
+
+            // Check for IRuleSet<T> or IFactSet<T>
+            foreach (var iface in type.GetInterfaces())
+            {
+                if (iface.IsGenericType)
+                {
+                    var genericDef = iface.GetGenericTypeDefinition();
+                    if (genericDef == typeof(IQueryable<>)) return true;
+                }
+            }
+
+            return type == typeof(IQueryable);
+        }
+
+        private static bool IsSubqueryMethodCall(MethodCallExpression node)
+        {
+            // A subquery is when a LINQ method is called on a queryable that's not a collection property
+            if (!IsQueryableOrEnumerable(node.Method.DeclaringType))
+                return false;
+
+            // Check if the source is a constant queryable (indicates a separate data source)
+            var source = node.Arguments.FirstOrDefault();
+            if (source is ConstantExpression ce && IsQueryableType(ce.Type))
+                return true;
+
+            // Check if source is a method call that returns a queryable (chained subquery)
+            if (source is MethodCallExpression mce && IsQueryableType(mce.Type))
+                return IsSubqueryMethodCall(mce);
 
             return false;
         }
