@@ -133,6 +133,7 @@ namespace RulesEngine.Linq
         string Name { get; }
         string Description { get; }
         int Priority { get; }
+        IReadOnlyList<string> Tags { get; }
         Expression<Func<T, bool>> Condition { get; }
 
         bool Evaluate(T fact);
@@ -143,15 +144,7 @@ namespace RulesEngine.Linq
 
     #region Results
 
-    /// <summary>
-    /// Represents a fact paired with rules that matched it.
-    /// </summary>
-    public class FactRuleMatch<T> where T : class
-    {
-        public required T Fact { get; init; }
-        public required IReadOnlyList<IRule<T>> MatchedRules { get; init; }
-        public required IReadOnlyList<RuleResult> Results { get; init; }
-    }
+    // FactRuleMatch<T> is defined in Rule.cs
 
     /// <summary>
     /// Aggregate evaluation results across all fact types.

@@ -69,6 +69,31 @@ namespace RulesEngine.Linq
             ruleSet.AddRange(rules);
             return ruleSet;
         }
+
+        /// <summary>
+        /// Returns all rules that would match the given fact without executing their actions.
+        /// Useful for previewing/debugging which rules apply.
+        /// </summary>
+        public static IEnumerable<IRule<T>> WouldMatch<T>(this IRuleSet<T> ruleSet, T fact) where T : class
+        {
+            if (fact == null) yield break;
+
+            foreach (var rule in ruleSet.OrderByDescending(r => r.Priority))
+            {
+                if (rule.Evaluate(fact))
+                {
+                    yield return rule;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Returns all rules that would match the given fact, as a queryable.
+        /// </summary>
+        public static IQueryable<IRule<T>> WouldMatchQuery<T>(this IRuleSet<T> ruleSet, T fact) where T : class
+        {
+            return ruleSet.WouldMatch(fact).AsQueryable();
+        }
     }
 
     public static class SessionExtensions

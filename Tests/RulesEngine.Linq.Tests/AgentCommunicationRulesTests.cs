@@ -255,8 +255,9 @@ namespace RulesEngine.Linq.Tests
                 "hostile-territory-flag",
                 "Flag requests for hostile territory",
                 m => m.Type == MessageType.TerritoryRequest
-                    && m.Payload is TerritoryRequestPayload trp
-                    && enemyTerritories.Contains(trp.TerritoryId))
+                    && m.Payload != null
+                    && m.Payload is TerritoryRequestPayload
+                    && enemyTerritories.Contains(((TerritoryRequestPayload)m.Payload).TerritoryId))
                 .Then(m => m.Flag("hostile-territory-request")));
 
             using var session = context.CreateSession();
