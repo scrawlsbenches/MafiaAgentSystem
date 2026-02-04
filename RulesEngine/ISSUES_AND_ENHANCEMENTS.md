@@ -6,6 +6,24 @@ This document identifies issues found during code review and the solutions imple
 
 ---
 
+## Current Work: Foundation Improvements
+
+Strengthening the base before building on top. These gaps cause silent failures downstream.
+
+| Task | Related Issue | Status |
+|------|---------------|--------|
+| CompositeRuleBuilder null child validation | J-2a (double eval) | [ ] |
+| CompositeRuleBuilder structure validation at Build() | New | [ ] |
+| Expression combination closure fix | Issue 2 below | [ ] |
+| DynamicRuleFactory type safety (catch type mismatches at build time) | New | [ ] |
+| Tests for all above with high coverage | — | [ ] |
+
+**Why this order**: Composition and expression merging are foundational. Everything else builds on them.
+
+**Context**: This work emerged from a theoretical discussion about expression trees and game engines, leading to a code review that found these gaps. See Issue 2, Issue 3 clarifications, and the DynamicRuleFactory limitations documented below.
+
+---
+
 ## 🔴 Critical Issues
 
 ### Issue 1: Thread Safety ✅ RESOLVED (2026-01-31)
