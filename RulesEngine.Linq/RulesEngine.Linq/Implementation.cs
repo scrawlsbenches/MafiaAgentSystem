@@ -85,7 +85,7 @@ namespace RulesEngine.Linq
         public Expression Expression => Expression.Constant(this);
         public IQueryProvider Provider => new RuleSetQueryProvider<T>(_context.Provider, this);
 
-        public void Add(IRule<T> rule)
+        public virtual void Add(IRule<T> rule)
         {
             if (rule == null) throw new ArgumentNullException(nameof(rule));
             lock (_lock)

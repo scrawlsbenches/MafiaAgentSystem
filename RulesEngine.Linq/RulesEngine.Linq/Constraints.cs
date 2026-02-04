@@ -93,7 +93,7 @@ namespace RulesEngine.Linq
             return _constraints.Any(c => c.Name == constraintName);
         }
 
-        public new void Add(IRule<T> rule)
+        public override void Add(IRule<T> rule)
         {
             if (_validationMode == ValidationMode.OnAdd || _validationMode == ValidationMode.Both)
             {
