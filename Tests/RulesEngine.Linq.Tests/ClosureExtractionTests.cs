@@ -494,5 +494,240 @@ namespace RulesEngine.Linq.Tests
         }
 
         #endregion
+
+        #region Real-World Scenario Tests
+
+        /// <summary>
+        /// Scenario: Filter orders by multiple allowed statuses.
+        /// Common pattern for status-based filtering in business rules.
+        /// </summary>
+        [Test]
+        public void Scenario_FilterByMultipleStatuses_EnumList()
+        {
+            // Arrange: User wants orders that are either Pending or Approved
+            var allowedStatuses = new List<OrderStatus> { OrderStatus.Pending, OrderStatus.Approved };
+            Expression<Func<Order, bool>> rule = order => allowedStatuses.Contains(order.Status);
+
+            // Act: Extract closures for serialization
+            var extractor = new ClosureExtractor();
+            var closures = extractor.ExtractClosures(rule);
+            var validation = extractor.ValidateClosures(rule);
+
+            // Assert: Closure is valid and values are correct
+            Assert.True(validation.IsValid);
+            Assert.Equal(1, closures.Count);
+            Assert.Equal("allowedStatuses", closures[0].Name);
+            Assert.True(closures[0].IsSerializable);
+
+            var statuses = closures[0].Value as List<OrderStatus>;
+            Assert.NotNull(statuses);
+            Assert.Equal(2, statuses!.Count);
+            Assert.Contains(OrderStatus.Pending, statuses);
+            Assert.Contains(OrderStatus.Approved, statuses);
+        }
+
+        /// <summary>
+        /// Scenario: Filter orders by customer IDs from a CRM system.
+        /// Common pattern for multi-tenant or customer-specific queries.
+        /// </summary>
+        [Test]
+        public void Scenario_FilterByCustomerIds_GuidArray()
+        {
+            // Arrange: User has a list of VIP customer IDs
+            var vipCustomerIds = new[] {
+                Guid.Parse("11111111-1111-1111-1111-111111111111"),
+                Guid.Parse("22222222-2222-2222-2222-222222222222"),
+                Guid.Parse("33333333-3333-3333-3333-333333333333")
+            };
+            Expression<Func<Order, bool>> rule = order => vipCustomerIds.Contains(order.CustomerId);
+
+            // Act
+            var extractor = new ClosureExtractor();
+            var closures = extractor.ExtractClosures(rule);
+            var validation = extractor.ValidateClosures(rule);
+
+            // Assert
+            Assert.True(validation.IsValid);
+            Assert.Equal(1, closures.Count);
+            Assert.Equal(typeof(Guid[]), closures[0].Type);
+            Assert.True(closures[0].IsSerializable);
+
+            var ids = closures[0].Value as Guid[];
+            Assert.NotNull(ids);
+            Assert.Equal(3, ids!.Length);
+        }
+
+        /// <summary>
+        /// Scenario: Filter orders within a date range.
+        /// Common pattern for reporting and time-based rules.
+        /// </summary>
+        [Test]
+        public void Scenario_FilterByDateRange_DateTimeClosures()
+        {
+            // Arrange: User wants orders from Q1 2024
+            var startDate = new DateTime(2024, 1, 1);
+            var endDate = new DateTime(2024, 3, 31);
+            Expression<Func<Order, bool>> rule = order =>
+                order.OrderDate >= startDate && order.OrderDate <= endDate;
+
+            // Act
+            var extractor = new ClosureExtractor();
+            var closures = extractor.ExtractClosures(rule);
+            var validation = extractor.ValidateClosures(rule);
+
+            // Assert
+            Assert.True(validation.IsValid);
+            Assert.Equal(2, closures.Count);
+            Assert.True(closures.All(c => c.IsSerializable));
+            Assert.True(closures.Any(c => c.Name == "startDate" && (DateTime)c.Value! == new DateTime(2024, 1, 1)));
+            Assert.True(closures.Any(c => c.Name == "endDate" && (DateTime)c.Value! == new DateTime(2024, 3, 31)));
+        }
+
+        /// <summary>
+        /// Scenario: Filter orders by price tiers.
+        /// Common pattern for pricing rules and discount eligibility.
+        /// </summary>
+        [Test]
+        public void Scenario_FilterByPriceTiers_DecimalList()
+        {
+            // Arrange: User defines price tier thresholds
+            var priceTiers = new List<decimal> { 99.99m, 199.99m, 499.99m, 999.99m };
+            Expression<Func<Order, bool>> rule = order => priceTiers.Contains(order.Total);
+
+            // Act
+            var extractor = new ClosureExtractor();
+            var closures = extractor.ExtractClosures(rule);
+            var validation = extractor.ValidateClosures(rule);
+
+            // Assert
+            Assert.True(validation.IsValid);
+            Assert.Equal(typeof(List<decimal>), closures[0].Type);
+            Assert.True(closures[0].IsSerializable);
+
+            var tiers = closures[0].Value as List<decimal>;
+            Assert.NotNull(tiers);
+            Assert.Equal(4, tiers!.Count);
+        }
+
+        /// <summary>
+        /// Scenario: Filter by quantity thresholds including null handling.
+        /// Common pattern when dealing with optional numeric fields.
+        /// </summary>
+        [Test]
+        public void Scenario_FilterByNullableQuantities_NullableIntArray()
+        {
+            // Arrange: User wants specific quantities, including "unknown" (null)
+            var targetQuantities = new int?[] { 1, 5, 10, null };
+            // Note: This tests nullable element support in arrays
+            Expression<Func<Order, bool>> rule = order => targetQuantities.Contains(order.Quantity);
+
+            // Act
+            var extractor = new ClosureExtractor();
+            var closures = extractor.ExtractClosures(rule);
+
+            // Assert
+            Assert.Equal(1, closures.Count);
+            Assert.Equal(typeof(int?[]), closures[0].Type);
+            Assert.True(closures[0].IsSerializable);
+        }
+
+        /// <summary>
+        /// Scenario: Complex business rule with multiple closure types.
+        /// Simulates a real promotion eligibility rule.
+        /// </summary>
+        [Test]
+        public void Scenario_ComplexPromotionRule_MultipleCapturedValues()
+        {
+            // Arrange: Promotion rule - VIP customers with orders over threshold in valid statuses
+            var minOrderTotal = 250.00m;
+            var eligibleStatuses = new[] { OrderStatus.Approved, OrderStatus.Shipped };
+            var promotionStartDate = new DateTime(2024, 11, 1);
+            var promotionEndDate = new DateTime(2024, 12, 31);
+
+            Expression<Func<Order, bool>> promotionRule = order =>
+                order.Total >= minOrderTotal &&
+                eligibleStatuses.Contains(order.Status) &&
+                order.OrderDate >= promotionStartDate &&
+                order.OrderDate <= promotionEndDate;
+
+            // Act
+            var extractor = new ClosureExtractor();
+            var closures = extractor.ExtractClosures(promotionRule);
+            var validation = extractor.ValidateClosures(promotionRule);
+
+            // Assert: All 4 closures are valid
+            Assert.True(validation.IsValid);
+            Assert.Equal(4, closures.Count);
+            Assert.True(closures.All(c => c.IsSerializable));
+
+            // Verify each captured value
+            Assert.True(closures.Any(c => c.Name == "minOrderTotal" && c.Type == typeof(decimal)));
+            Assert.True(closures.Any(c => c.Name == "eligibleStatuses" && c.Type == typeof(OrderStatus[])));
+            Assert.True(closures.Any(c => c.Name == "promotionStartDate" && c.Type == typeof(DateTime)));
+            Assert.True(closures.Any(c => c.Name == "promotionEndDate" && c.Type == typeof(DateTime)));
+        }
+
+        /// <summary>
+        /// Scenario: User accidentally captures a complex object.
+        /// Tests that validation catches the error with a helpful message.
+        /// </summary>
+        [Test]
+        public void Scenario_InvalidClosure_ComplexObjectCapture_GivesHelpfulError()
+        {
+            // Arrange: User accidentally captures an Order object instead of its ID
+            var referenceOrder = new Order { Id = "REF-001", Total = 500m };
+            Expression<Func<Order, bool>> badRule = order => order.Total > referenceOrder.Total;
+
+            // Act
+            var extractor = new ClosureExtractor();
+            var validation = extractor.ValidateClosures(badRule);
+
+            // Assert: Validation fails with a helpful message
+            Assert.False(validation.IsValid);
+            Assert.True(validation.Errors.Count > 0);
+            Assert.True(validation.Errors.Any(e => e.Contains("referenceOrder")));
+        }
+
+        /// <summary>
+        /// Scenario: Filter by long IDs (common in high-volume systems).
+        /// </summary>
+        [Test]
+        public void Scenario_FilterByLongIds_LongList()
+        {
+            // Arrange: System uses long IDs for high-volume order tracking
+            var orderIds = new List<long> { 1000000001L, 1000000002L, 1000000003L };
+            Expression<Func<Order, bool>> rule = order => orderIds.Contains(order.Quantity); // Using Quantity as stand-in
+
+            // Act
+            var extractor = new ClosureExtractor();
+            var validation = extractor.ValidateClosures(rule);
+
+            // Assert
+            Assert.True(validation.IsValid);
+        }
+
+        /// <summary>
+        /// Scenario: Filter using nullable enum statuses.
+        /// Common when status can be "not set" vs explicit value.
+        /// </summary>
+        [Test]
+        public void Scenario_FilterByNullableEnumStatus_NullableEnumList()
+        {
+            // Arrange: Filter includes "no status set" (null) as valid
+            var validStatuses = new List<OrderStatus?> { OrderStatus.Pending, OrderStatus.Approved, null };
+            Expression<Func<Order, bool>> rule = order => validStatuses.Contains(order.Status);
+
+            // Act
+            var extractor = new ClosureExtractor();
+            var closures = extractor.ExtractClosures(rule);
+            var validation = extractor.ValidateClosures(rule);
+
+            // Assert
+            Assert.True(validation.IsValid);
+            Assert.Equal(typeof(List<OrderStatus?>), closures[0].Type);
+            Assert.True(closures[0].IsSerializable);
+        }
+
+        #endregion
     }
 }
