@@ -80,5 +80,14 @@ public class MissionHistory
             if (_locationVisitCounts[loc] == 0)
                 _locationVisitCounts.Remove(loc);
         }
+
+        // Slowly decay NPC interaction counts (prevents permanent penalties)
+        var npcs = _npcInteractionCounts.Keys.ToList();
+        foreach (var npc in npcs)
+        {
+            _npcInteractionCounts[npc] = Math.Max(0, _npcInteractionCounts[npc] - 1);
+            if (_npcInteractionCounts[npc] == 0)
+                _npcInteractionCounts.Remove(npc);
+        }
     }
 }
