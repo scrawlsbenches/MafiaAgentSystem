@@ -40,7 +40,9 @@ public RulesEngineCore<T> WithRule(IRule<T> rule)
 }
 ```
 
-### Issue 2: Parameter Replacement Can Fail
+### Issue 2: Parameter Replacement Can Fail ⏳ PENDING
+
+> **Status (2026-02-04):** The current implementation in `RuleBuilder.cs:159-174` uses a simple `ParameterReplacer` that only handles direct parameter references. The `Expression.Invoke` solution shown below has NOT been implemented. For most use cases (non-closure expressions), the current implementation works correctly.
 
 **Problem:**
 ```csharp
@@ -52,7 +54,7 @@ Expression<Func<int, bool>> inner = x => x < 10;
 
 **Impact:** Complex expressions with closures may not combine correctly.
 
-**Solution:**
+**Suggested Solution (NOT YET IMPLEMENTED):**
 ```csharp
 // Use Expression.Invoke for safer composition
 public static Expression<Func<T, bool>> SafeCombine<T>(
@@ -70,7 +72,13 @@ public static Expression<Func<T, bool>> SafeCombine<T>(
 }
 ```
 
-### Issue 3: No Circular Dependency Detection
+### Issue 3: No Circular Dependency Detection ⏳ PENDING (Clarified 2026-02-04)
+
+> **Clarification (2026-02-04):** The current engine uses **single-pass execution** - each rule is evaluated once per `Execute()` call. The "circular dependency" scenario below only manifests if:
+> 1. You call `EvaluateAll()` or `Execute()` in a loop yourself
+> 2. Rules modify state that affects other rules within the same pass
+>
+> The engine does NOT automatically re-evaluate rules after state changes. This is a design choice, not a bug. The suggested solution below would be needed for a **forward-chaining** engine that re-fires rules until no more match.
 
 **Problem:**
 ```csharp
@@ -85,10 +93,10 @@ var ruleB = new RuleBuilder<Data>()
     .Then(d => d.Status = "Pending")  // Circular!
     .Build();
 
-// Infinite loop if both rules keep matching
+// Only a problem if you call Execute() in a loop until no rules match
 ```
 
-**Impact:** Rules can create infinite loops or unexpected state changes.
+**Impact:** Rules can create unexpected state changes within a single pass if evaluation order matters.
 
 **Solution:**
 ```csharp
@@ -131,7 +139,9 @@ public class RulesEngineCore<T>
 
 **Resolution:** Implemented LRU eviction in `CachingMiddleware` with configurable max entries (default: 1000). See `AgentRouting/Middleware/CommonMiddleware.cs`.
 
-**Problem:**
+> **Note (2026-02-04):** This fix applies to AgentRouting's `CachingMiddleware`, not the RulesEngine core. The RulesEngine itself compiles expressions once per rule registration and holds them for the rule's lifetime - no unbounded caching occurs. If dynamic rule creation at scale is needed, consider using `ImmutableRulesEngine<T>` which allows discarding old engine instances.
+
+**Original Problem:**
 ```csharp
 // Current caching never removes old entries
 private static readonly ConcurrentDictionary<string, Func<T, object?>> _cache = new();
@@ -348,18 +358,20 @@ public class ConflictDetector<T>
 }
 ```
 
-### Issue 7: Poor Debugging Support
+### Issue 7: Poor Debugging Support ✅ RESOLVED (2026-02-04)
 
-**Problem:**
+**Resolution:** Implemented `DebuggableRule<T>` in `RulesEngine/Enhanced/RuleValidation.cs`. This class tracks evaluation traces using ThreadLocal storage and decomposes expressions to show which parts matched or failed.
+
+**Original Problem:**
 ```csharp
 // Why didn't this rule match?
 var result = engine.Execute(order);
 // No way to know which part of the condition failed!
 ```
 
-**Solution:**
+**Implemented Solution (see RuleValidation.cs:185-273):**
 ```csharp
-public class DebugRule<T> : Rule<T>
+public class DebuggableRule<T> : Rule<T>
 {
     private readonly List<string> _evaluationTrace = new();
     
