@@ -95,8 +95,21 @@ class AutonomousPlaythroughDemo
         
         // Create player agent WITH ROUTER
         var player = new PlayerAgent(name, personality, router);
-        var gameState = new GameState(); // From existing game
-        
+
+        // Use MafiaGameEngine to get full Story System integration
+        // This initializes WorldState, StoryGraph, IntelRegistry, and HybridMissionGenerator
+        var engine = new MafiaGameEngine(router, logger, enableStorySystem: true);
+        var gameState = engine.State;
+
+        // Wire Story System components to PlayerAgent for consequence rules and intel recording
+        if (engine.StorySystemEnabled)
+        {
+            player.WorldState = engine.WorldState;
+            player.StoryGraph = engine.StoryGraph;
+            player.IntelRegistry = engine.IntelRegistry;
+            Console.WriteLine("✓ Story System integration enabled");
+        }
+
         Console.WriteLine(player.GetSummary());
         await GameTimingOptions.DelayAsync(GameTimingOptions.Current.TurnDelayMs);
         

@@ -791,7 +791,9 @@ public class MafiaGameEngine
         turnEvents.Add($"🚨 Heat Level: {_state.HeatLevel}/100");
         if (StorySystemEnabled)
         {
-            turnEvents.Add($"📖 Story System: Active ({_storyGraph?.GetActivePlots().Count() ?? 0} active plots)");
+            var activePlots = _storyGraph?.GetActivePlots().Count() ?? 0;
+            var availablePlots = _storyGraph?.GetAvailablePlots().Count() ?? 0;
+            turnEvents.Add($"📖 Story System: Active ({activePlots} active, {availablePlots} available plots)");
         }
 
         _state.Week++;
