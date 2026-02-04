@@ -5,6 +5,7 @@
 | What | Command/Location |
 |------|------------------|
 | Build | `dotnet build AgentRouting/AgentRouting.sln` |
+| Build LINQ | `dotnet build RulesEngine.Linq/RulesEngine.Linq.sln` |
 | Test | `dotnet run --project Tests/TestRunner/` |
 | Coverage | `dotnet exec tools/coverage/coverlet/tools/net6.0/any/coverlet.console.dll` |
 | Constraints | Zero 3rd party dependencies |
@@ -74,6 +75,10 @@ dotnet restore Tests/AgentRouting.Tests/ --source /nonexistent
 dotnet restore Tests/MafiaDemo.Tests/ --source /nonexistent
 dotnet restore Tests/TestRunner/ --source /nonexistent
 
+# Restore RulesEngine.Linq (experimental LINQ-based rules)
+dotnet restore RulesEngine.Linq/RulesEngine.Linq.sln --source /nonexistent
+dotnet restore Tests/RulesEngine.Linq.Tests/ --source /nonexistent
+
 # Build everything (after restore)
 dotnet build AgentRouting/AgentRouting.sln --no-restore
 
@@ -82,6 +87,10 @@ dotnet build Tests/RulesEngine.Tests/ --no-restore
 dotnet build Tests/AgentRouting.Tests/ --no-restore
 dotnet build Tests/MafiaDemo.Tests/ --no-restore
 dotnet build Tests/TestRunner/ --no-restore
+
+# Build RulesEngine.Linq (experimental)
+dotnet build RulesEngine.Linq/RulesEngine.Linq.sln --no-restore
+dotnet build Tests/RulesEngine.Linq.Tests/ --no-restore
 
 # Run all tests (auto-discovers built test assemblies)
 dotnet run --project Tests/TestRunner/ --no-build
@@ -162,19 +171,21 @@ Tests/
 ├── TestUtilities/           # Shared test helpers (TestClocks, TestAgents, etc.)
 ├── RulesEngine.Tests/       # Tests for RulesEngine
 ├── AgentRouting.Tests/      # Tests for AgentRouting
-└── MafiaDemo.Tests/         # Tests for MafiaDemo
+├── MafiaDemo.Tests/         # Tests for MafiaDemo
+└── RulesEngine.Linq.Tests/  # Tests for RulesEngine.Linq
 ```
 
 Each test project references `TestRunner.Framework`, `TestUtilities`, and its target assembly.
 
 ## Architecture
 
-Two independent systems sharing patterns:
+Three systems sharing patterns:
 
 | System | Purpose | Core Abstraction |
 |--------|---------|------------------|
 | **RulesEngine** | Expression-based business rules | `IRule<T>` |
 | **AgentRouting** | Message routing with middleware | `IAgent`, `IAgentMiddleware` |
+| **RulesEngine.Linq** | EF Core-inspired LINQ rules (experimental) | `IRulesContext`, `IRuleSet<T>` |
 
 ## SOLID Extension Points
 
@@ -283,6 +294,8 @@ AgentRouting/
 - **RulesEngine Tests**: `Tests/RulesEngine.Tests/`
 - **AgentRouting Tests**: `Tests/AgentRouting.Tests/`
 - **MafiaDemo Tests**: `Tests/MafiaDemo.Tests/`
+- **RulesEngine.Linq** (experimental): `RulesEngine.Linq/RulesEngine.Linq/`
+- **RulesEngine.Linq Tests**: `Tests/RulesEngine.Linq.Tests/`
 
 ## Dependency Inversion Pattern
 
@@ -328,6 +341,91 @@ The `AgentRouting.MafiaDemo` project is a **test bed** for exercising the RulesE
 - `AgentRouting.MafiaDemo.Missions` - Mission system with player progression
 - `AgentRouting.MafiaDemo.AI` - PlayerAgent with rules-driven decision making
 - `AgentRouting.MafiaDemo.Autonomous` - NPC agents (Godfather, Underboss, etc.)
+
+## RulesEngine.Linq (Experimental)
+
+An experimental LINQ-based rules engine with EF Core-inspired patterns. This is R&D code exploring how to make rules queryable and composable using familiar LINQ syntax.
+
+**Status:** Experimental - API is evolving
+
+**Location:** `RulesEngine.Linq/RulesEngine.Linq/`
+
+### Core Concepts
+
+| Concept | Inspired By | Purpose |
+|---------|-------------|---------|
+| `IRulesContext` | `DbContext` | Entry point, manages rule sets and sessions |
+| `IRuleSet<T>` | `DbSet<T>` | Queryable collection of rules for a fact type |
+| `IRuleSession` | Unit of Work | Tracks facts, manages evaluation lifecycle |
+| `Rule<T>` | Entity | Fluent rule with expression-based conditions |
+
+### Key Files
+
+- `Abstractions.cs` - Core interfaces (`IRulesContext`, `IRuleSet<T>`, `IRuleSession`, `IRule<T>`)
+- `Implementation.cs` - In-memory implementations (`RulesContext`, `RuleSet<T>`, `FactSet<T>`, `RuleSession`)
+- `Rule.cs` - Fluent `Rule<T>` class and `RuleBuilder<T>`
+- `Providers.cs` - LINQ query providers (`InMemoryRuleProvider`, `RuleSetQueryProvider`)
+- `Validation.cs` - Expression validation and constraints
+- `ClosureExtractor.cs` - Closure analysis for rule serialization
+- `Extensions.cs` - Helper extensions (`WouldMatch`, `WithRule`, etc.)
+
+### Fluent Rule API
+
+```csharp
+// Create rules with fluent configuration
+var rule = new Rule<AgentMessage>(
+    "escalate-high-priority",
+    "Escalate High Priority Messages",
+    m => m.Priority == Priority.High && m.RequiresApproval)
+    .WithPriority(100)
+    .WithTags("escalation", "approval")
+    .Then(m => m.EscalatedTo = m.Sender.Supervisor);
+
+// Compose rules with And/Or
+var combinedRule = urgentRule.And(securityClearanceRule);
+var eitherRule = weekendRule.Or(holidayRule);
+```
+
+### Session-Based Evaluation
+
+```csharp
+using var context = new RulesContext();
+var rules = context.GetRuleSet<AgentMessage>();
+
+rules.Add(highPriorityRule);
+rules.Add(escalationRule);
+
+using var session = context.CreateSession();
+session.InsertAll(messages);
+
+var result = session.Evaluate<AgentMessage>();
+foreach (var match in result.Matches)
+{
+    Console.WriteLine($"Message {match.Fact.Id} matched {match.Rules.Count} rules");
+}
+```
+
+### Rule Preview (WouldMatch)
+
+```csharp
+// Preview which rules would match without executing actions
+var matchingRules = ruleSet.WouldMatch(message);
+foreach (var rule in matchingRules)
+{
+    Console.WriteLine($"Would match: {rule.Name} (priority {rule.Priority})");
+}
+```
+
+### Agent Communication Patterns (Tests)
+
+The test file `Tests/RulesEngine.Linq.Tests/AgentCommunicationRulesTests.cs` demonstrates:
+- Permission rules based on agent roles
+- Chain of command routing
+- Load balancing by workload
+- Escalation workflows
+- Rule composition for complex conditions
+- Territory-based message filtering
+- Audit trail tracking
 
 ## RulesEngine API Patterns
 
