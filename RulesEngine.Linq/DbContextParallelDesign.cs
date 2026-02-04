@@ -7,6 +7,35 @@
 //
 // Status: Design document - not compiled into the main project
 // =============================================================================
+//
+// DESIGN DECISIONS:
+// -----------------
+// 1. DOMAIN OBJECT SEPARATION
+//    The domain models in this file (Agent, Territory, AgentMessage, Family)
+//    are EXAMPLES ONLY. When implementing, domain objects MUST be kept in a
+//    separate project from the RulesEngine.Linq library. The library should
+//    have no knowledge of specific domain types - it works with generics and
+//    schema configuration only. This prevents tight coupling between the
+//    rules infrastructure and any particular domain.
+//
+// 2. SCHEMA VALIDATION
+//    If a rule uses ctx.Facts<T>() for a type T that was not declared in the
+//    schema (via OnModelCreating), the system MUST throw an exception. This is
+//    the only way to guarantee a reliable dependency graph. Permissive behavior
+//    (auto-registration or warnings) would undermine the graph's accuracy.
+//
+// 3. EXPLICIT + IMPLICIT DEPENDENCIES
+//    Both approaches feed into the same DependencyGraph:
+//    - Explicit: DependentRule<T>.WithDependency<TFact>() declares directly
+//    - Implicit: Expression analysis detects ctx.Facts<T>() calls in closures
+//    The schema defines what's POSSIBLE; rules declare/reveal what they USE.
+//
+// 4. FUTURE SERIALIZATION
+//    Data structures should remain simple enough to serialize to strings for
+//    a potential future rule server. Type references may need to become type
+//    name strings. Don't solve now, but don't paint into a corner.
+//
+// =============================================================================
 
 // =============================================================================
 // PART 1: DOMAIN MODELS (Entities in EF Core terms)
