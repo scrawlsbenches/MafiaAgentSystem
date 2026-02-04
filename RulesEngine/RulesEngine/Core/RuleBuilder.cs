@@ -55,15 +55,17 @@ public class RuleBuilder<T>
     /// </summary>
     public RuleBuilder<T> When(Expression<Func<T, bool>> condition)
     {
+        ArgumentNullException.ThrowIfNull(condition);
         _condition = condition;
         return this;
     }
-    
+
     /// <summary>
     /// Adds an AND condition to the existing condition
     /// </summary>
     public RuleBuilder<T> And(Expression<Func<T, bool>> condition)
     {
+        ArgumentNullException.ThrowIfNull(condition);
         if (_condition == null)
         {
             _condition = condition;
@@ -74,12 +76,13 @@ public class RuleBuilder<T>
         }
         return this;
     }
-    
+
     /// <summary>
     /// Adds an OR condition to the existing condition
     /// </summary>
     public RuleBuilder<T> Or(Expression<Func<T, bool>> condition)
     {
+        ArgumentNullException.ThrowIfNull(condition);
         if (_condition == null)
         {
             _condition = condition;
@@ -90,12 +93,30 @@ public class RuleBuilder<T>
         }
         return this;
     }
-    
+
+    /// <summary>
+    /// Negates the current condition.
+    /// Must be called after When() has set an initial condition.
+    /// </summary>
+    public RuleBuilder<T> Not()
+    {
+        if (_condition == null)
+        {
+            throw new InvalidOperationException("Cannot negate: no condition has been set. Call When() first.");
+        }
+
+        var parameter = _condition.Parameters[0];
+        var negated = Expression.Not(_condition.Body);
+        _condition = Expression.Lambda<Func<T, bool>>(negated, parameter);
+        return this;
+    }
+
     /// <summary>
     /// Adds an action to execute when the rule matches
     /// </summary>
     public RuleBuilder<T> Then(Action<T> action)
     {
+        ArgumentNullException.ThrowIfNull(action);
         _actions.Add(action);
         return this;
     }

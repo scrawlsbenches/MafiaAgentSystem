@@ -1216,4 +1216,190 @@ public class FoundationTests
     }
 
     #endregion
+
+    // ============================================================================
+    // SECTION 11: RULEBUILDER NULL VALIDATION
+    // ============================================================================
+    // RuleBuilder methods should fail fast with ArgumentNullException for null inputs.
+    // ============================================================================
+
+    #region RuleBuilder Null Validation
+
+    /// <summary>
+    /// When() with null condition should throw ArgumentNullException.
+    /// </summary>
+    [Test]
+    public void RuleBuilder_When_NullCondition_ThrowsArgumentNullException()
+    {
+        // Arrange
+        var builder = new RuleBuilder<TestFact>();
+
+        // Act & Assert
+        Assert.Throws<ArgumentNullException>(() => builder.When(null!));
+    }
+
+    /// <summary>
+    /// And() with null condition should throw ArgumentNullException.
+    /// </summary>
+    [Test]
+    public void RuleBuilder_And_NullCondition_ThrowsArgumentNullException()
+    {
+        // Arrange
+        var builder = new RuleBuilder<TestFact>()
+            .WithId("TEST")
+            .WithName("Test")
+            .When(f => f.Value > 0);
+
+        // Act & Assert
+        Assert.Throws<ArgumentNullException>(() => builder.And(null!));
+    }
+
+    /// <summary>
+    /// Or() with null condition should throw ArgumentNullException.
+    /// </summary>
+    [Test]
+    public void RuleBuilder_Or_NullCondition_ThrowsArgumentNullException()
+    {
+        // Arrange
+        var builder = new RuleBuilder<TestFact>()
+            .WithId("TEST")
+            .WithName("Test")
+            .When(f => f.Value > 0);
+
+        // Act & Assert
+        Assert.Throws<ArgumentNullException>(() => builder.Or(null!));
+    }
+
+    /// <summary>
+    /// Then() with null action should throw ArgumentNullException.
+    /// </summary>
+    [Test]
+    public void RuleBuilder_Then_NullAction_ThrowsArgumentNullException()
+    {
+        // Arrange
+        var builder = new RuleBuilder<TestFact>()
+            .WithId("TEST")
+            .WithName("Test")
+            .When(f => f.Value > 0);
+
+        // Act & Assert
+        Assert.Throws<ArgumentNullException>(() => builder.Then(null!));
+    }
+
+    #endregion
+
+    // ============================================================================
+    // SECTION 12: RULEBUILDER NOT() METHOD
+    // ============================================================================
+    // The Not() method negates the current condition.
+    // ============================================================================
+
+    #region RuleBuilder Not Method
+
+    /// <summary>
+    /// Not() should negate a simple condition.
+    /// </summary>
+    [Test]
+    public void RuleBuilder_Not_NegatesCondition()
+    {
+        // Arrange & Act
+        var rule = new RuleBuilder<TestFact>()
+            .WithId("NEGATED")
+            .WithName("Negated")
+            .When(f => f.Value > 50)
+            .Not()
+            .Build();
+
+        // Assert - condition is negated: NOT (Value > 50) means Value <= 50
+        Assert.True(rule.Evaluate(new TestFact { Value = 30 }));
+        Assert.True(rule.Evaluate(new TestFact { Value = 50 }));
+        Assert.False(rule.Evaluate(new TestFact { Value = 51 }));
+        Assert.False(rule.Evaluate(new TestFact { Value = 100 }));
+    }
+
+    /// <summary>
+    /// Not() without prior When() should throw InvalidOperationException.
+    /// </summary>
+    [Test]
+    public void RuleBuilder_Not_WithoutCondition_ThrowsInvalidOperationException()
+    {
+        // Arrange
+        var builder = new RuleBuilder<TestFact>()
+            .WithId("TEST")
+            .WithName("Test");
+
+        // Act & Assert
+        Assert.Throws<InvalidOperationException>(() => builder.Not());
+    }
+
+    /// <summary>
+    /// Not() can be chained with And/Or.
+    /// </summary>
+    [Test]
+    public void RuleBuilder_Not_CanBeChainedWithAndOr()
+    {
+        // Arrange & Act
+        // "NOT (Value > 50) AND IsActive" means "Value <= 50 AND IsActive"
+        var rule = new RuleBuilder<TestFact>()
+            .WithId("COMPLEX_NOT")
+            .WithName("Complex Not")
+            .When(f => f.Value > 50)
+            .Not()
+            .And(f => f.IsActive)
+            .Build();
+
+        // Assert
+        Assert.True(rule.Evaluate(new TestFact { Value = 30, IsActive = true }));
+        Assert.False(rule.Evaluate(new TestFact { Value = 30, IsActive = false }));  // Not active
+        Assert.False(rule.Evaluate(new TestFact { Value = 60, IsActive = true }));   // Value > 50
+    }
+
+    /// <summary>
+    /// Not() with closure should work correctly.
+    /// </summary>
+    [Test]
+    public void RuleBuilder_Not_WithClosure_WorksCorrectly()
+    {
+        // Arrange
+        int threshold = 50;
+
+        var rule = new RuleBuilder<TestFact>()
+            .WithId("CLOSURE_NOT")
+            .WithName("Closure Not")
+            .When(f => f.Value > threshold)
+            .Not()
+            .Build();
+
+        // Assert - NOT (Value > 50) means Value <= 50
+        Assert.True(rule.Evaluate(new TestFact { Value = 50 }));
+        Assert.True(rule.Evaluate(new TestFact { Value = 30 }));
+        Assert.False(rule.Evaluate(new TestFact { Value = 51 }));
+
+        // Change threshold - should affect evaluation
+        threshold = 70;
+        Assert.True(rule.Evaluate(new TestFact { Value = 60 }));  // 60 <= 70
+        Assert.False(rule.Evaluate(new TestFact { Value = 80 })); // 80 > 70
+    }
+
+    /// <summary>
+    /// Double negation should return to original.
+    /// </summary>
+    [Test]
+    public void RuleBuilder_Not_DoubleNegation_ReturnsToOriginal()
+    {
+        // Arrange & Act
+        var rule = new RuleBuilder<TestFact>()
+            .WithId("DOUBLE_NOT")
+            .WithName("Double Not")
+            .When(f => f.Value > 50)
+            .Not()
+            .Not()  // Double negation
+            .Build();
+
+        // Assert - back to original: Value > 50
+        Assert.True(rule.Evaluate(new TestFact { Value = 60 }));
+        Assert.False(rule.Evaluate(new TestFact { Value = 40 }));
+    }
+
+    #endregion
 }

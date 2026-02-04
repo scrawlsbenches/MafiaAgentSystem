@@ -18,13 +18,16 @@ Strengthened the base before building on top. All foundation tests pass (506 tes
 | Rule.Execute exception capture | New | [x] Condition exceptions captured in result (not swallowed) |
 | ImmutableRulesEngine validation parity | J-2b | [x] Same null fact validation as RulesEngineCore |
 | DynamicRuleFactory exception type tests | New | [x] Tests adjusted to match .NET Expression API behavior |
-| Tests for all above with high coverage | — | [x] Written - 42 foundation tests |
+| Tests for all above with high coverage | — | [x] Written - 51 foundation tests |
 
 **Summary of Fixes:**
 - `RuleBuilder.cs`: Added null validation in `AddRule`, `AddRules`, and empty ID handling in `Build()`
+- `RuleBuilder.cs`: Added null validation in `When()`, `And()`, `Or()`, `Then()` methods
+- `RuleBuilder.cs`: Added `Not()` method for condition negation with closure support
 - `RulesEngineCore.cs`: Added `ArgumentNullException.ThrowIfNull(fact)` in both engine types
 - `Rule.cs`: Modified `Execute()` to call `_compiledCondition` directly instead of `Evaluate()` to capture exceptions
-- `FoundationTests.cs`: Adjusted 3 tests to match .NET Expression API exception types
+- `RuleValidation.cs`: Fixed `DebuggableRule` to handle `InvocationExpression` and `UnaryExpression` (for combined/negated conditions)
+- `FoundationTests.cs`: Added 9 more tests for null validation and Not() method (51 total)
 
 **Expression combination closure fix (Issue 2)**: ✅ RESOLVED (2026-02-04). Switched from ParameterReplacer to Expression.Invoke in `CombineWithAnd` and `CombineWithOr`. See `RuleBuilder.cs:131-166`.
 
