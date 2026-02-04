@@ -284,30 +284,36 @@ namespace RulesEngine.Linq.Tests
         }
 
         [Test]
-        public void ClosureExtractor_IsSerializable_ThrowsForUnsupportedCollectionTypes()
+        public void ClosureExtractor_IsSerializable_TrueForPrimitiveCollections()
         {
-            // Other collection types throw NotImplementedException with guidance
-            var ex = Assert.Throws<NotImplementedException>(() =>
-                ClosureExtractor.IsSerializableType(typeof(List<int>)));
-            Assert.Contains("List<Int32>", ex.Message); // CLR type name
-            Assert.Contains("string", ex.Message); // Should mention what IS supported
+            // Collections of primitives are supported for IN clause queries
+            Assert.True(ClosureExtractor.IsSerializableType(typeof(List<int>)));
+            Assert.True(ClosureExtractor.IsSerializableType(typeof(List<long>)));
+            Assert.True(ClosureExtractor.IsSerializableType(typeof(List<decimal>)));
+            Assert.True(ClosureExtractor.IsSerializableType(typeof(List<Guid>)));
+            Assert.True(ClosureExtractor.IsSerializableType(typeof(List<DateTime>)));
+            Assert.True(ClosureExtractor.IsSerializableType(typeof(IEnumerable<int>)));
         }
 
         [Test]
-        public void ClosureExtractor_IsSerializable_TrueForStringArray()
+        public void ClosureExtractor_IsSerializable_TrueForPrimitiveArrays()
         {
-            // string[] is supported for IN clause queries
+            // Arrays of primitives are supported for IN clause queries
             Assert.True(ClosureExtractor.IsSerializableType(typeof(string[])));
+            Assert.True(ClosureExtractor.IsSerializableType(typeof(int[])));
+            Assert.True(ClosureExtractor.IsSerializableType(typeof(long[])));
+            Assert.True(ClosureExtractor.IsSerializableType(typeof(decimal[])));
+            Assert.True(ClosureExtractor.IsSerializableType(typeof(Guid[])));
+            Assert.True(ClosureExtractor.IsSerializableType(typeof(DateTime[])));
         }
 
         [Test]
-        public void ClosureExtractor_IsSerializable_ThrowsForUnsupportedArrayTypes()
+        public void ClosureExtractor_IsSerializable_FalseForComplexArraysAndCollections()
         {
-            // Other array types throw NotImplementedException with guidance
-            var ex = Assert.Throws<NotImplementedException>(() =>
-                ClosureExtractor.IsSerializableType(typeof(int[])));
-            Assert.Contains("Int32[]", ex.Message); // CLR type name
-            Assert.Contains("string[]", ex.Message); // Should mention what IS supported
+            // Arrays and collections of complex types return false
+            Assert.False(ClosureExtractor.IsSerializableType(typeof(Order[])));
+            Assert.False(ClosureExtractor.IsSerializableType(typeof(List<Order>)));
+            Assert.False(ClosureExtractor.IsSerializableType(typeof(IEnumerable<Order>)));
         }
 
         [Test]

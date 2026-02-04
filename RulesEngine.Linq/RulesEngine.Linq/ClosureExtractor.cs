@@ -102,18 +102,16 @@ namespace RulesEngine.Linq
             if (type.IsArray)
             {
                 var elementType = type.GetElementType();
+                if (elementType == null)
+                    return false;
 
-                // string[] is supported for IN clause queries
-                if (elementType == typeof(string))
+                // Arrays of serializable types are supported for IN clause queries
+                // Includes: string[], int[], Guid[], decimal[], DateTime[], enum[], etc.
+                if (IsSerializableElementType(elementType))
                     return true;
 
-                // Future array types that may be supported:
-                // - int[] for numeric IN clauses
-                // - Guid[] for identifier IN clauses
-                // - Other primitive arrays as needed
-                throw new NotImplementedException(
-                    $"Array type '{elementType?.Name}[]' is not yet supported for serialization. " +
-                    $"Currently only string[] is supported for IN clause queries.");
+                // Arrays of complex types are not supported
+                return false;
             }
 
             // Generic collection support for IN clauses: .Where(x => myList.Contains(x.Id))
@@ -128,23 +126,38 @@ namespace RulesEngine.Linq
                 var elementType = GetEnumerableElementType(type);
                 if (elementType != null)
                 {
-                    // List<string>, IEnumerable<string>, etc. are supported for IN clause queries
-                    if (elementType == typeof(string))
+                    // Collections of serializable types are supported for IN clause queries
+                    // Includes: List<string>, List<int>, List<Guid>, IEnumerable<decimal>, etc.
+                    if (IsSerializableElementType(elementType))
                         return true;
 
-                    // Collections of complex types (Order, Customer, etc.) are not IN clause candidates
-                    // They're likely navigation properties or subquery-like patterns - return false
-                    if (!elementType.IsPrimitive && !SerializableTypes.Contains(elementType) && !elementType.IsEnum)
-                        return false;
-
-                    // Future collection element types that may be supported:
-                    // - List<int>, IEnumerable<int> for numeric IN clauses
-                    // - List<Guid>, IEnumerable<Guid> for identifier IN clauses
-                    // - Other primitive element types as needed
-                    throw new NotImplementedException(
-                        $"Collection type '{GetFriendlyTypeName(type)}' is not yet supported for serialization. " +
-                        $"Currently only string collections (List<string>, IEnumerable<string>, etc.) are supported for IN clause queries.");
+                    // Collections of complex types (Order, Customer, etc.) are not supported
+                    return false;
                 }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Checks if a type is valid as an element type for IN clause collections.
+        /// Supports primitives, common value types, strings, and enums.
+        /// </summary>
+        private static bool IsSerializableElementType(Type elementType)
+        {
+            // Direct match in whitelist
+            if (SerializableTypes.Contains(elementType))
+                return true;
+
+            // Enums are serializable
+            if (elementType.IsEnum)
+                return true;
+
+            // Nullable<T> where T is serializable
+            if (elementType.IsGenericType && elementType.GetGenericTypeDefinition() == typeof(Nullable<>))
+            {
+                var underlyingType = Nullable.GetUnderlyingType(elementType);
+                return underlyingType != null && IsSerializableElementType(underlyingType);
             }
 
             return false;
