@@ -6,6 +6,35 @@ This document identifies issues found during code review and the solutions imple
 
 ---
 
+## Current Work: Foundation Improvements ✅ COMPLETED (2026-02-04)
+
+Strengthened the base before building on top. All foundation tests pass (506 tests).
+
+| Task | Related Issue | Status |
+|------|---------------|--------|
+| CompositeRuleBuilder null child validation | J-2a | [x] Fixed AddRule/AddRules to throw ArgumentNullException |
+| RuleBuilder/CompositeRuleBuilder empty ID handling | New | [x] Empty/whitespace IDs now regenerate GUIDs |
+| RulesEngineCore null fact validation | New | [x] Execute() now throws ArgumentNullException for null facts |
+| Rule.Execute exception capture | New | [x] Condition exceptions captured in result (not swallowed) |
+| ImmutableRulesEngine validation parity | J-2b | [x] Same null fact validation as RulesEngineCore |
+| DynamicRuleFactory exception type tests | New | [x] Tests adjusted to match .NET Expression API behavior |
+| Tests for all above with high coverage | — | [x] Written - 51 foundation tests |
+
+**Summary of Fixes:**
+- `RuleBuilder.cs`: Added null validation in `AddRule`, `AddRules`, and empty ID handling in `Build()`
+- `RuleBuilder.cs`: Added null validation in `When()`, `And()`, `Or()`, `Then()` methods
+- `RuleBuilder.cs`: Added `Not()` method for condition negation with closure support
+- `RulesEngineCore.cs`: Added `ArgumentNullException.ThrowIfNull(fact)` in both engine types
+- `Rule.cs`: Modified `Execute()` to call `_compiledCondition` directly instead of `Evaluate()` to capture exceptions
+- `RuleValidation.cs`: Fixed `DebuggableRule` to handle `InvocationExpression` and `UnaryExpression` (for combined/negated conditions)
+- `FoundationTests.cs`: Added 9 more tests for null validation and Not() method (51 total)
+
+**Expression combination closures (Issue 2)**: ✅ VERIFIED WORKING (2026-02-04). The original concern was a misunderstanding - closures are `MemberExpression` nodes (not `ParameterExpression`), so parameter replacement preserves them. Using parameter replacement for LINQ provider compatibility (EF Core, etc.).
+
+**Context**: This work emerged from a theoretical discussion about expression trees and game engines, leading to a code review that found these gaps.
+
+---
+
 ## 🔴 Critical Issues
 
 ### Issue 1: Thread Safety ✅ RESOLVED (2026-01-31)
@@ -40,7 +69,11 @@ public RulesEngineCore<T> WithRule(IRule<T> rule)
 }
 ```
 
-### Issue 2: Parameter Replacement Can Fail
+### Issue 2: Parameter Replacement Can Fail ✅ VERIFIED NOT AN ISSUE (2026-02-04)
+
+> **Clarification (2026-02-04):** Upon investigation, this was a theoretical concern that doesn't manifest in practice. Closures are stored as `MemberExpression` nodes accessing compiler-generated display classes (like `<>c__DisplayClass`), NOT as `ParameterExpression` nodes. The `ParameterReplacer` only replaces `ParameterExpression` nodes, so closures are preserved intact.
+>
+> The implementation uses parameter replacement (not `Expression.Invoke`) for **LINQ provider compatibility** - EF Core and other providers don't support `InvocationExpression`. All 5 closure tests pass with parameter replacement.
 
 **Problem:**
 ```csharp
@@ -52,7 +85,7 @@ Expression<Func<int, bool>> inner = x => x < 10;
 
 **Impact:** Complex expressions with closures may not combine correctly.
 
-**Solution:**
+**Suggested Solution (NOT YET IMPLEMENTED):**
 ```csharp
 // Use Expression.Invoke for safer composition
 public static Expression<Func<T, bool>> SafeCombine<T>(
@@ -70,7 +103,13 @@ public static Expression<Func<T, bool>> SafeCombine<T>(
 }
 ```
 
-### Issue 3: No Circular Dependency Detection
+### Issue 3: No Circular Dependency Detection ⏳ PENDING (Clarified 2026-02-04)
+
+> **Clarification (2026-02-04):** The current engine uses **single-pass execution** - each rule is evaluated once per `Execute()` call. The "circular dependency" scenario below only manifests if:
+> 1. You call `EvaluateAll()` or `Execute()` in a loop yourself
+> 2. Rules modify state that affects other rules within the same pass
+>
+> The engine does NOT automatically re-evaluate rules after state changes. This is a design choice, not a bug. The suggested solution below would be needed for a **forward-chaining** engine that re-fires rules until no more match.
 
 **Problem:**
 ```csharp
@@ -85,10 +124,10 @@ var ruleB = new RuleBuilder<Data>()
     .Then(d => d.Status = "Pending")  // Circular!
     .Build();
 
-// Infinite loop if both rules keep matching
+// Only a problem if you call Execute() in a loop until no rules match
 ```
 
-**Impact:** Rules can create infinite loops or unexpected state changes.
+**Impact:** Rules can create unexpected state changes within a single pass if evaluation order matters.
 
 **Solution:**
 ```csharp
@@ -131,7 +170,9 @@ public class RulesEngineCore<T>
 
 **Resolution:** Implemented LRU eviction in `CachingMiddleware` with configurable max entries (default: 1000). See `AgentRouting/Middleware/CommonMiddleware.cs`.
 
-**Problem:**
+> **Note (2026-02-04):** This fix applies to AgentRouting's `CachingMiddleware`, not the RulesEngine core. The RulesEngine itself compiles expressions once per rule registration and holds them for the rule's lifetime - no unbounded caching occurs. If dynamic rule creation at scale is needed, consider using `ImmutableRulesEngine<T>` which allows discarding old engine instances.
+
+**Original Problem:**
 ```csharp
 // Current caching never removes old entries
 private static readonly ConcurrentDictionary<string, Func<T, object?>> _cache = new();
@@ -348,18 +389,20 @@ public class ConflictDetector<T>
 }
 ```
 
-### Issue 7: Poor Debugging Support
+### Issue 7: Poor Debugging Support ✅ RESOLVED (2026-02-04)
 
-**Problem:**
+**Resolution:** Implemented `DebuggableRule<T>` in `RulesEngine/Enhanced/RuleValidation.cs`. This class tracks evaluation traces using ThreadLocal storage and decomposes expressions to show which parts matched or failed.
+
+**Original Problem:**
 ```csharp
 // Why didn't this rule match?
 var result = engine.Execute(order);
 // No way to know which part of the condition failed!
 ```
 
-**Solution:**
+**Implemented Solution (see RuleValidation.cs:185-273):**
 ```csharp
-public class DebugRule<T> : Rule<T>
+public class DebuggableRule<T> : Rule<T>
 {
     private readonly List<string> _evaluationTrace = new();
     

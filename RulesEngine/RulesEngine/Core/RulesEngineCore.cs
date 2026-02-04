@@ -394,6 +394,7 @@ public class RulesEngineCore<T> : IRulesEngine<T>
     /// <returns>The result of rule execution</returns>
     public RulesEngineResult Execute(T fact, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(fact);
         cancellationToken.ThrowIfCancellationRequested();
 
         var result = new RulesEngineResult();
@@ -991,6 +992,7 @@ public class ImmutableRulesEngine<T>
     /// <returns>The result of rule execution</returns>
     public RulesEngineResult Execute(T fact, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(fact);
         cancellationToken.ThrowIfCancellationRequested();
 
         var result = new RulesEngineResult();

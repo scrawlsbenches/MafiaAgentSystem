@@ -55,15 +55,17 @@ public class RuleBuilder<T>
     /// </summary>
     public RuleBuilder<T> When(Expression<Func<T, bool>> condition)
     {
+        ArgumentNullException.ThrowIfNull(condition);
         _condition = condition;
         return this;
     }
-    
+
     /// <summary>
     /// Adds an AND condition to the existing condition
     /// </summary>
     public RuleBuilder<T> And(Expression<Func<T, bool>> condition)
     {
+        ArgumentNullException.ThrowIfNull(condition);
         if (_condition == null)
         {
             _condition = condition;
@@ -74,12 +76,13 @@ public class RuleBuilder<T>
         }
         return this;
     }
-    
+
     /// <summary>
     /// Adds an OR condition to the existing condition
     /// </summary>
     public RuleBuilder<T> Or(Expression<Func<T, bool>> condition)
     {
+        ArgumentNullException.ThrowIfNull(condition);
         if (_condition == null)
         {
             _condition = condition;
@@ -90,12 +93,30 @@ public class RuleBuilder<T>
         }
         return this;
     }
-    
+
+    /// <summary>
+    /// Negates the current condition.
+    /// Must be called after When() has set an initial condition.
+    /// </summary>
+    public RuleBuilder<T> Not()
+    {
+        if (_condition == null)
+        {
+            throw new InvalidOperationException("Cannot negate: no condition has been set. Call When() first.");
+        }
+
+        var parameter = _condition.Parameters[0];
+        var negated = Expression.Not(_condition.Body);
+        _condition = Expression.Lambda<Func<T, bool>>(negated, parameter);
+        return this;
+    }
+
     /// <summary>
     /// Adds an action to execute when the rule matches
     /// </summary>
     public RuleBuilder<T> Then(Action<T> action)
     {
+        ArgumentNullException.ThrowIfNull(action);
         _actions.Add(action);
         return this;
     }
@@ -109,45 +130,64 @@ public class RuleBuilder<T>
         {
             throw new InvalidOperationException("Rule must have a condition");
         }
-        
-        var rule = new Rule<T>(_id, _name, _condition, _description, _priority);
-        
+
+        // Ensure ID is not empty or whitespace - regenerate GUID if so
+        var finalId = string.IsNullOrWhiteSpace(_id) ? Guid.NewGuid().ToString() : _id;
+
+        var rule = new Rule<T>(finalId, _name, _condition, _description, _priority);
+
         foreach (var action in _actions)
         {
             rule.WithAction(action);
         }
-        
+
         return rule;
     }
     
+    /// <summary>
+    /// Combines two expressions with AND using parameter replacement.
+    /// This approach is compatible with LINQ providers (EF Core, etc.) because
+    /// it produces standard expression nodes without InvocationExpression.
+    ///
+    /// Closures are preserved because they're stored as MemberExpression nodes
+    /// (accessing compiler-generated display classes), not ParameterExpression nodes.
+    /// </summary>
     private static Expression<Func<T, bool>> CombineWithAnd(
         Expression<Func<T, bool>> left,
         Expression<Func<T, bool>> right)
     {
         var parameter = Expression.Parameter(typeof(T), "x");
-        
+
         var leftBody = ReplaceParameter(left.Body, left.Parameters[0], parameter);
         var rightBody = ReplaceParameter(right.Body, right.Parameters[0], parameter);
-        
+
         var andExpression = Expression.AndAlso(leftBody, rightBody);
-        
+
         return Expression.Lambda<Func<T, bool>>(andExpression, parameter);
     }
-    
+
+    /// <summary>
+    /// Combines two expressions with OR using parameter replacement.
+    /// This approach is compatible with LINQ providers (EF Core, etc.) because
+    /// it produces standard expression nodes without InvocationExpression.
+    ///
+    /// Closures are preserved because they're stored as MemberExpression nodes
+    /// (accessing compiler-generated display classes), not ParameterExpression nodes.
+    /// </summary>
     private static Expression<Func<T, bool>> CombineWithOr(
         Expression<Func<T, bool>> left,
         Expression<Func<T, bool>> right)
     {
         var parameter = Expression.Parameter(typeof(T), "x");
-        
+
         var leftBody = ReplaceParameter(left.Body, left.Parameters[0], parameter);
         var rightBody = ReplaceParameter(right.Body, right.Parameters[0], parameter);
-        
+
         var orExpression = Expression.OrElse(leftBody, rightBody);
-        
+
         return Expression.Lambda<Func<T, bool>>(orExpression, parameter);
     }
-    
+
     private static Expression ReplaceParameter(
         Expression expression,
         ParameterExpression oldParameter,
@@ -155,18 +195,18 @@ public class RuleBuilder<T>
     {
         return new ParameterReplacer(oldParameter, newParameter).Visit(expression);
     }
-    
+
     private class ParameterReplacer : ExpressionVisitor
     {
         private readonly ParameterExpression _oldParameter;
         private readonly ParameterExpression _newParameter;
-        
+
         public ParameterReplacer(ParameterExpression oldParameter, ParameterExpression newParameter)
         {
             _oldParameter = oldParameter;
             _newParameter = newParameter;
         }
-        
+
         protected override Expression VisitParameter(ParameterExpression node)
         {
             return node == _oldParameter ? _newParameter : base.VisitParameter(node);
@@ -218,12 +258,21 @@ public class CompositeRuleBuilder<T>
     
     public CompositeRuleBuilder<T> AddRule(IRule<T> rule)
     {
+        ArgumentNullException.ThrowIfNull(rule);
         _rules.Add(rule);
         return this;
     }
-    
+
     public CompositeRuleBuilder<T> AddRules(params IRule<T>[] rules)
     {
+        ArgumentNullException.ThrowIfNull(rules);
+        for (int i = 0; i < rules.Length; i++)
+        {
+            if (rules[i] == null)
+            {
+                throw new ArgumentException($"Rule at index {i} is null. All rules must be non-null.", nameof(rules));
+            }
+        }
         _rules.AddRange(rules);
         return this;
     }
@@ -234,7 +283,10 @@ public class CompositeRuleBuilder<T>
         {
             throw new InvalidOperationException("Composite rule must have at least one child rule");
         }
-        
-        return new CompositeRule<T>(_id, _name, _operator, _rules, _description, _priority);
+
+        // Ensure ID is not empty or whitespace - regenerate GUID if so
+        var finalId = string.IsNullOrWhiteSpace(_id) ? Guid.NewGuid().ToString() : _id;
+
+        return new CompositeRule<T>(finalId, _name, _operator, _rules, _description, _priority);
     }
 }

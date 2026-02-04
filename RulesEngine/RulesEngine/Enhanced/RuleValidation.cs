@@ -253,11 +253,31 @@ public class DebuggableRule<T> : Rule<T>
                 DecomposeRecursive(binary.Left, parts);
                 DecomposeRecursive(binary.Right, parts);
                 break;
-                
+
+            case UnaryExpression unary:
+                // Handle Not() negations
+                parts.Add((unary, FormatExpression(unary)));
+                DecomposeRecursive(unary.Operand, parts);
+                break;
+
+            case InvocationExpression invoke:
+                // Handle Expression.Invoke from combined expressions (closure fix)
+                // The invoked expression is a lambda - extract and decompose it
+                if (invoke.Expression is LambdaExpression lambda)
+                {
+                    parts.Add((invoke, $"Invoke({FormatExpression(lambda.Body)})"));
+                    DecomposeRecursive(lambda.Body, parts);
+                }
+                else
+                {
+                    parts.Add((invoke, FormatExpression(invoke)));
+                }
+                break;
+
             case MethodCallExpression method:
                 parts.Add((method, FormatExpression(method)));
                 break;
-                
+
             case MemberExpression member:
                 parts.Add((member, FormatExpression(member)));
                 break;
