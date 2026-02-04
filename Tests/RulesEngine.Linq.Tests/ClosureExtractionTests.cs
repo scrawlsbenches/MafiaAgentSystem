@@ -271,7 +271,23 @@ namespace RulesEngine.Linq.Tests
             Assert.False(ClosureExtractor.IsSerializableType(typeof(Order)));
             Assert.False(ClosureExtractor.IsSerializableType(typeof(object)));
             Assert.False(ClosureExtractor.IsSerializableType(typeof(List<int>)));
-            Assert.False(ClosureExtractor.IsSerializableType(typeof(int[])));
+        }
+
+        [Test]
+        public void ClosureExtractor_IsSerializable_TrueForStringArray()
+        {
+            // string[] is supported for IN clause queries
+            Assert.True(ClosureExtractor.IsSerializableType(typeof(string[])));
+        }
+
+        [Test]
+        public void ClosureExtractor_IsSerializable_ThrowsForUnsupportedArrayTypes()
+        {
+            // Other array types throw NotImplementedException with guidance
+            var ex = Assert.Throws<NotImplementedException>(() =>
+                ClosureExtractor.IsSerializableType(typeof(int[])));
+            Assert.Contains("Int32[]", ex.Message); // CLR type name
+            Assert.Contains("string[]", ex.Message); // Should mention what IS supported
         }
 
         [Test]
@@ -329,16 +345,38 @@ namespace RulesEngine.Linq.Tests
         }
 
         [Test]
-        public void ClosureExtractor_ValidateClosures_FailsForArrayCapture()
+        public void ClosureExtractor_ValidateClosures_PassesForStringArrayCapture()
         {
+            // string[] is supported for IN clause queries
             var allowedIds = new[] { "A", "B", "C" };
             Expression<Func<Order, bool>> expr = o => allowedIds.Contains(o.Id);
 
             var extractor = new ClosureExtractor();
             var result = extractor.ValidateClosures(expr);
 
-            Assert.False(result.IsValid);
-            Assert.True(result.Errors.Any(e => e.Contains("allowedIds") || e.Contains("array")));
+            Assert.True(result.IsValid);
+            Assert.Equal(0, result.Errors.Count);
+        }
+
+        [Test]
+        public void ClosureExtractor_ExtractsStringArrayValue()
+        {
+            var allowedIds = new[] { "name1", "name2" };
+            Expression<Func<Order, bool>> expr = o => allowedIds.Contains(o.Id);
+
+            var extractor = new ClosureExtractor();
+            var closures = extractor.ExtractClosures(expr);
+
+            Assert.Equal(1, closures.Count);
+            Assert.Equal("allowedIds", closures[0].Name);
+            Assert.Equal(typeof(string[]), closures[0].Type);
+            Assert.True(closures[0].IsSerializable);
+
+            var values = closures[0].Value as string[];
+            Assert.NotNull(values);
+            Assert.Equal(2, values!.Length);
+            Assert.Equal("name1", values[0]);
+            Assert.Equal("name2", values[1]);
         }
 
         #endregion

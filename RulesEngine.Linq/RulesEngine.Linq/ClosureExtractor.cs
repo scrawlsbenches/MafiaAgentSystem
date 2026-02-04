@@ -98,13 +98,28 @@ namespace RulesEngine.Linq
                 return underlyingType != null && IsSerializableType(underlyingType);
             }
 
-            // TODO: Consider supporting arrays of primitives for IN clauses
-            // This would require: if (type.IsArray) return IsSerializableType(type.GetElementType());
-            // But arrays complicate serialization, so leaving as non-serializable for now
+            // Array support for IN clauses: .Where(x => myValues.Contains(x.Id))
+            if (type.IsArray)
+            {
+                var elementType = type.GetElementType();
 
-            // TODO: Consider supporting IReadOnlyList<T> of primitives for IN clauses
-            // EF Core supports: .Where(x => ids.Contains(x.Id)) where ids is a list
-            // This is a complex feature - marking as future work
+                // string[] is supported for IN clause queries
+                if (elementType == typeof(string))
+                    return true;
+
+                // Future array types that may be supported:
+                // - int[] for numeric IN clauses
+                // - Guid[] for identifier IN clauses
+                // - Other primitive arrays as needed
+                throw new NotImplementedException(
+                    $"Array type '{elementType?.Name}[]' is not yet supported for serialization. " +
+                    $"Currently only string[] is supported for IN clause queries.");
+            }
+
+            // TODO: Consider supporting IReadOnlyList<T> for IN clauses
+            // EF Core supports: .Where(x => ids.Contains(x.Id)) where ids is List<string>
+            // Implementation would check: type.IsGenericType && implements IReadOnlyList<T>
+            // Then verify the element type is serializable
 
             return false;
         }
