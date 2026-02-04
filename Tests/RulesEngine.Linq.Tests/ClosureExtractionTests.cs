@@ -270,7 +270,27 @@ namespace RulesEngine.Linq.Tests
         {
             Assert.False(ClosureExtractor.IsSerializableType(typeof(Order)));
             Assert.False(ClosureExtractor.IsSerializableType(typeof(object)));
-            Assert.False(ClosureExtractor.IsSerializableType(typeof(List<int>)));
+        }
+
+        [Test]
+        public void ClosureExtractor_IsSerializable_TrueForStringCollections()
+        {
+            // String collections are supported for IN clause queries
+            Assert.True(ClosureExtractor.IsSerializableType(typeof(List<string>)));
+            Assert.True(ClosureExtractor.IsSerializableType(typeof(IList<string>)));
+            Assert.True(ClosureExtractor.IsSerializableType(typeof(IReadOnlyList<string>)));
+            Assert.True(ClosureExtractor.IsSerializableType(typeof(ICollection<string>)));
+            Assert.True(ClosureExtractor.IsSerializableType(typeof(IEnumerable<string>)));
+        }
+
+        [Test]
+        public void ClosureExtractor_IsSerializable_ThrowsForUnsupportedCollectionTypes()
+        {
+            // Other collection types throw NotImplementedException with guidance
+            var ex = Assert.Throws<NotImplementedException>(() =>
+                ClosureExtractor.IsSerializableType(typeof(List<int>)));
+            Assert.Contains("List<Int32>", ex.Message); // CLR type name
+            Assert.Contains("string", ex.Message); // Should mention what IS supported
         }
 
         [Test]
@@ -332,16 +352,39 @@ namespace RulesEngine.Linq.Tests
         }
 
         [Test]
-        public void ClosureExtractor_ValidateClosures_FailsForListCapture()
+        public void ClosureExtractor_ValidateClosures_PassesForListStringCapture()
         {
+            // List<string> is supported for IN clause queries
             var allowedIds = new List<string> { "A", "B", "C" };
             Expression<Func<Order, bool>> expr = o => allowedIds.Contains(o.Id);
 
             var extractor = new ClosureExtractor();
             var result = extractor.ValidateClosures(expr);
 
-            Assert.False(result.IsValid);
-            Assert.True(result.Errors.Any(e => e.Contains("allowedIds") || e.Contains("List")));
+            Assert.True(result.IsValid);
+            Assert.Equal(0, result.Errors.Count);
+        }
+
+        [Test]
+        public void ClosureExtractor_ExtractsListStringValue()
+        {
+            var allowedIds = new List<string> { "name1", "name2", "name3" };
+            Expression<Func<Order, bool>> expr = o => allowedIds.Contains(o.Id);
+
+            var extractor = new ClosureExtractor();
+            var closures = extractor.ExtractClosures(expr);
+
+            Assert.Equal(1, closures.Count);
+            Assert.Equal("allowedIds", closures[0].Name);
+            Assert.Equal(typeof(List<string>), closures[0].Type);
+            Assert.True(closures[0].IsSerializable);
+
+            var values = closures[0].Value as List<string>;
+            Assert.NotNull(values);
+            Assert.Equal(3, values!.Count);
+            Assert.Equal("name1", values[0]);
+            Assert.Equal("name2", values[1]);
+            Assert.Equal("name3", values[2]);
         }
 
         [Test]

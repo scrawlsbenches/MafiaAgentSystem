@@ -116,12 +116,55 @@ namespace RulesEngine.Linq
                     $"Currently only string[] is supported for IN clause queries.");
             }
 
-            // TODO: Consider supporting IReadOnlyList<T> for IN clauses
-            // EF Core supports: .Where(x => ids.Contains(x.Id)) where ids is List<string>
-            // Implementation would check: type.IsGenericType && implements IReadOnlyList<T>
-            // Then verify the element type is serializable
+            // Generic collection support for IN clauses: .Where(x => myList.Contains(x.Id))
+            // Supports List<T>, IList<T>, IReadOnlyList<T>, ICollection<T>, IEnumerable<T>
+            // Excludes IQueryable<T> - those are subqueries, not IN clause collections
+            if (type.IsGenericType)
+            {
+                // IQueryable<T> is a subquery reference, not a serializable collection
+                if (typeof(IQueryable).IsAssignableFrom(type))
+                    return false;
+
+                var elementType = GetEnumerableElementType(type);
+                if (elementType != null)
+                {
+                    // List<string>, IEnumerable<string>, etc. are supported for IN clause queries
+                    if (elementType == typeof(string))
+                        return true;
+
+                    // Collections of complex types (Order, Customer, etc.) are not IN clause candidates
+                    // They're likely navigation properties or subquery-like patterns - return false
+                    if (!elementType.IsPrimitive && !SerializableTypes.Contains(elementType) && !elementType.IsEnum)
+                        return false;
+
+                    // Future collection element types that may be supported:
+                    // - List<int>, IEnumerable<int> for numeric IN clauses
+                    // - List<Guid>, IEnumerable<Guid> for identifier IN clauses
+                    // - Other primitive element types as needed
+                    throw new NotImplementedException(
+                        $"Collection type '{GetFriendlyTypeName(type)}' is not yet supported for serialization. " +
+                        $"Currently only string collections (List<string>, IEnumerable<string>, etc.) are supported for IN clause queries.");
+                }
+            }
 
             return false;
+        }
+
+        /// <summary>
+        /// Gets the element type if the type implements IEnumerable&lt;T&gt;.
+        /// Returns null if not a generic enumerable.
+        /// </summary>
+        private static Type? GetEnumerableElementType(Type type)
+        {
+            // Check if it's IEnumerable<T> directly
+            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+                return type.GetGenericArguments()[0];
+
+            // Check implemented interfaces for IEnumerable<T>
+            var enumerableInterface = type.GetInterfaces()
+                .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>));
+
+            return enumerableInterface?.GetGenericArguments()[0];
         }
 
         #endregion
