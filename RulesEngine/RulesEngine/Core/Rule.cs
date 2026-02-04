@@ -171,7 +171,9 @@ public class Rule<T> : IRule<T>
         bool conditionMatched;
         try
         {
-            conditionMatched = Evaluate(fact);
+            // Call _compiledCondition directly (not Evaluate) so we can catch exceptions
+            // Evaluate swallows exceptions and returns false, which would hide the error
+            conditionMatched = _compiledCondition(fact);
             if (!conditionMatched)
             {
                 return RuleResult.NotMatched(Id, Name);

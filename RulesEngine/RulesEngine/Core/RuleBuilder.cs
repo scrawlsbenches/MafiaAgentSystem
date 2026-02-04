@@ -109,14 +109,17 @@ public class RuleBuilder<T>
         {
             throw new InvalidOperationException("Rule must have a condition");
         }
-        
-        var rule = new Rule<T>(_id, _name, _condition, _description, _priority);
-        
+
+        // Ensure ID is not empty or whitespace - regenerate GUID if so
+        var finalId = string.IsNullOrWhiteSpace(_id) ? Guid.NewGuid().ToString() : _id;
+
+        var rule = new Rule<T>(finalId, _name, _condition, _description, _priority);
+
         foreach (var action in _actions)
         {
             rule.WithAction(action);
         }
-        
+
         return rule;
     }
     
@@ -218,12 +221,21 @@ public class CompositeRuleBuilder<T>
     
     public CompositeRuleBuilder<T> AddRule(IRule<T> rule)
     {
+        ArgumentNullException.ThrowIfNull(rule);
         _rules.Add(rule);
         return this;
     }
-    
+
     public CompositeRuleBuilder<T> AddRules(params IRule<T>[] rules)
     {
+        ArgumentNullException.ThrowIfNull(rules);
+        for (int i = 0; i < rules.Length; i++)
+        {
+            if (rules[i] == null)
+            {
+                throw new ArgumentException($"Rule at index {i} is null. All rules must be non-null.", nameof(rules));
+            }
+        }
         _rules.AddRange(rules);
         return this;
     }
@@ -234,7 +246,10 @@ public class CompositeRuleBuilder<T>
         {
             throw new InvalidOperationException("Composite rule must have at least one child rule");
         }
-        
-        return new CompositeRule<T>(_id, _name, _operator, _rules, _description, _priority);
+
+        // Ensure ID is not empty or whitespace - regenerate GUID if so
+        var finalId = string.IsNullOrWhiteSpace(_id) ? Guid.NewGuid().ToString() : _id;
+
+        return new CompositeRule<T>(finalId, _name, _operator, _rules, _description, _priority);
     }
 }
