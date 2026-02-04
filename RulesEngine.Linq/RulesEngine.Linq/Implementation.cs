@@ -293,8 +293,16 @@ namespace RulesEngine.Linq
                     .GetMethod(nameof(EvaluateFactSet), BindingFlags.NonPublic | BindingFlags.Instance)!
                     .MakeGenericMethod(type);
 
-                var typeResult = evaluateMethod.Invoke(this, new[] { factSetObj });
-                results[type] = typeResult!;
+                object typeResult;
+                try
+                {
+                    typeResult = evaluateMethod.Invoke(this, new[] { factSetObj })!;
+                }
+                catch (TargetInvocationException ex) when (ex.InnerException != null)
+                {
+                    throw ex.InnerException;
+                }
+                results[type] = typeResult;
 
                 var matchesProperty = typeResult!.GetType().GetProperty("Matches")!;
                 var matches = (IList)matchesProperty.GetValue(typeResult)!;
