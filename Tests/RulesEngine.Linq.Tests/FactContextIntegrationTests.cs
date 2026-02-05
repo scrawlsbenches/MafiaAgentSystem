@@ -1031,5 +1031,178 @@ namespace RulesEngine.Linq.Tests
         }
 
         #endregion
+
+        #region Condition Projection (DependentRule → IRule<T>.Condition contract)
+
+        [Test]
+        public void DependentRule_WithContextCondition_ConditionDoesNotThrow()
+        {
+            // Arrange - a rule with (m, ctx) => ... condition
+            var rule = new DependentRule<AgentMessage>(
+                "test", "Test rule",
+                (m, ctx) => ctx.Facts<Agent>().Any(a => a.Status == AgentStatus.Available));
+
+            // Act & Assert - accessing Condition should NOT throw
+            var condition = rule.Condition;
+            Assert.NotNull(condition);
+        }
+
+        [Test]
+        public void DependentRule_WithSimpleCondition_ConditionWorksDirectly()
+        {
+            // Arrange - a rule with simple (m) => ... condition
+            var rule = new DependentRule<AgentMessage>(
+                "test", "Test rule",
+                (AgentMessage m) => m.Type == MessageType.Request);
+
+            // Act
+            var condition = rule.Condition;
+            var compiled = condition.Compile();
+
+            // Assert - simple condition compiles and evaluates normally
+            Assert.True(compiled(new AgentMessage { Type = MessageType.Request }));
+            Assert.False(compiled(new AgentMessage { Type = MessageType.Alert }));
+        }
+
+        [Test]
+        public void DependentRule_ContextCondition_ExposesOriginalExpression()
+        {
+            // Arrange
+            var rule = new DependentRule<AgentMessage>(
+                "test", "Test",
+                (m, ctx) => ctx.Facts<Agent>().Any());
+
+            // Act
+            var contextCondition = rule.ContextCondition;
+
+            // Assert - the original two-parameter expression is accessible
+            Assert.NotNull(contextCondition);
+            Assert.Equal(2, contextCondition!.Parameters.Count);
+        }
+
+        [Test]
+        public void DependentRule_ContextCondition_IsNullForSimpleCondition()
+        {
+            // Arrange
+            var rule = new DependentRule<AgentMessage>(
+                "test", "Test",
+                (AgentMessage m) => m.Type == MessageType.Request);
+
+            // Act & Assert
+            Assert.Null(rule.ContextCondition);
+        }
+
+        [Test]
+        public void DependentRule_ProjectedCondition_IsSingleParameter()
+        {
+            // Arrange
+            var rule = new DependentRule<AgentMessage>(
+                "test", "Test",
+                (m, ctx) => m.Type == MessageType.Request &&
+                            ctx.Facts<Agent>().Any(a => a.Status == AgentStatus.Available));
+
+            // Act
+            var condition = rule.Condition;
+
+            // Assert - projected to single-parameter lambda
+            Assert.Equal(1, condition.Parameters.Count);
+            Assert.Equal(typeof(AgentMessage), condition.Parameters[0].Type);
+        }
+
+        [Test]
+        public void DependentRule_ProjectedCondition_ContainsFactQueryExpression()
+        {
+            // Arrange
+            var rule = new DependentRule<AgentMessage>(
+                "test", "Test",
+                (m, ctx) => ctx.Facts<Agent>().Any(a => a.Status == AgentStatus.Available));
+
+            // Act
+            var condition = rule.Condition;
+
+            // Assert - the projected expression contains FactQueryExpression for Agent
+            var detector = new FactQueryExpressionFinder();
+            detector.Visit(condition);
+            Assert.True(detector.FoundTypes.Contains(typeof(Agent)),
+                "Projected condition should contain FactQueryExpression for Agent");
+        }
+
+        [Test]
+        public void DependentRule_ProjectedCondition_MultipleFactTypes()
+        {
+            // Arrange - rule that queries both Agent and Territory
+            var rule = new DependentRule<AgentMessage>(
+                "test", "Test",
+                (m, ctx) => ctx.Facts<Agent>().Any(a => a.Status == AgentStatus.Available) &&
+                            ctx.Facts<Territory>().Any(t => t.Value > 1000));
+
+            // Act
+            var condition = rule.Condition;
+
+            // Assert - both fact types appear as FactQueryExpression
+            var detector = new FactQueryExpressionFinder();
+            detector.Visit(condition);
+            Assert.True(detector.FoundTypes.Contains(typeof(Agent)),
+                "Should contain FactQueryExpression for Agent");
+            Assert.True(detector.FoundTypes.Contains(typeof(Territory)),
+                "Should contain FactQueryExpression for Territory");
+        }
+
+        [Test]
+        public void DependentRule_ProjectedCondition_WorksWithRewriter()
+        {
+            // Arrange
+            using var context = new RulesContext();
+
+            var rule = new DependentRule<AgentMessage>(
+                "test", "Test",
+                (m, ctx) => m.Type == MessageType.Request &&
+                            ctx.Facts<Agent>().Any(a => a.Status == AgentStatus.Available));
+
+            context.GetRuleSet<AgentMessage>().Add(rule);
+
+            using var session = context.CreateSession();
+            session.Insert(new Agent { Id = "A1", Status = AgentStatus.Available });
+
+            var message = new AgentMessage { Id = "M1", Type = MessageType.Request };
+            session.Insert(message);
+
+            // Act - the projected Condition should be rewritable with FactQueryRewriter
+            var projected = rule.Condition;
+            var rewriter = new FactQueryRewriter(type =>
+            {
+                // Provide actual facts from session
+                var factContext = (IFactContext)session;
+                if (type == typeof(Agent))
+                    return factContext.Facts<Agent>();
+                return Enumerable.Empty<object>().AsQueryable();
+            });
+
+            var rewritten = (System.Linq.Expressions.Expression<Func<AgentMessage, bool>>)rewriter.Rewrite(projected);
+            var compiled = rewritten.Compile();
+
+            // Assert - should evaluate correctly after rewriting
+            Assert.True(compiled(message));
+        }
+
+        /// <summary>
+        /// Helper visitor that finds FactQueryExpression nodes and records their fact types.
+        /// </summary>
+        private class FactQueryExpressionFinder : System.Linq.Expressions.ExpressionVisitor
+        {
+            public HashSet<Type> FoundTypes { get; } = new();
+
+            protected override System.Linq.Expressions.Expression VisitExtension(
+                System.Linq.Expressions.Expression node)
+            {
+                if (node is FactQueryExpression fqe)
+                {
+                    FoundTypes.Add(fqe.FactType);
+                }
+                return base.VisitExtension(node);
+            }
+        }
+
+        #endregion
     }
 }

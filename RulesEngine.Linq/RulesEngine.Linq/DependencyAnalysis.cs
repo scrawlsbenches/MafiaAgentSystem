@@ -833,6 +833,74 @@ namespace RulesEngine.Linq.Dependencies
 
     #endregion
 
+    #region Context Condition Projection
+
+    /// <summary>
+    /// Projects a two-parameter context-aware condition into a single-parameter
+    /// condition by replacing IFactContext.Facts&lt;T&gt;() calls with FactQueryExpression nodes.
+    ///
+    /// This unifies DependentRule conditions with the closure-capture pattern at the
+    /// expression tree level, making both patterns serializable the same way.
+    ///
+    /// Before: (m, ctx) => m.Type == Request &amp;&amp; ctx.Facts&lt;Agent&gt;().Any(a => a.Available)
+    /// After:  (m)      => m.Type == Request &amp;&amp; [FactQueryExpression(Agent)].Any(a => a.Available)
+    /// </summary>
+    internal class ContextConditionProjector : ExpressionVisitor
+    {
+        private readonly ParameterExpression _contextParam;
+
+        public ContextConditionProjector(ParameterExpression contextParam)
+        {
+            _contextParam = contextParam ?? throw new ArgumentNullException(nameof(contextParam));
+        }
+
+        /// <summary>
+        /// Projects a two-parameter lambda into a single-parameter lambda.
+        /// The first parameter (the fact) is preserved.
+        /// The second parameter (IFactContext) is eliminated by replacing
+        /// its method calls with FactQueryExpression nodes.
+        /// </summary>
+        public Expression<Func<TFact, bool>> Project<TFact>(
+            Expression<Func<TFact, IFactContext, bool>> contextCondition)
+        {
+            var projectedBody = Visit(contextCondition.Body);
+            return Expression.Lambda<Func<TFact, bool>>(
+                projectedBody, contextCondition.Parameters[0]);
+        }
+
+        protected override Expression VisitMethodCall(MethodCallExpression node)
+        {
+            // Intercept ctx.Facts<T>() BEFORE visiting children
+            // (otherwise VisitParameter would see the bare ctx reference)
+            if (node.Object is ParameterExpression param && param == _contextParam)
+            {
+                if (node.Method.Name == "Facts" && node.Method.IsGenericMethod)
+                {
+                    var factType = node.Method.GetGenericArguments()[0];
+                    return new FactQueryExpression(factType);
+                }
+
+                // TODO: Handle FindByKey<T>() projection when needed.
+                // FindByKey returns a single entity, not IQueryable, so it needs
+                // a different expression node type (e.g., FactLookupExpression).
+                if (node.Method.Name == "FindByKey" && node.Method.IsGenericMethod)
+                {
+                    throw new NotSupportedException(
+                        $"FindByKey<{node.Method.GetGenericArguments()[0].Name}>() is not yet " +
+                        "supported in condition projection. Use Facts<T>().FirstOrDefault() instead.");
+                }
+
+                throw new NotSupportedException(
+                    $"IFactContext.{node.Method.Name}() is not supported in condition projection. " +
+                    "Only Facts<T>() calls can be projected to FactQueryExpression nodes.");
+            }
+
+            return base.VisitMethodCall(node);
+        }
+    }
+
+    #endregion
+
     #region Dependent Rule
 
     /// <summary>
@@ -858,6 +926,9 @@ namespace RulesEngine.Linq.Dependencies
         private Func<T, bool>? _compiledSimpleCondition;
         private Func<T, IFactContext, bool>? _compiledContextCondition;
 
+        // Cached projected condition (lazy, computed once)
+        private Expression<Func<T, bool>>? _projectedCondition;
+
         public DependentRule(string id, string name, Expression<Func<T, bool>> condition)
         {
             _id = id ?? throw new ArgumentNullException(nameof(id));
@@ -879,9 +950,23 @@ namespace RulesEngine.Linq.Dependencies
         public int Priority => _priority;
         public IReadOnlyList<string> Tags => _tags.ToList();
 
+        /// <summary>
+        /// Returns a single-parameter condition expression suitable for serialization
+        /// and inspection. For context-aware rules, ctx.Facts&lt;T&gt;() calls are projected
+        /// to FactQueryExpression nodes (the same markers used by the closure-capture pattern).
+        ///
+        /// NOTE: The projected condition contains FactQueryExpression nodes and cannot be
+        /// compiled directly. Use FactQueryRewriter to substitute actual data before compilation,
+        /// or use EvaluateWithContext() for runtime evaluation.
+        /// </summary>
         public Expression<Func<T, bool>> Condition =>
-            _simpleCondition ?? throw new InvalidOperationException(
-                "This rule uses a context-aware condition. Use EvaluateWithContext instead.");
+            _simpleCondition ?? (_projectedCondition ??= ProjectContextCondition());
+
+        /// <summary>
+        /// The original two-parameter context-aware condition, if this rule was created with one.
+        /// Null for rules created with a simple (single-parameter) condition.
+        /// </summary>
+        public Expression<Func<T, IFactContext, bool>>? ContextCondition => _contextCondition;
 
         /// <summary>
         /// All dependencies (explicit + detected).
@@ -1020,26 +1105,31 @@ namespace RulesEngine.Linq.Dependencies
             // Fall back to simple action
             return Execute(fact);
         }
+
+        /// <summary>
+        /// Projects the context condition into a single-parameter expression by replacing
+        /// ctx.Facts&lt;T&gt;() calls with FactQueryExpression nodes.
+        /// </summary>
+        private Expression<Func<T, bool>> ProjectContextCondition()
+        {
+            if (_contextCondition == null)
+                throw new InvalidOperationException("No condition defined on this rule.");
+
+            var projector = new ContextConditionProjector(_contextCondition.Parameters[1]);
+            return projector.Project(_contextCondition);
+        }
     }
 
     #endregion
 
-    #region TODO: Integration Points
+    #region TODO: Remaining Integration Points
 
-    // TODO: Integrate with existing RulesContext
-    // - RulesContext should hold a FactSchema
-    // - RulesContext should hold a DependencyGraph
-    // - Schema should be built in OnModelCreating
-    // - Graph should be populated from schema relationships + rule analysis
-
-    // TODO: Integrate with RuleSession
-    // - Session should use DependencyGraph.GetLoadOrder() to determine resolution order
-    // - Session should resolve navigation properties before rule evaluation
-    // - Session should provide IFactContext to rules during evaluation
-
-    // TODO: Integrate with RuleSet
-    // - RuleSet.Add should call AnalyzeDependencies on the rule
-    // - RuleSet should update the DependencyGraph with detected dependencies
+    // DONE: RulesContext holds FactSchema and DependencyGraph (via ConfigureSchema)
+    // DONE: RuleSession uses DependencyGraph.GetLoadOrder() for evaluation ordering
+    // DONE: RuleSession provides IFactContext to DependentRules during evaluation
+    // DONE: RuleSet.Add calls AnalyzeDependencies and updates DependencyGraph
+    // DONE: DependentRule.Condition projects ctx.Facts<T>() to FactQueryExpression
+    //       (unifying both cross-fact patterns at the expression tree level)
 
     // TODO: Static Rule.When<T>() factory
     // - Should return a builder that produces DependentRule<T>
@@ -1056,9 +1146,11 @@ namespace RulesEngine.Linq.Dependencies
     // - Consider adding a warning or requiring explicit acknowledgment
 
     // TODO: Performance optimization
-    // - Cache compiled delegates
-    // - Consider lazy analysis (only analyze if dependencies are queried)
     // - Consider parallel rule evaluation when dependencies allow
+
+    // TODO: ContextConditionProjector - FindByKey<T>() support
+    // - FindByKey returns a single entity, needs a different expression node type
+    // - See ContextConditionProjector for the NotSupportedException placeholder
 
     #endregion
 }
