@@ -736,8 +736,9 @@ namespace RulesEngine.Linq.Dependencies
         // IRule<T> implementation
         public string Id => _id;
         public string Name => _name;
+        public string Description => _name;
         public int Priority => _priority;
-        public IReadOnlySet<string> Tags => _tags;
+        public IReadOnlyList<string> Tags => _tags.ToList();
 
         public Expression<Func<T, bool>> Condition =>
             _simpleCondition ?? throw new InvalidOperationException(
@@ -856,9 +857,9 @@ namespace RulesEngine.Linq.Dependencies
             if (_simpleAction != null)
             {
                 _simpleAction(fact);
-                return RuleResult.Success(_id);
+                return RuleResult.Success(_id, _name);
             }
-            return RuleResult.Success(_id);
+            return RuleResult.Success(_id, _name);
         }
 
         public RuleResult ExecuteWithContext(T fact, IFactContext context)
@@ -866,7 +867,7 @@ namespace RulesEngine.Linq.Dependencies
             if (_contextAction != null)
             {
                 _contextAction(fact, context);
-                return RuleResult.Success(_id);
+                return RuleResult.Success(_id, _name);
             }
 
             // Fall back to simple action
