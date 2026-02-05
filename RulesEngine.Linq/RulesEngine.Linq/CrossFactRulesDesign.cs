@@ -37,6 +37,7 @@ namespace RulesEngine.Linq.CrossFact
     using System.Linq;
     using System.Linq.Expressions;
     using System.Reflection;
+    using System.Threading;
 
     // =========================================================================
     // PART 1: CORE INTERFACES
@@ -817,8 +818,9 @@ namespace RulesEngine.Linq.CrossFact
         // IRule<T> implementation
         public string Id => _id;
         public string Name => _name;
+        public string Description => _reason ?? _name;
         public int Priority => _priority;
-        public IReadOnlySet<string> Tags => _tags;
+        public IReadOnlyList<string> Tags => _tags.ToList();
 
         public Expression<Func<T, bool>> Condition =>
             _simpleCondition ?? throw new InvalidOperationException(
@@ -961,7 +963,7 @@ namespace RulesEngine.Linq.CrossFact
             {
                 _simpleAction(fact);
             }
-            return RuleResult.Success(_id);
+            return RuleResult.Success(_id, _name);
         }
 
         public RuleResult ExecuteWithContext(T fact, IFactContext context)
@@ -974,7 +976,7 @@ namespace RulesEngine.Linq.CrossFact
             {
                 _simpleAction(fact);
             }
-            return RuleResult.Success(_id);
+            return RuleResult.Success(_id, _name);
         }
     }
 
