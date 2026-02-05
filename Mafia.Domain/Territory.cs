@@ -1,3 +1,6 @@
+// NOTE: These domain objects are for internal use by RulesEngine.Linq tests.
+// Feel free to add properties as needed for testing scenarios.
+
 namespace Mafia.Domain;
 
 /// <summary>

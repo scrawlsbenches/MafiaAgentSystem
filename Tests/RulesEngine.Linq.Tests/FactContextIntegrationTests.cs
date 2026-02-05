@@ -152,8 +152,101 @@ namespace RulesEngine.Linq.Tests
 
         #region Cross-Fact Rule Evaluation
 
-        // TODO: These tests will pass once DependentRule is wired to use IFactContext during evaluation
+        [Test]
+        public void Session_Evaluate_AutomaticallyPassesContextToDependentRules()
+        {
+            // Arrange
+            using var context = new RulesContext();
+            using var session = context.CreateSession();
 
+            // Insert agents with different task counts
+            session.InsertAll(new[]
+            {
+                new Agent { Id = "A1", Role = AgentRole.Soldier, Status = AgentStatus.Available, CurrentTaskCount = 2 },
+                new Agent { Id = "A2", Role = AgentRole.Soldier, Status = AgentStatus.Available, CurrentTaskCount = 5 },
+                new Agent { Id = "A3", Role = AgentRole.Capo, Status = AgentStatus.Available }
+            });
+
+            // Insert message to evaluate
+            var message = new AgentMessage { Id = "M1", Type = MessageType.Request, FromId = "A1" };
+            session.Insert(message);
+
+            // Create rule with context-aware condition that queries agents
+            var rule = new DependentRule<AgentMessage>(
+                "route-to-available",
+                "Route to available soldier",
+                (m, ctx) => m.Type == MessageType.Request &&
+                            ctx.Facts<Agent>().Any(a => a.Status == AgentStatus.Available))
+                .DependsOn<Agent>()
+                .Then((m, ctx) =>
+                {
+                    var target = ctx.Facts<Agent>()
+                        .Where(a => a.Role == AgentRole.Soldier)
+                        .Where(a => a.Status == AgentStatus.Available)
+                        .OrderBy(a => a.CurrentTaskCount)
+                        .FirstOrDefault();
+
+                    if (target != null)
+                    {
+                        m.RouteTo(target);
+                    }
+                });
+
+            context.GetRuleSet<AgentMessage>().Add(rule);
+
+            // Act - This should automatically pass the session as IFactContext
+            var result = session.Evaluate<AgentMessage>();
+
+            // Assert
+            Assert.Equal(1, result.Matches.Count);
+            Assert.Equal("A1", message.ToId); // Routed to least busy soldier
+        }
+
+        [Test]
+        public void Session_Evaluate_WorksWithMixedRuleTypes()
+        {
+            // Arrange
+            using var context = new RulesContext();
+            using var session = context.CreateSession();
+
+            session.InsertAll(new[]
+            {
+                new Agent { Id = "A1", Status = AgentStatus.Available }
+            });
+
+            var message1 = new AgentMessage { Id = "M1", Type = MessageType.Request };
+            var message2 = new AgentMessage { Id = "M2", Type = MessageType.Alert };
+            session.InsertAll(new[] { message1, message2 });
+
+            // Add a simple rule (no context needed)
+            var simpleRule = new Rule<AgentMessage>(
+                "alert-handler",
+                "Handle alerts",
+                m => m.Type == MessageType.Alert)
+                .WithAction(m => m.Flags.Add("alert-processed"));
+
+            // Add a context-aware DependentRule
+            var contextRule = new DependentRule<AgentMessage>(
+                "route-if-available",
+                "Route if agents available",
+                (m, ctx) => m.Type == MessageType.Request &&
+                            ctx.Facts<Agent>().Any(a => a.Status == AgentStatus.Available))
+                .DependsOn<Agent>()
+                .Then(m => m.Flags.Add("routed-to-available"));
+
+            context.GetRuleSet<AgentMessage>().Add(simpleRule);
+            context.GetRuleSet<AgentMessage>().Add(contextRule);
+
+            // Act
+            var result = session.Evaluate<AgentMessage>();
+
+            // Assert - Both rules should have matched
+            Assert.Equal(2, result.Matches.Count);
+            Assert.True(message2.Flags.Contains("alert-processed")); // Alert handled by simple rule
+            Assert.True(message1.Flags.Contains("routed-to-available")); // Request handled by context rule
+        }
+
+        // Legacy test - manual context passing (keeping for reference)
         [Test]
         public void DependentRule_CanQueryOtherFactTypes_DuringEvaluation()
         {

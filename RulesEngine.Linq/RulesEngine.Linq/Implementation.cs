@@ -428,13 +428,39 @@ namespace RulesEngine.Linq
                 {
                     try
                     {
-                        if (rule.Evaluate(fact))
+                        bool matched;
+                        RuleResult result;
+
+                        // Check if rule is a DependentRule that needs context
+                        if (rule is DependentRule<T> dependentRule)
                         {
-                            matchedRules.Add(rule);
-                            var result = rule.Execute(fact);
-                            ruleResults.Add(result);
-                            matchCountByRule[rule.Id] = matchCountByRule.GetValueOrDefault(rule.Id) + 1;
+                            // Pass the session as IFactContext for cross-fact queries
+                            matched = dependentRule.EvaluateWithContext(fact, this);
+                            if (matched)
+                            {
+                                result = dependentRule.ExecuteWithContext(fact, this);
+                            }
+                            else
+                            {
+                                continue;
+                            }
                         }
+                        else
+                        {
+                            matched = rule.Evaluate(fact);
+                            if (matched)
+                            {
+                                result = rule.Execute(fact);
+                            }
+                            else
+                            {
+                                continue;
+                            }
+                        }
+
+                        matchedRules.Add(rule);
+                        ruleResults.Add(result);
+                        matchCountByRule[rule.Id] = matchCountByRule.GetValueOrDefault(rule.Id) + 1;
                     }
                     catch (Exception ex)
                     {
