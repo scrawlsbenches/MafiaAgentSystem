@@ -117,6 +117,9 @@ namespace RulesEngine.Linq
             _dependencyGraph = new DependencyGraph();
             var builder = new FactSchemaBuilderAdapter(_schema);
             configure(builder);
+
+            // Wire schema-declared dependencies to the graph
+            _schema.WireDependenciesToGraph(_dependencyGraph);
         }
 
         public IRuleSession CreateSession() => new RuleSession(this);

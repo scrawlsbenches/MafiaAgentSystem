@@ -442,7 +442,7 @@ namespace RulesEngine.Linq.Tests
             var rule2 = new DependentRule<Agent>(
                 "assign-territory",
                 "Assign based on territory",
-                (a, ctx) => ctx.Facts<Territory>().Any(t => t.ControlledBy == a.FamilyId))
+                (a, ctx) => ctx.Facts<Territory>().Any(t => t.ControlledById == a.FamilyId))
                 .Then(a => { });
 
             // Act
@@ -866,6 +866,168 @@ namespace RulesEngine.Linq.Tests
             Assert.Equal(2, result.Matches.Count);
             Assert.True(request.Flags.Contains("closure-matched"));
             Assert.True(alert.Flags.Contains("regular-matched"));
+        }
+
+        #endregion
+
+        #region Schema-Defined Dependencies with Both Cross-Fact Patterns
+
+        [Test]
+        public void BothCrossFactPatterns_WorkWithSchemaDefinedDependencies()
+        {
+            // Arrange
+            using var context = new RulesContext();
+
+            // Schema defines fact types AND their relationships (dependencies)
+            // DependsOn<Agent> on Territory means: Territory depends on Agent
+            context.ConfigureSchema(schema =>
+            {
+                schema.RegisterFactType<Agent>();
+                schema.RegisterFactType<Territory>(cfg =>
+                {
+                    // Territory depends on Agent (agents are assigned to territories)
+                    // This SHOULD automatically register Territory -> Agent in dependency graph
+                    cfg.DependsOn<Agent>();
+                });
+            });
+
+            // Get queryable for closure capture (Pattern 2)
+            var agents = context.Facts<Agent>();
+
+            // PATTERN 1: DependentRule - explicit context parameter
+            var occupiedRule = new DependentRule<Territory>(
+                "occupied", "Territory is occupied",
+                (territory, ctx) => ctx.Facts<Agent>().Any(a => a.TerritoryId == territory.Id))
+                .Then(t => t.Status = "occupied");
+
+            // PATTERN 2: Rule<T> - closure capture (EF Core style)
+            var guardedRule = new Rule<Territory>(
+                "guarded", "Territory has a guard",
+                t => agents.Any(a => a.Role == AgentRole.Soldier && a.TerritoryId == t.Id))
+                .Then(t => t.Status = (t.Status ?? "") + "-guarded");
+
+            // Both rules work - add to ruleset
+            var rules = context.GetRuleSet<Territory>();
+            rules.Add(occupiedRule);
+            rules.Add(guardedRule);
+
+            // Dependencies should be tracked from BOTH sources:
+            // 1. Schema navigations (Territory -> Agent via HasOne)
+            // 2. Rule analysis (Territory rules -> Agent)
+            var loadOrder = context.DependencyGraph!.GetLoadOrder();
+
+            // Agent should load before Territory (Territory depends on Agent)
+            var agentIndex = loadOrder.IndexOf(typeof(Agent));
+            var territoryIndex = loadOrder.IndexOf(typeof(Territory));
+
+            Assert.True(agentIndex >= 0, "Agent should be in load order");
+            Assert.True(territoryIndex >= 0, "Territory should be in load order");
+            Assert.True(agentIndex < territoryIndex,
+                $"Agent (index {agentIndex}) should load before Territory (index {territoryIndex})");
+
+            // Evaluate session - both patterns execute correctly
+            using var session = context.CreateSession();
+            session.InsertAll(new[]
+            {
+                new Agent { Id = "a1", Name = "Tony", Role = AgentRole.Soldier, TerritoryId = "downtown" },
+                new Agent { Id = "a2", Name = "Sal", Role = AgentRole.Capo, TerritoryId = "docks" }
+            });
+            session.InsertAll(new[]
+            {
+                new Territory { Id = "downtown", Name = "Downtown" },
+                new Territory { Id = "docks", Name = "Docks" },
+                new Territory { Id = "airport", Name = "Airport" }
+            });
+
+            var result = session.Evaluate<Territory>();
+
+            // Downtown: occupied (a1) + guarded (a1 is Soldier)
+            // Docks: occupied (a2) + not guarded (a2 is Capo, not Soldier)
+            // Airport: neither
+            Assert.Equal(2, result.FactsWithMatches.Count);
+
+            var downtown = result.FactsWithMatches.First(t => t.Id == "downtown");
+            Assert.Equal("occupied-guarded", downtown.Status);
+
+            var docks = result.FactsWithMatches.First(t => t.Id == "docks");
+            Assert.Equal("occupied", docks.Status);
+        }
+
+        [Test]
+        public void SchemaDependencies_AutomaticallyWireToDependencyGraph()
+        {
+            // Arrange
+            using var context = new RulesContext();
+
+            // Configure schema with DependsOn declarations
+            context.ConfigureSchema(schema =>
+            {
+                schema.RegisterFactType<Agent>();
+                schema.RegisterFactType<Territory>(cfg =>
+                {
+                    // This should automatically add Territory -> Agent dependency
+                    cfg.DependsOn<Agent>();
+                });
+                schema.RegisterFactType<AgentMessage>(cfg =>
+                {
+                    // This should automatically add AgentMessage -> Agent dependency
+                    cfg.DependsOn<Agent>();
+                });
+            });
+
+            // Act - no rules added, just schema
+            var graph = context.DependencyGraph!;
+            var loadOrder = graph.GetLoadOrder();
+
+            // Assert - Schema dependencies should have been wired to dependency graph
+            // Agent has no dependencies, so it comes first
+            // Territory depends on Agent (via DependsOn<Agent>)
+            // AgentMessage depends on Agent (via DependsOn<Agent>)
+
+            var agentIndex = loadOrder.IndexOf(typeof(Agent));
+            var territoryIndex = loadOrder.IndexOf(typeof(Territory));
+            var messageIndex = loadOrder.IndexOf(typeof(AgentMessage));
+
+            Assert.True(agentIndex >= 0, "Agent should be in load order");
+            Assert.True(territoryIndex >= 0, "Territory should be in load order");
+            Assert.True(messageIndex >= 0, "AgentMessage should be in load order");
+
+            Assert.True(agentIndex < territoryIndex,
+                "Agent should come before Territory (Territory.DependsOn<Agent>)");
+            Assert.True(agentIndex < messageIndex,
+                "Agent should come before AgentMessage (AgentMessage.DependsOn<Agent>)");
+        }
+
+        [Test]
+        public void ClosurePattern_DependencyDetected_AtRuleRegistration()
+        {
+            // Arrange
+            using var context = new RulesContext();
+
+            context.ConfigureSchema(schema =>
+            {
+                schema.RegisterFactType<Agent>();
+                schema.RegisterFactType<Territory>();
+            });
+
+            // Capture for closure
+            var agents = context.Facts<Agent>();
+
+            // Create rule with closure-captured Facts<Agent>()
+            var rule = new Rule<Territory>(
+                "closure-dep",
+                "Closure-based dependency",
+                t => agents.Any(a => a.TerritoryId == t.Id));
+
+            // Act - adding the rule should trigger dependency analysis
+            context.GetRuleSet<Territory>().Add(rule);
+
+            // Assert - The closure-captured Facts<Agent>() should be detected
+            var graph = context.DependencyGraph!;
+            var territoryDeps = graph.GetDependencies(typeof(Territory));
+
+            Assert.True(territoryDeps.Contains(typeof(Agent)),
+                "Territory should depend on Agent (detected from closure capture)");
         }
 
         #endregion

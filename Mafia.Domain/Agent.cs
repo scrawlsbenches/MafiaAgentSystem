@@ -18,6 +18,7 @@ public class Agent
     public int CurrentTaskCount { get; set; }
     public double ReputationScore { get; set; } = 1.0;
     public HashSet<string> Capabilities { get; set; } = new();
+    public string? TerritoryId { get; set; } // Which territory this agent is assigned to
 
     // Navigation (resolved by context)
     public Agent? Superior { get; set; }

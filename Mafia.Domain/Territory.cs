@@ -10,6 +10,8 @@ public class Territory
 {
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
-    public string? ControlledBy { get; set; } // FamilyId
+    public string? ControlledById { get; set; } // FamilyId (foreign key)
+    public Family? ControlledBy { get; set; } // Navigation property
     public double Value { get; set; }
+    public string? Status { get; set; } // e.g., "occupied", "guarded", etc.
 }
