@@ -8,4 +8,8 @@
     <AssemblyName>RulesEngine.Linq</AssemblyName>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="../../Mafia.Domain/Mafia.Domain.csproj" />
+  </ItemGroup>
+
 </Project>

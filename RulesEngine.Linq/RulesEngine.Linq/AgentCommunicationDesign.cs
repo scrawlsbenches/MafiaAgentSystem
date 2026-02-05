@@ -21,6 +21,7 @@ namespace RulesEngine.Linq.AgentCommunication
     using System.Linq;
     using System.Linq.Expressions;
     using System.Threading;
+    using Mafia.Domain;
 
     // =========================================================================
     // PART 1: CORE CONTEXT - Three Distinct Scopes
@@ -670,140 +671,10 @@ namespace RulesEngine.Linq.AgentCommunication
     #endregion
 
     // =========================================================================
-    // PART 6: DOMAIN TYPES - MafiaDemo
+    // PART 6: DOMAIN TYPES
     // =========================================================================
-
-    #region Domain Types
-
-    public enum AgentRole
-    {
-        Associate,
-        Soldier,
-        Capo,
-        Underboss,
-        Consigliere,
-        Godfather
-    }
-
-    public enum AgentStatus
-    {
-        Available,
-        Busy,
-        Unavailable,
-        Compromised
-    }
-
-    public enum MessageType
-    {
-        Request,
-        Response,
-        Report,
-        Alert,
-        Broadcast,
-        Task,
-        StatusReport,
-        TerritoryRequest
-    }
-
-    /// <summary>
-    /// An agent in the family hierarchy.
-    /// </summary>
-    public class Agent
-    {
-        public string Id { get; set; } = string.Empty;
-        public string Name { get; set; } = string.Empty;
-        public AgentRole Role { get; set; }
-        public AgentStatus Status { get; set; } = AgentStatus.Available;
-        public string FamilyId { get; set; } = string.Empty;
-        public string? SuperiorId { get; set; }
-        public string? CapoId { get; set; } // For soldiers: their capo
-        public int CurrentTaskCount { get; set; }
-        public double ReputationScore { get; set; } = 1.0;
-        public HashSet<string> Capabilities { get; set; } = new();
-
-        // Navigation (resolved by context)
-        public Agent? Superior { get; set; }
-        public Family? Family { get; set; }
-    }
-
-    /// <summary>
-    /// A crime family.
-    /// </summary>
-    public class Family
-    {
-        public string Id { get; set; } = string.Empty;
-        public string Name { get; set; } = string.Empty;
-        public string GodfatherId { get; set; } = string.Empty;
-    }
-
-    /// <summary>
-    /// A territory that can be controlled.
-    /// </summary>
-    public class Territory
-    {
-        public string Id { get; set; } = string.Empty;
-        public string Name { get; set; } = string.Empty;
-        public string? ControlledBy { get; set; } // FamilyId
-        public double Value { get; set; }
-    }
-
-    /// <summary>
-    /// A message between agents - the primary fact type for rules.
-    /// </summary>
-    public class AgentMessage
-    {
-        public string Id { get; set; } = Guid.NewGuid().ToString();
-        public MessageType Type { get; set; }
-        public string FromId { get; set; } = string.Empty;
-        public string ToId { get; set; } = string.Empty;
-        public DateTime Timestamp { get; set; } = DateTime.UtcNow;
-        public string? Content { get; set; }
-        public Dictionary<string, object> Payload { get; set; } = new();
-        public HashSet<string> RequiredCapabilities { get; set; } = new();
-        public string? Scope { get; set; } // For broadcasts
-
-        // Mutable state (modified by rules)
-        public bool Blocked { get; set; }
-        public string? BlockReason { get; set; }
-        public string? ReroutedToId { get; set; }
-        public HashSet<string> Flags { get; set; } = new();
-        public string? EscalatedToId { get; set; }
-
-        // Navigation (resolved by context)
-        public Agent? From { get; set; }
-        public Agent? To { get; set; }
-        public Agent? ReroutedTo { get; set; }
-        public Agent? EscalatedTo { get; set; }
-
-        // Fluent mutation methods for rules
-        public void Block(string reason)
-        {
-            Blocked = true;
-            BlockReason = reason;
-        }
-
-        public void Reroute(Agent target)
-        {
-            ReroutedToId = target.Id;
-            ReroutedTo = target;
-        }
-
-        public void RouteTo(Agent target)
-        {
-            ToId = target.Id;
-            To = target;
-        }
-
-        public void Flag(string flag) => Flags.Add(flag);
-
-        public void EscalateTo(Agent target)
-        {
-            EscalatedToId = target.Id;
-            EscalatedTo = target;
-        }
-    }
-
-    #endregion
+    // Domain types (Agent, Family, Territory, AgentMessage) are in Mafia.Domain project.
+    // This keeps the rules engine generic and the domain reusable.
 
     // =========================================================================
     // PART 7: SCHEMA AND FACT CONTEXT (from CrossFactRulesDesign)
