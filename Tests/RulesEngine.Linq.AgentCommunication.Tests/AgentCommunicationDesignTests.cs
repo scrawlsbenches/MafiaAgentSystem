@@ -1,4 +1,4 @@
-namespace RulesEngine.Linq.Tests;
+namespace RulesEngine.Linq.AgentCommunication.Tests;
 
 using System;
 using System.Collections.Generic;
