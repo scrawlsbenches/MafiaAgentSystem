@@ -346,7 +346,7 @@ namespace RulesEngine.Linq
 
         public IFactSet<T> Facts<T>() where T : class
         {
-            ThrowIfNotActive();
+            ThrowIfNotActiveOrEvaluating();
             return (IFactSet<T>)_factSets.GetOrAdd(typeof(T),
                 _ => new FactSet<T>(_context, _context.GetRuleSet<T>()));
         }
@@ -372,8 +372,27 @@ namespace RulesEngine.Linq
             var results = new Dictionary<Type, object>();
             int totalFacts = 0, totalRules = 0, totalMatches = 0;
 
-            foreach (var (type, factSetObj) in _factSets)
+            // Determine evaluation order: use dependency graph if available, otherwise arbitrary
+            IEnumerable<Type> typesToEvaluate;
+            if (_context.DependencyGraph != null)
             {
+                // Evaluate in dependency order (dependencies first)
+                var loadOrder = _context.DependencyGraph.GetLoadOrder();
+                // Include types from load order that have fact sets, plus any fact sets not in load order
+                var orderedTypes = loadOrder.Where(t => _factSets.ContainsKey(t)).ToList();
+                var remainingTypes = _factSets.Keys.Where(t => !loadOrder.Contains(t));
+                typesToEvaluate = orderedTypes.Concat(remainingTypes);
+            }
+            else
+            {
+                typesToEvaluate = _factSets.Keys;
+            }
+
+            foreach (var type in typesToEvaluate)
+            {
+                if (!_factSets.TryGetValue(type, out var factSetObj))
+                    continue;
+
                 var evaluateMethod = typeof(RuleSession)
                     .GetMethod(nameof(EvaluateFactSet), BindingFlags.NonPublic | BindingFlags.Instance)!
                     .MakeGenericMethod(type);
@@ -538,6 +557,12 @@ namespace RulesEngine.Linq
         {
             if (_state != SessionState.Active)
                 throw new InvalidOperationException($"Session is {_state}, expected Active");
+        }
+
+        private void ThrowIfNotActiveOrEvaluating()
+        {
+            if (_state != SessionState.Active && _state != SessionState.Evaluating)
+                throw new InvalidOperationException($"Session is {_state}, expected Active or Evaluating");
         }
 
         #region IFactContext Implementation

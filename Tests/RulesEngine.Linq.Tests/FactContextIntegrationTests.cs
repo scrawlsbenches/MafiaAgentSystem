@@ -489,6 +489,64 @@ namespace RulesEngine.Linq.Tests
             Assert.True(loadOrder.IndexOf(typeof(Agent)) < loadOrder.IndexOf(typeof(AgentMessage)));
         }
 
+        [Test]
+        public void Session_Evaluate_EvaluatesFactTypesInDependencyOrder()
+        {
+            // Arrange
+            var evaluationOrder = new List<Type>();
+
+            using var context = new RulesContext();
+            context.ConfigureSchema(schema =>
+            {
+                schema.RegisterFactType<Territory>();
+                schema.RegisterFactType<Agent>();
+                schema.RegisterFactType<AgentMessage>();
+            });
+
+            // Create rules that track evaluation order
+            // AgentMessage depends on Agent
+            var messageRule = new DependentRule<AgentMessage>(
+                "message-rule",
+                "Track message evaluation",
+                (m, ctx) => ctx.Facts<Agent>().Any())
+                .Then(m => evaluationOrder.Add(typeof(AgentMessage)));
+
+            // Agent depends on Territory
+            var agentRule = new DependentRule<Agent>(
+                "agent-rule",
+                "Track agent evaluation",
+                (a, ctx) => ctx.Facts<Territory>().Any())
+                .Then(a => evaluationOrder.Add(typeof(Agent)));
+
+            // Territory has no dependencies
+            var territoryRule = new Rule<Territory>(
+                "territory-rule",
+                "Track territory evaluation",
+                t => true)
+                .WithAction(t => evaluationOrder.Add(typeof(Territory)));
+
+            context.GetRuleSet<AgentMessage>().Add(messageRule);
+            context.GetRuleSet<Agent>().Add(agentRule);
+            context.GetRuleSet<Territory>().Add(territoryRule);
+
+            using var session = context.CreateSession();
+            session.Insert(new Territory { Id = "T1", Name = "Downtown" });
+            session.Insert(new Agent { Id = "A1", Status = AgentStatus.Available });
+            session.Insert(new AgentMessage { Id = "M1", Type = MessageType.Request });
+
+            // Act
+            session.Evaluate();
+
+            // Assert - Evaluation order should follow dependencies: Territory → Agent → AgentMessage
+            Assert.Equal(3, evaluationOrder.Count);
+            Assert.True(
+                evaluationOrder.IndexOf(typeof(Territory)) < evaluationOrder.IndexOf(typeof(Agent)),
+                "Territory should be evaluated before Agent");
+            Assert.True(
+                evaluationOrder.IndexOf(typeof(Agent)) < evaluationOrder.IndexOf(typeof(AgentMessage)),
+                "Agent should be evaluated before AgentMessage");
+        }
+
         #endregion
     }
 }

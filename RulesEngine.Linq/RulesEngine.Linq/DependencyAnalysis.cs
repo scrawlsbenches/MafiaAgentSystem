@@ -124,6 +124,10 @@ namespace RulesEngine.Linq.Dependencies
             {
                 _dependencies[factType].Add(dep);
 
+                // Ensure dependency type is also in the graph (with no deps of its own yet)
+                if (!_dependencies.ContainsKey(dep))
+                    _dependencies[dep] = new HashSet<Type>();
+
                 if (!_dependents.ContainsKey(dep))
                     _dependents[dep] = new HashSet<Type>();
                 _dependents[dep].Add(factType);
