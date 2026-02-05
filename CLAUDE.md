@@ -51,8 +51,8 @@ Ubuntu 24.04 includes .NET 8.0 in its official repositories. No Microsoft reposi
 apt-get update -o Dir::Etc::sourcelist="sources.list.d/ubuntu.sources" \
   -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0"
 
-# Install .NET SDK 8.0
-apt-get install -y dotnet-sdk-8.0
+# Install .NET SDK 8.0 (pinned version for reproducibility)
+apt-get install -y dotnet-sdk-8.0=8.0.123-0ubuntu1~24.04.1
 ```
 
 ## Build & Test
