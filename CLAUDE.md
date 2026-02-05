@@ -47,8 +47,12 @@ This ensures future sessions can continue seamlessly.
 Ubuntu 24.04 includes .NET 8.0 in its official repositories. No Microsoft repository needed.
 
 ```bash
-# Update package lists and install .NET SDK 8.0
-apt-get update && apt-get install -y dotnet-sdk-8.0
+# Update Ubuntu package lists only (avoids 403 errors from blocked PPAs)
+apt-get update -o Dir::Etc::sourcelist="sources.list.d/ubuntu.sources" \
+  -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0"
+
+# Install .NET SDK 8.0
+apt-get install -y dotnet-sdk-8.0
 ```
 
 ## Build & Test
