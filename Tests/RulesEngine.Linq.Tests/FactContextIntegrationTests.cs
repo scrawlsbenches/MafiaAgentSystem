@@ -6,40 +6,15 @@ namespace RulesEngine.Linq.Tests
     using TestRunner.Framework;
     using RulesEngine.Linq;
     using RulesEngine.Linq.Dependencies;
+    using Mafia.Domain;
 
     /// <summary>
     /// TDD tests for integrating IFactContext with RuleSession.
     /// These tests define the expected behavior for cross-fact rule evaluation.
+    /// Uses Mafia.Domain types (Agent, AgentMessage, etc.) for realistic scenarios.
     /// </summary>
     public class FactContextIntegrationTests
     {
-        #region Test Domain
-
-        private class Agent
-        {
-            public string Id { get; set; } = string.Empty;
-            public string Name { get; set; } = string.Empty;
-            public AgentRole Role { get; set; }
-            public AgentStatus Status { get; set; }
-            public int TaskCount { get; set; }
-        }
-
-        private class Message
-        {
-            public string Id { get; set; } = string.Empty;
-            public string FromAgentId { get; set; } = string.Empty;
-            public string ToAgentId { get; set; } = string.Empty;
-            public MessageType Type { get; set; }
-            public bool Blocked { get; set; }
-            public string? BlockReason { get; set; }
-        }
-
-        private enum AgentRole { Soldier, Capo, Underboss, Godfather }
-        private enum AgentStatus { Available, Busy, Offline }
-        private enum MessageType { Request, Command, Alert }
-
-        #endregion
-
         #region RuleSession as IFactContext
 
         [Test]
@@ -106,12 +81,12 @@ namespace RulesEngine.Linq.Tests
             using var session = context.CreateSession();
 
             session.Insert(new Agent { Id = "A1", Name = "Agent One" });
-            session.Insert(new Message { Id = "M1", FromAgentId = "A1" });
+            session.Insert(new AgentMessage { Id = "M1", FromId = "A1" });
 
             // Act
             var factContext = (IFactContext)session;
             var agents = factContext.Facts<Agent>().ToList();
-            var messages = factContext.Facts<Message>().ToList();
+            var messages = factContext.Facts<AgentMessage>().ToList();
 
             // Assert
             Assert.Equal(1, agents.Count);
@@ -126,7 +101,7 @@ namespace RulesEngine.Linq.Tests
             using var session = context.CreateSession();
 
             session.Insert(new Agent { Id = "A1" });
-            session.Insert(new Message { Id = "M1" });
+            session.Insert(new AgentMessage { Id = "M1" });
 
             // Act
             var factContext = (IFactContext)session;
@@ -134,7 +109,7 @@ namespace RulesEngine.Linq.Tests
 
             // Assert
             Assert.True(registeredTypes.Contains(typeof(Agent)));
-            Assert.True(registeredTypes.Contains(typeof(Message)));
+            Assert.True(registeredTypes.Contains(typeof(AgentMessage)));
         }
 
         [Test]
@@ -186,21 +161,21 @@ namespace RulesEngine.Linq.Tests
             using var context = new RulesContext();
             using var session = context.CreateSession();
 
-            // Insert agents
+            // Insert agents with different task counts
             session.InsertAll(new[]
             {
-                new Agent { Id = "A1", Role = AgentRole.Soldier, Status = AgentStatus.Available, TaskCount = 2 },
-                new Agent { Id = "A2", Role = AgentRole.Soldier, Status = AgentStatus.Available, TaskCount = 5 },
+                new Agent { Id = "A1", Role = AgentRole.Soldier, Status = AgentStatus.Available, CurrentTaskCount = 2 },
+                new Agent { Id = "A2", Role = AgentRole.Soldier, Status = AgentStatus.Available, CurrentTaskCount = 5 },
                 new Agent { Id = "A3", Role = AgentRole.Capo, Status = AgentStatus.Available }
             });
 
             // Insert message to evaluate
-            var message = new Message { Id = "M1", Type = MessageType.Request, FromAgentId = "A1" };
+            var message = new AgentMessage { Id = "M1", Type = MessageType.Request, FromId = "A1" };
             session.Insert(message);
 
             // Create rule that queries agents during evaluation
             // Rule: Route to least busy available soldier
-            var rule = new DependentRule<Message>(
+            var rule = new DependentRule<AgentMessage>(
                 "route-to-least-busy",
                 "Route to least busy soldier",
                 m => m.Type == MessageType.Request)
@@ -210,16 +185,16 @@ namespace RulesEngine.Linq.Tests
                     var target = ctx.Facts<Agent>()
                         .Where(a => a.Role == AgentRole.Soldier)
                         .Where(a => a.Status == AgentStatus.Available)
-                        .OrderBy(a => a.TaskCount)
+                        .OrderBy(a => a.CurrentTaskCount)
                         .FirstOrDefault();
 
                     if (target != null)
                     {
-                        m.ToAgentId = target.Id;
+                        m.RouteTo(target);
                     }
                 });
 
-            context.GetRuleSet<Message>().Add(rule);
+            context.GetRuleSet<AgentMessage>().Add(rule);
 
             // Act
             var factContext = (IFactContext)session;
@@ -230,8 +205,8 @@ namespace RulesEngine.Linq.Tests
                 rule.ExecuteWithContext(message, factContext);
             }
 
-            // Assert
-            Assert.Equal("A1", message.ToAgentId); // A1 has TaskCount=2, less than A2's 5
+            // Assert - A1 has CurrentTaskCount=2, less than A2's 5
+            Assert.Equal("A1", message.ToId);
         }
 
         #endregion
