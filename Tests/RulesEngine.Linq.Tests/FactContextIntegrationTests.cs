@@ -451,7 +451,7 @@ namespace RulesEngine.Linq.Tests
 
             // Assert - DependencyGraph should track: AgentMessage -> Agent -> Territory
             var graph = context.DependencyGraph!;
-            var loadOrder = graph.GetLoadOrder().ToList();
+            var loadOrder = graph.GetLoadOrder();
 
             // Territory should come before Agent, Agent before AgentMessage
             var territoryIndex = loadOrder.IndexOf(typeof(Territory));
@@ -483,7 +483,7 @@ namespace RulesEngine.Linq.Tests
             context.GetRuleSet<AgentMessage>().Add(rule);
 
             // Act
-            var loadOrder = context.DependencyGraph!.GetLoadOrder().ToList();
+            var loadOrder = context.DependencyGraph!.GetLoadOrder();
 
             // Assert - Agent should come before AgentMessage
             Assert.True(loadOrder.IndexOf(typeof(Agent)) < loadOrder.IndexOf(typeof(AgentMessage)));

@@ -149,11 +149,12 @@ namespace RulesEngine.Linq.Dependencies
         /// <summary>
         /// Get the order in which fact types should be loaded/resolved.
         /// Dependencies come before dependents (topological sort).
+        /// Returns a read-only list that supports IndexOf.
         /// </summary>
-        public IReadOnlyList<Type> GetLoadOrder()
+        public IList<Type> GetLoadOrder()
         {
             if (_cachedLoadOrder != null)
-                return _cachedLoadOrder;
+                return _cachedLoadOrder.AsReadOnly();
 
             var result = new List<Type>();
             var visited = new HashSet<Type>();
@@ -165,7 +166,7 @@ namespace RulesEngine.Linq.Dependencies
             }
 
             _cachedLoadOrder = result;
-            return result;
+            return result.AsReadOnly();
         }
 
         private void TopologicalVisit(
