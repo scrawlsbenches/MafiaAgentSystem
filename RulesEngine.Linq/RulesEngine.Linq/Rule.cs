@@ -93,80 +93,10 @@ namespace RulesEngine.Linq
 
         /// <summary>
         /// Checks if an expression contains FactQueryExpression nodes.
+        /// Delegates to the shared utility on FactQueryExpression.
         /// </summary>
         private static bool ContainsFactQueryExpression(Expression expression)
-        {
-            var detector = new FactQueryExpressionDetector();
-            detector.Visit(expression);
-            return detector.Found;
-        }
-
-        /// <summary>
-        /// Visitor that detects FactQueryExpression nodes in an expression tree.
-        /// </summary>
-        private class FactQueryExpressionDetector : ExpressionVisitor
-        {
-            public bool Found { get; private set; }
-
-            protected override Expression VisitExtension(Expression node)
-            {
-                if (node is FactQueryExpression)
-                {
-                    Found = true;
-                    return node; // Don't need to continue once found
-                }
-                return base.VisitExtension(node);
-            }
-
-            // Also check for closure-captured FactQueryable instances
-            protected override Expression VisitConstant(ConstantExpression node)
-            {
-                if (node.Value != null)
-                {
-                    var type = node.Value.GetType();
-                    if (type.IsGenericType &&
-                        type.GetGenericTypeDefinition() == typeof(FactQueryable<>))
-                    {
-                        Found = true;
-                    }
-                }
-                return base.VisitConstant(node);
-            }
-
-            // Check member access on closure fields that might be FactQueryable<T>
-            protected override Expression VisitMember(MemberExpression node)
-            {
-                if (node.Expression is ConstantExpression ce && ce.Value != null)
-                {
-                    // Evaluate the member access to get the actual value
-                    try
-                    {
-                        var value = Expression.Lambda(node).Compile().DynamicInvoke();
-
-                        // Check if the value is a FactQueryExpression
-                        if (value is FactQueryExpression)
-                        {
-                            Found = true;
-                        }
-                        // Check if the value is a FactQueryable<T>
-                        else if (value != null)
-                        {
-                            var valueType = value.GetType();
-                            if (valueType.IsGenericType &&
-                                valueType.GetGenericTypeDefinition() == typeof(FactQueryable<>))
-                            {
-                                Found = true;
-                            }
-                        }
-                    }
-                    catch
-                    {
-                        // Ignore evaluation errors
-                    }
-                }
-                return base.VisitMember(node);
-            }
-        }
+            => FactQueryExpression.ContainsFactQuery(expression);
 
         #region Fluent Configuration
 

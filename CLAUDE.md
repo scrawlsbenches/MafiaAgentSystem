@@ -338,11 +338,17 @@ The `AgentRouting.MafiaDemo` project is a **test bed** for exercising the RulesE
 
 ## RulesEngine.Linq (Experimental)
 
-An experimental LINQ-based rules engine with EF Core-inspired patterns. This is R&D code exploring how to make rules queryable and composable using familiar LINQ syntax.
+An experimental LINQ-based rules engine with EF Core-inspired patterns. Rules are **expression trees first** — conditions are `Expression<Func<T, bool>>`, not compiled delegates. This makes them inspectable, serializable, and rewritable. The design targets a future where rules are authored locally but may execute on a remote server.
 
 **Status:** Experimental - API is evolving
 
 **Location:** `RulesEngine.Linq/RulesEngine.Linq/`
+
+### Design Philosophy
+
+- **Serialization is sacred** — Rules may be serialized and sent to a remote server for execution. No shortcuts that assume local execution.
+- **Expression trees stay expressions** — `Expression<Func<T, bool>>` is the currency, not `Func<T, bool>`. Inspectability is the point.
+- **Cross-fact queries are symbolic** — When a rule references `Facts<Agent>()`, the expression tree contains a `FactQueryExpression` marker node, not actual data. Data is substituted at evaluation time.
 
 ### Core Concepts
 
@@ -352,16 +358,95 @@ An experimental LINQ-based rules engine with EF Core-inspired patterns. This is 
 | `IRuleSet<T>` | `DbSet<T>` | Queryable collection of rules for a fact type |
 | `IRuleSession` | Unit of Work | Tracks facts, manages evaluation lifecycle |
 | `Rule<T>` | Entity | Fluent rule with expression-based conditions |
+| `DependentRule<T>` | Navigation property | Rule with explicit cross-fact context parameter |
+| `FactQueryExpression` | SQL parameter | Serializable marker for cross-fact references |
+| `DependencyGraph` | Migration ordering | Topological sort of fact type evaluation order |
 
 ### Key Files
 
 - `Abstractions.cs` - Core interfaces (`IRulesContext`, `IRuleSet<T>`, `IRuleSession`, `IRule<T>`)
 - `Implementation.cs` - In-memory implementations (`RulesContext`, `RuleSet<T>`, `FactSet<T>`, `RuleSession`)
-- `Rule.cs` - Fluent `Rule<T>` class and `RuleBuilder<T>`
-- `Providers.cs` - LINQ query providers (`InMemoryRuleProvider`, `RuleSetQueryProvider`)
+- `Rule.cs` - Fluent `Rule<T>` class with automatic `FactQueryExpression` detection
+- `Provider.cs` - Expression tree infrastructure (`FactQueryExpression`, `FactQueryRewriter`, `FactQueryable<T>`)
+- `DependencyAnalysis.cs` - Cross-fact analysis (`IFactContext`, `DependentRule<T>`, `DependencyGraph`, `ContextConditionProjector`)
 - `Validation.cs` - Expression validation and constraints
 - `ClosureExtractor.cs` - Closure analysis for rule serialization
 - `Extensions.cs` - Helper extensions (`WouldMatch`, `WithRule`, etc.)
+
+### Expression Tree Architecture
+
+The key insight: rule conditions contain **symbolic placeholders** for cross-fact data, not the data itself.
+
+```
+Rule condition (expression tree):
+  m => m.Priority == High && agents.Any(a => a.CanHandle(m))
+                              ↑
+                    FactQueryExpression(typeof(Agent))
+                    — a serializable marker, not actual agents
+
+At evaluation time, FactQueryRewriter substitutes:
+  FactQueryExpression(Agent) → Expression.Constant(actualAgentList)
+
+Result: compiled delegate with real data, but the original
+expression tree remains pristine for serialization/inspection.
+```
+
+**`FactQueryExpression`** (`ExpressionType.Extension`) — Custom expression node representing `Facts<T>()`. Type is `IQueryable<FactType>`. Serialization-friendly: contains only the fact type, no runtime data.
+
+**`FactQueryRewriter`** — `ExpressionVisitor` that substitutes `FactQueryExpression` nodes with actual session data (`Expression.Constant(facts)`) at evaluation time.
+
+**`FactQueryExpression.ContainsFactQuery()`** — Public utility that walks any expression tree and detects whether it contains cross-fact references (either `FactQueryExpression` nodes or `FactQueryable<T>` closures).
+
+### Two Cross-Fact Query Patterns
+
+Rules can reference other fact types in two ways, both producing the same expression tree form:
+
+**Pattern 1: Closure capture (Rule<T>)**
+```csharp
+var agents = context.Facts<Agent>(); // returns FactQueryable<Agent>
+var rule = new Rule<Territory>("needs-agents", "Territories Needing Agents",
+    t => t.Heat > 50 && agents.Any(a => a.AssignedTerritory == t.Name));
+// Expression tree captures FactQueryable → detected as FactQueryExpression
+```
+
+**Pattern 2: Explicit context (DependentRule<T>)**
+```csharp
+var rule = new DependentRule<Territory>("needs-agents", "Territories Needing Agents",
+    (t, ctx) => t.Heat > 50 && ctx.Facts<Agent>().Any(a => a.AssignedTerritory == t.Name));
+// ContextConditionProjector transforms ctx.Facts<Agent>() → FactQueryExpression
+```
+
+**`ContextConditionProjector`** unifies both patterns at the expression tree level. It visits `ctx.Facts<T>()` calls and replaces them with `FactQueryExpression` nodes, so `DependentRule<T>.Condition` returns a standard `Expression<Func<T, bool>>` with symbolic markers — identical to what Pattern 1 produces.
+
+### Evaluation Dispatch (4 Paths)
+
+When `RuleSession.EvaluateFactSet<T>()` evaluates each rule against each fact, it selects one of four dispatch paths:
+
+| Path | Condition | Mechanism |
+|------|-----------|-----------|
+| 1. DependentRule | `rule is DependentRule<T>` | Calls `EvaluateWithContext(fact, session)` directly |
+| 2. Rule<T> + rewriter | `rule is Rule<T>` and `RequiresRewriting` | Uses `Rule<T>.GetOrCompileWithRewriter(rewriter)` |
+| 3. Generic rewriter | Any `IRule<T>` where `ContainsFactQuery(Condition)` | Session rewrites and caches the compiled delegate |
+| 4. Standard | No cross-fact references | Calls `rule.Evaluate(fact)` directly |
+
+Path 3 is the generic fallback — any custom `IRule<T>` implementation that has `FactQueryExpression` nodes in its `Condition` will automatically get rewriter support without needing to implement anything special.
+
+### DependencyGraph and Evaluation Ordering
+
+When rules reference other fact types, evaluation order matters (e.g., Agent rules may depend on Territory facts being evaluated first).
+
+```csharp
+// Schema configuration (EF Core OnModelCreating analog)
+context.ConfigureSchema(schema => {
+    schema.RegisterFactType<Territory>();
+    schema.RegisterFactType<Agent>(cfg => cfg.DependsOn<Territory>()); // Agent rules depend on Territory
+});
+
+// DependencyGraph provides topological ordering
+var order = graph.GetLoadOrder(); // [Territory, Agent] — territories first
+```
+
+`DependencyExtractor` can also auto-detect dependencies by walking rule expression trees for `FactQueryExpression` nodes.
 
 ### Fluent Rule API
 
@@ -409,6 +494,20 @@ foreach (var rule in matchingRules)
     Console.WriteLine($"Would match: {rule.Name} (priority {rule.Priority})");
 }
 ```
+
+### Future: Remote Execution
+
+The expression tree architecture enables a serialization story:
+
+1. **Author locally** — Write rules using familiar LINQ/lambda syntax
+2. **Serialize** — Expression trees (including `FactQueryExpression` markers) can be serialized to JSON/binary
+3. **Send to server** — Rules travel as data, not compiled code
+4. **Evaluate remotely** — Server deserializes expression trees, substitutes its own fact data via `FactQueryRewriter`, evaluates
+
+This is not yet implemented, but the architecture is designed for it. Key pieces in place:
+- `FactQueryExpression` is a pure data node (just a `Type`)
+- `ClosureExtractor` analyzes captured variables for serialization readiness
+- `ContextConditionProjector` ensures all cross-fact references use the symbolic form
 
 ### Agent Communication Patterns (Tests)
 
@@ -616,3 +715,4 @@ Key transcripts:
 | `AgentRouting/MIDDLEWARE_EXPLAINED.md` | Middleware concepts tutorial |
 | `AgentRouting/MIDDLEWARE_POTENTIAL.md` | Advanced middleware patterns |
 | `AgentRouting/AgentRouting.MafiaDemo/ARCHITECTURE.md` | Game architecture |
+| `RulesEngine.Linq/AUDIT_2026-02-05.md` | Bugs, design flaws, test gaps with priority ordering |
