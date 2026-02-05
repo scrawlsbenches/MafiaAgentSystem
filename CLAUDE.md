@@ -54,8 +54,11 @@ rm packages-microsoft-prod.deb
 # Fix /tmp permissions to prevent GPG errors
 chmod 1777 /tmp
 
-# Update package lists (Microsoft repo only)
-apt-get update -o Dir::Etc::sourcelist="sources.list.d/microsoft-prod.list" -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0"
+# IMPORTANT: Run FULL apt-get update (not just Microsoft repo)
+# The Ubuntu archive has dotnet packages too, and apt needs fresh package
+# lists to find current versions. Updating only the Microsoft repo leaves
+# stale Ubuntu package lists that may reference versions no longer available.
+apt-get update 2>&1 | tail -20
 
 # Install .NET SDK 8.0
 apt-get install -y dotnet-sdk-8.0 2>&1 | tail -20
