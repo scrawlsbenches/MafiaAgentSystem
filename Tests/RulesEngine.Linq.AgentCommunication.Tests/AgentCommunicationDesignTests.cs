@@ -1,4 +1,4 @@
-namespace RulesEngine.Linq.Tests;
+namespace RulesEngine.Linq.AgentCommunication.Tests;
 
 using System;
 using System.Collections.Generic;
@@ -6,6 +6,18 @@ using System.Linq;
 using TestRunner.Framework;
 using Mafia.Domain;
 using RulesEngine.Linq.AgentCommunication;
+
+// TODO: This file has build errors due to API changes in IAgentRule<T>.
+// The Evaluate() and Execute() methods now require an IAgentRulesContext parameter,
+// but these tests call them without context. The IAgentRule<T> interface evolved
+// to support context-aware evaluation before these tests were updated.
+//
+// To fix: Either update tests to provide context, or add overloads to IAgentRule<T>
+// that default to null context for backwards compatibility.
+//
+// Additionally:
+// - MessageType.Command doesn't exist (line 328)
+// - ValidationStage<T>, TransformStage<T>, LogStage<T> are not public (lines 411, 421, 431)
 
 /// <summary>
 /// TDD tests for the AgentCommunication design API.

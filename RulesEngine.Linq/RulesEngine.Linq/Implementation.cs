@@ -7,6 +7,7 @@ namespace RulesEngine.Linq
     using System.Linq;
     using System.Linq.Expressions;
     using System.Reflection;
+    using RulesEngine.Linq.Dependencies;
 
     #region RulesContext
 
@@ -18,6 +19,10 @@ namespace RulesEngine.Linq
     {
         private readonly ConcurrentDictionary<Type, object> _ruleSets = new();
         private readonly IRuleProvider _provider;
+        private FactSchema? _schema;
+        private DependencyGraph? _dependencyGraph;
+        private FactQueryProvider? _factQueryProvider;
+        private RuleSession? _currentSession;
         private bool _disposed;
 
         public RulesContext() : this(new InMemoryRuleProvider()) { }
@@ -28,6 +33,57 @@ namespace RulesEngine.Linq
         }
 
         public IRuleProvider Provider => _provider;
+
+        /// <summary>
+        /// The schema for this context, if configured.
+        /// Used for dependency validation and analysis at registration time.
+        /// </summary>
+        public IFactSchema? Schema => _schema;
+
+        /// <summary>
+        /// The dependency graph for this context.
+        /// Tracks dependencies between fact types for load ordering.
+        /// Created when ConfigureSchema is called.
+        /// </summary>
+        public DependencyGraph? DependencyGraph => _dependencyGraph;
+
+        /// <summary>
+        /// Returns an IQueryable for facts of type T.
+        ///
+        /// This is the key method for closure-driven cross-fact queries.
+        /// Rules capture this context and call Facts&lt;T&gt;() in their expressions.
+        ///
+        /// At DEFINITION time: Returns a FactQueryable with FactQueryExpression as its root.
+        /// The expression tree contains this symbolic reference, not actual data.
+        ///
+        /// At EVALUATION time: FactQueryRewriter substitutes actual session data.
+        ///
+        /// Example usage in a rule:
+        ///   Rule.When&lt;Message&gt;(m => context.Facts&lt;Agent&gt;().Any(a => a.Available))
+        /// </summary>
+        /// <exception cref="InvalidOperationException">
+        /// Thrown if enumerated directly (must be used within rule expressions).
+        /// </exception>
+        public IQueryable<T> Facts<T>() where T : class
+        {
+            // Create provider lazily, with schema for validation if available
+            _factQueryProvider ??= new FactQueryProvider(_schema);
+            return new FactQueryable<T>(_factQueryProvider);
+        }
+
+        /// <summary>
+        /// The current session, if one is active.
+        /// Used internally for fact resolution during evaluation.
+        /// </summary>
+        internal RuleSession? CurrentSession => _currentSession;
+
+        /// <summary>
+        /// Sets the current session. Called by RuleSession during creation.
+        /// </summary>
+        internal void SetCurrentSession(RuleSession? session)
+        {
+            _currentSession = session;
+        }
 
         public IRuleSet<T> GetRuleSet<T>() where T : class
         {
@@ -47,6 +103,25 @@ namespace RulesEngine.Linq
             return new SchemaBuilder<T>(this);
         }
 
+        /// <summary>
+        /// Configure the schema for this context.
+        /// The schema defines which fact types are valid and their relationships.
+        /// Rules added after configuration will be validated against the schema.
+        /// </summary>
+        public void ConfigureSchema(Action<IFactSchemaBuilder> configure)
+        {
+            if (configure == null) throw new ArgumentNullException(nameof(configure));
+            if (_schema != null) throw new InvalidOperationException("Schema has already been configured.");
+
+            _schema = new FactSchema();
+            _dependencyGraph = new DependencyGraph();
+            var builder = new FactSchemaBuilderAdapter(_schema);
+            configure(builder);
+
+            // Wire schema-declared dependencies to the graph
+            _schema.WireDependenciesToGraph(_dependencyGraph);
+        }
+
         public IRuleSession CreateSession() => new RuleSession(this);
 
         public void Dispose()
@@ -54,6 +129,45 @@ namespace RulesEngine.Linq
             if (_disposed) return;
             _disposed = true;
             _ruleSets.Clear();
+        }
+    }
+
+    /// <summary>
+    /// Builder interface for configuring the fact schema.
+    /// </summary>
+    public interface IFactSchemaBuilder
+    {
+        /// <summary>
+        /// Register a fact type in the schema.
+        /// </summary>
+        void RegisterFactType<T>() where T : class;
+
+        /// <summary>
+        /// Register a fact type with configuration.
+        /// </summary>
+        void RegisterFactType<T>(Action<FactTypeSchemaBuilder<T>> configure) where T : class;
+    }
+
+    /// <summary>
+    /// Adapter to use FactSchema with the builder interface.
+    /// </summary>
+    internal class FactSchemaBuilderAdapter : IFactSchemaBuilder
+    {
+        private readonly FactSchema _schema;
+
+        public FactSchemaBuilderAdapter(FactSchema schema)
+        {
+            _schema = schema;
+        }
+
+        public void RegisterFactType<T>() where T : class
+        {
+            _schema.RegisterType<T>();
+        }
+
+        public void RegisterFactType<T>(Action<FactTypeSchemaBuilder<T>> configure) where T : class
+        {
+            _schema.RegisterType(configure);
         }
     }
 
@@ -88,6 +202,34 @@ namespace RulesEngine.Linq
         public virtual void Add(IRule<T> rule)
         {
             if (rule == null) throw new ArgumentNullException(nameof(rule));
+
+            // If schema is configured, analyze and validate dependencies
+            if (_context.Schema != null)
+            {
+                if (rule is DependentRule<T> dependentRule)
+                {
+                    dependentRule.AnalyzeDependencies(_context.Schema);
+
+                    // Update the dependency graph with detected dependencies
+                    if (_context.DependencyGraph != null)
+                    {
+                        _context.DependencyGraph.AddFactType(typeof(T), dependentRule.AllDependencies);
+                    }
+                }
+                else if (rule is Rule<T> ruleT && ruleT.RequiresRewriting)
+                {
+                    // Rule<T> with closure-captured cross-fact queries needs dependency analysis
+                    var extractor = new Dependencies.DependencyExtractor(_context.Schema);
+                    var analysis = extractor.Analyze<T>(ruleT.Condition);
+
+                    // Update the dependency graph with detected dependencies
+                    if (_context.DependencyGraph != null && analysis.HasDependencies)
+                    {
+                        _context.DependencyGraph.AddFactType(typeof(T), analysis.FactTypeDependencies);
+                    }
+                }
+            }
+
             lock (_lock)
             {
                 if (_rulesById.ContainsKey(rule.Id))
@@ -242,8 +384,9 @@ namespace RulesEngine.Linq
 
     /// <summary>
     /// In-memory session implementation with unit of work semantics.
+    /// Also implements IFactContext to allow cross-fact queries during rule evaluation.
     /// </summary>
-    public class RuleSession : IRuleSession
+    public class RuleSession : IRuleSession, Dependencies.IFactContext
     {
         private readonly RulesContext _context;
         private readonly ConcurrentDictionary<Type, object> _factSets = new();
@@ -254,6 +397,10 @@ namespace RulesEngine.Linq
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
             SessionId = Guid.NewGuid();
+
+            // Register this session as the current session on the context
+            // This allows closure-captured context.Facts<T>() calls to resolve via this session
+            _context.SetCurrentSession(this);
         }
 
         public Guid SessionId { get; }
@@ -261,7 +408,7 @@ namespace RulesEngine.Linq
 
         public IFactSet<T> Facts<T>() where T : class
         {
-            ThrowIfNotActive();
+            ThrowIfNotActiveOrEvaluating();
             return (IFactSet<T>)_factSets.GetOrAdd(typeof(T),
                 _ => new FactSet<T>(_context, _context.GetRuleSet<T>()));
         }
@@ -287,8 +434,27 @@ namespace RulesEngine.Linq
             var results = new Dictionary<Type, object>();
             int totalFacts = 0, totalRules = 0, totalMatches = 0;
 
-            foreach (var (type, factSetObj) in _factSets)
+            // Determine evaluation order: use dependency graph if available, otherwise arbitrary
+            IEnumerable<Type> typesToEvaluate;
+            if (_context.DependencyGraph != null)
             {
+                // Evaluate in dependency order (dependencies first)
+                var loadOrder = _context.DependencyGraph.GetLoadOrder();
+                // Include types from load order that have fact sets, plus any fact sets not in load order
+                var orderedTypes = loadOrder.Where(t => _factSets.ContainsKey(t)).ToList();
+                var remainingTypes = _factSets.Keys.Where(t => !loadOrder.Contains(t));
+                typesToEvaluate = orderedTypes.Concat(remainingTypes);
+            }
+            else
+            {
+                typesToEvaluate = _factSets.Keys;
+            }
+
+            foreach (var type in typesToEvaluate)
+            {
+                if (!_factSets.TryGetValue(type, out var factSetObj))
+                    continue;
+
                 var evaluateMethod = typeof(RuleSession)
                     .GetMethod(nameof(EvaluateFactSet), BindingFlags.NonPublic | BindingFlags.Instance)!
                     .MakeGenericMethod(type);
@@ -349,6 +515,9 @@ namespace RulesEngine.Linq
             var factsWithoutMatches = new List<T>();
             var matchCountByRule = new Dictionary<string, int>();
 
+            // Create rewriter for rules containing FactQueryExpression (closure-captured cross-fact queries)
+            var rewriter = CreateFactQueryRewriter();
+
             foreach (var fact in factSet)
             {
                 var matchedRules = new List<IRule<T>>();
@@ -358,13 +527,54 @@ namespace RulesEngine.Linq
                 {
                     try
                     {
-                        if (rule.Evaluate(fact))
+                        bool matched;
+                        RuleResult result;
+
+                        // Check if rule is a DependentRule that needs context (explicit parameter pattern)
+                        if (rule is DependentRule<T> dependentRule)
                         {
-                            matchedRules.Add(rule);
-                            var result = rule.Execute(fact);
-                            ruleResults.Add(result);
-                            matchCountByRule[rule.Id] = matchCountByRule.GetValueOrDefault(rule.Id) + 1;
+                            // Pass the session as IFactContext for cross-fact queries
+                            matched = dependentRule.EvaluateWithContext(fact, this);
+                            if (matched)
+                            {
+                                result = dependentRule.ExecuteWithContext(fact, this);
+                            }
+                            else
+                            {
+                                continue;
+                            }
                         }
+                        // Check if rule is a Rule<T> with closure-captured cross-fact queries
+                        else if (rule is Rule<T> ruleT && ruleT.RequiresRewriting)
+                        {
+                            // Use rewriter to substitute FactQueryExpression with actual session data
+                            matched = ruleT.EvaluateWithRewriter(fact, rewriter, SessionId);
+                            if (matched)
+                            {
+                                result = ruleT.ExecuteWithRewriter(fact, rewriter, SessionId);
+                            }
+                            else
+                            {
+                                continue;
+                            }
+                        }
+                        else
+                        {
+                            // Standard rule - no rewriting needed
+                            matched = rule.Evaluate(fact);
+                            if (matched)
+                            {
+                                result = rule.Execute(fact);
+                            }
+                            else
+                            {
+                                continue;
+                            }
+                        }
+
+                        matchedRules.Add(rule);
+                        ruleResults.Add(result);
+                        matchCountByRule[rule.Id] = matchCountByRule.GetValueOrDefault(rule.Id) + 1;
                     }
                     catch (Exception ex)
                     {
@@ -419,8 +629,59 @@ namespace RulesEngine.Linq
         public void Dispose()
         {
             if (_state == SessionState.Disposed) return;
+
+            // Clear this session from the context
+            if (_context.CurrentSession == this)
+                _context.SetCurrentSession(null);
+
             _factSets.Clear();
             _state = SessionState.Disposed;
+        }
+
+        /// <summary>
+        /// Gets facts of a specific type as IQueryable.
+        /// Used by FactQueryRewriter to substitute actual data for FactQueryExpression nodes.
+        /// </summary>
+        internal IQueryable GetFactsAsQueryable(Type factType)
+        {
+            if (!_factSets.TryGetValue(factType, out var factSetObj))
+            {
+                // Return empty queryable for types with no facts
+                var emptyListType = typeof(List<>).MakeGenericType(factType);
+                var emptyList = Activator.CreateInstance(emptyListType)!;
+                var asQueryableMethod = typeof(Queryable).GetMethod(nameof(Queryable.AsQueryable),
+                    new[] { typeof(IEnumerable<>).MakeGenericType(factType) });
+
+                // Use reflection to call AsQueryable on empty list
+                var genericAsQueryable = typeof(Queryable)
+                    .GetMethods()
+                    .First(m => m.Name == nameof(Queryable.AsQueryable) && m.IsGenericMethod)
+                    .MakeGenericMethod(factType);
+
+                return (IQueryable)genericAsQueryable.Invoke(null, new[] { emptyList })!;
+            }
+
+            // Get the facts from the FactSet via reflection
+            var factSetType = factSetObj.GetType();
+            var getFactsMethod = factSetType.GetMethod("GetFacts", BindingFlags.Instance | BindingFlags.NonPublic);
+            var facts = getFactsMethod!.Invoke(factSetObj, null);
+
+            // Convert to IQueryable
+            var queryableMethod = typeof(Queryable)
+                .GetMethods()
+                .First(m => m.Name == nameof(Queryable.AsQueryable) && m.IsGenericMethod)
+                .MakeGenericMethod(factType);
+
+            return (IQueryable)queryableMethod.Invoke(null, new[] { facts })!;
+        }
+
+        /// <summary>
+        /// Creates a FactQueryRewriter that resolves FactQueryExpression nodes
+        /// to actual facts from this session.
+        /// </summary>
+        internal FactQueryRewriter CreateFactQueryRewriter()
+        {
+            return new FactQueryRewriter(type => GetFactsAsQueryable(type));
         }
 
         private void ThrowIfNotActive()
@@ -428,6 +689,56 @@ namespace RulesEngine.Linq
             if (_state != SessionState.Active)
                 throw new InvalidOperationException($"Session is {_state}, expected Active");
         }
+
+        private void ThrowIfNotActiveOrEvaluating()
+        {
+            if (_state != SessionState.Active && _state != SessionState.Evaluating)
+                throw new InvalidOperationException($"Session is {_state}, expected Active or Evaluating");
+        }
+
+        #region IFactContext Implementation
+
+        /// <summary>
+        /// Returns queryable facts of type T for cross-fact rule evaluation.
+        /// </summary>
+        IQueryable<T> Dependencies.IFactContext.Facts<T>()
+        {
+            // IFactSet<T> already implements IQueryable<T>
+            return Facts<T>();
+        }
+
+        /// <summary>
+        /// Find a fact by its key. Uses the "Id" property by convention.
+        /// </summary>
+        T? Dependencies.IFactContext.FindByKey<T>(object key) where T : class
+        {
+            var keyString = key?.ToString();
+            if (string.IsNullOrEmpty(keyString))
+                return null;
+
+            // Convention: look for "Id" property
+            var idProperty = typeof(T).GetProperty("Id");
+            if (idProperty == null)
+                return null;
+
+            // Enumerate to avoid expression tree issues with reflection
+            foreach (var fact in Facts<T>())
+            {
+                var idValue = idProperty.GetValue(fact);
+                if (idValue != null && idValue.ToString() == keyString)
+                    return fact;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Returns all fact types that have been inserted into this session.
+        /// </summary>
+        IReadOnlySet<Type> Dependencies.IFactContext.RegisteredFactTypes =>
+            _factSets.Keys.ToHashSet();
+
+        #endregion
     }
 
     #endregion

@@ -23,6 +23,7 @@ namespace RulesEngine.Linq.Dependencies
     using System.Linq;
     using System.Linq.Expressions;
     using System.Reflection;
+    using RulesEngine.Linq; // For FactQueryExpression
 
     #region Interfaces
 
@@ -124,6 +125,10 @@ namespace RulesEngine.Linq.Dependencies
             {
                 _dependencies[factType].Add(dep);
 
+                // Ensure dependency type is also in the graph (with no deps of its own yet)
+                if (!_dependencies.ContainsKey(dep))
+                    _dependencies[dep] = new HashSet<Type>();
+
                 if (!_dependents.ContainsKey(dep))
                     _dependents[dep] = new HashSet<Type>();
                 _dependents[dep].Add(factType);
@@ -149,11 +154,12 @@ namespace RulesEngine.Linq.Dependencies
         /// <summary>
         /// Get the order in which fact types should be loaded/resolved.
         /// Dependencies come before dependents (topological sort).
+        /// Returns a read-only list that supports IndexOf.
         /// </summary>
-        public IReadOnlyList<Type> GetLoadOrder()
+        public IList<Type> GetLoadOrder()
         {
             if (_cachedLoadOrder != null)
-                return _cachedLoadOrder;
+                return _cachedLoadOrder.AsReadOnly();
 
             var result = new List<Type>();
             var visited = new HashSet<Type>();
@@ -165,7 +171,7 @@ namespace RulesEngine.Linq.Dependencies
             }
 
             _cachedLoadOrder = result;
-            return result;
+            return result.AsReadOnly();
         }
 
         private void TopologicalVisit(
@@ -341,6 +347,27 @@ namespace RulesEngine.Linq.Dependencies
         }
 
         /// <summary>
+        /// Detect FactQueryExpression nodes (closure-captured Facts&lt;T&gt;() calls).
+        /// These nodes are created when a rule captures context.Facts&lt;T&gt;() in a closure.
+        /// </summary>
+        protected override Expression VisitExtension(Expression node)
+        {
+            if (node is FactQueryExpression fqe)
+            {
+                // Validate against schema
+                if (!_schema.IsRegistered(fqe.FactType))
+                {
+                    throw new InvalidOperationException(
+                        $"Rule references Facts<{fqe.FactType.Name}>() but {fqe.FactType.Name} is not registered in the schema. " +
+                        $"Register it in OnModelCreating before using it in rules.");
+                }
+
+                _detectedDependencies.Add(fqe.FactType);
+            }
+            return base.VisitExtension(node);
+        }
+
+        /// <summary>
         /// Detect ctx.Facts&lt;T&gt;() method calls.
         /// </summary>
         protected override Expression VisitMethodCall(MethodCallExpression node)
@@ -380,13 +407,47 @@ namespace RulesEngine.Linq.Dependencies
 
         /// <summary>
         /// Detect navigation property access (m.From, m.Territory, etc.)
+        /// and closure-captured FactQueryable instances.
         /// </summary>
         protected override Expression VisitMember(MemberExpression node)
         {
+            // Check for closure-captured FactQueryable<T> instances
+            if (node.Expression is ConstantExpression ce && ce.Value != null)
+            {
+                try
+                {
+                    // Evaluate the member access to get the actual value
+                    var value = Expression.Lambda(node).Compile().DynamicInvoke();
+
+                    if (value != null)
+                    {
+                        var valueType = value.GetType();
+                        if (valueType.IsGenericType &&
+                            valueType.GetGenericTypeDefinition() == typeof(FactQueryable<>))
+                        {
+                            var factType = valueType.GetGenericArguments()[0];
+                            if (!_schema.IsRegistered(factType))
+                            {
+                                throw new InvalidOperationException(
+                                    $"Rule references Facts<{factType.Name}>() but {factType.Name} is not registered in the schema.");
+                            }
+                            _detectedDependencies.Add(factType);
+                        }
+                    }
+                }
+                catch (InvalidOperationException)
+                {
+                    throw; // Re-throw validation errors
+                }
+                catch
+                {
+                    // Ignore other evaluation errors
+                }
+            }
+
             // Pattern 1: Navigation property detection
             // We need to check if this member access is a navigation property
             // by cross-referencing with the schema
-
             if (node.Member is PropertyInfo property)
             {
                 var declaringType = node.Expression?.Type;
@@ -408,7 +469,8 @@ namespace RulesEngine.Linq.Dependencies
         }
 
         /// <summary>
-        /// Handle closures - detect captured variables that implement IFactContext.
+        /// Handle closures - detect captured variables that implement IFactContext
+        /// or FactQueryable instances.
         /// </summary>
         protected override Expression VisitConstant(ConstantExpression node)
         {
@@ -419,6 +481,20 @@ namespace RulesEngine.Linq.Dependencies
             if (node.Value != null)
             {
                 var type = node.Value.GetType();
+
+                // Check for FactQueryable<T> instances (closure-captured context.Facts<T>())
+                if (type.IsGenericType &&
+                    type.GetGenericTypeDefinition() == typeof(FactQueryable<>))
+                {
+                    var factType = type.GetGenericArguments()[0];
+                    if (!_schema.IsRegistered(factType))
+                    {
+                        throw new InvalidOperationException(
+                            $"Rule references Facts<{factType.Name}>() but {factType.Name} is not registered in the schema. " +
+                            $"Register it in OnModelCreating before using it in rules.");
+                    }
+                    _detectedDependencies.Add(factType);
+                }
 
                 // Check if this is a closure class (compiler-generated)
                 if (IsClosureClass(type))
@@ -466,7 +542,7 @@ namespace RulesEngine.Linq.Dependencies
 
         private void AnalyzeClosureFields(object closure, Type closureType)
         {
-            // Look for fields that implement IFactContext
+            // Look for fields that implement IFactContext or are FactQueryable<T>
             foreach (var field in closureType.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
             {
                 if (typeof(IFactContext).IsAssignableFrom(field.FieldType))
@@ -476,7 +552,21 @@ namespace RulesEngine.Linq.Dependencies
                     _warnings.Add($"Detected captured IFactContext in closure field: {field.Name}");
                 }
 
-                // TODO: Handle nested closures (closure capturing another closure)
+                // Check for FactQueryable<T> fields (closure-captured context.Facts<T>())
+                if (field.FieldType.IsGenericType &&
+                    field.FieldType.GetGenericTypeDefinition() == typeof(FactQueryable<>))
+                {
+                    var factType = field.FieldType.GetGenericArguments()[0];
+                    if (!_schema.IsRegistered(factType))
+                    {
+                        throw new InvalidOperationException(
+                            $"Rule references Facts<{factType.Name}>() but {factType.Name} is not registered in the schema. " +
+                            $"Register it in OnModelCreating before using it in rules.");
+                    }
+                    _detectedDependencies.Add(factType);
+                }
+
+                // Handle nested closures (closure capturing another closure)
                 if (IsClosureClass(field.FieldType))
                 {
                     var nestedClosure = field.GetValue(closure);
@@ -526,6 +616,34 @@ namespace RulesEngine.Linq.Dependencies
                     $"Call builder.FactType<{type.Name}>() in OnModelCreating.");
             }
         }
+
+        /// <summary>
+        /// Wire all schema-declared dependencies to the given dependency graph.
+        /// This includes both explicit DependsOn&lt;T&gt;() declarations and
+        /// navigation properties (HasOne/HasMany).
+        /// </summary>
+        public void WireDependenciesToGraph(DependencyGraph graph)
+        {
+            if (graph == null) throw new ArgumentNullException(nameof(graph));
+
+            foreach (var (factType, typeSchema) in _typeSchemas)
+            {
+                // Register the type in the graph
+                graph.AddFactType(factType);
+
+                // Wire explicit dependencies from DependsOn<T>()
+                foreach (var dependency in typeSchema.Dependencies)
+                {
+                    graph.AddDependency(factType, dependency);
+                }
+
+                // Wire navigation dependencies from HasOne/HasMany
+                foreach (var nav in typeSchema.Navigations.Values)
+                {
+                    graph.AddDependency(factType, nav.TargetType);
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -537,6 +655,11 @@ namespace RulesEngine.Linq.Dependencies
         public string? KeyProperty { get; init; }
         public IReadOnlyDictionary<string, NavigationInfo> Navigations { get; init; }
             = new Dictionary<string, NavigationInfo>();
+
+        /// <summary>
+        /// Explicit dependencies declared via DependsOn&lt;T&gt;().
+        /// </summary>
+        public IReadOnlySet<Type> Dependencies { get; init; } = new HashSet<Type>();
     }
 
     /// <summary>
@@ -546,10 +669,21 @@ namespace RulesEngine.Linq.Dependencies
     {
         private string? _keyProperty;
         private readonly Dictionary<string, NavigationInfo> _navigations = new();
+        private readonly HashSet<Type> _dependencies = new();
 
         public FactTypeSchemaBuilder<T> HasKey<TKey>(Expression<Func<T, TKey>> keySelector)
         {
             _keyProperty = GetPropertyName(keySelector);
+            return this;
+        }
+
+        /// <summary>
+        /// Declare that this fact type depends on another fact type.
+        /// This affects the evaluation order - dependencies are evaluated first.
+        /// </summary>
+        public FactTypeSchemaBuilder<T> DependsOn<TDependency>() where TDependency : class
+        {
+            _dependencies.Add(typeof(TDependency));
             return this;
         }
 
@@ -578,7 +712,8 @@ namespace RulesEngine.Linq.Dependencies
             {
                 FactType = typeof(T),
                 KeyProperty = _keyProperty,
-                Navigations = new Dictionary<string, NavigationInfo>(_navigations)
+                Navigations = new Dictionary<string, NavigationInfo>(_navigations),
+                Dependencies = new HashSet<Type>(_dependencies)
             };
         }
 
@@ -710,14 +845,18 @@ namespace RulesEngine.Linq.Dependencies
         private readonly string _name;
         private readonly Expression<Func<T, bool>>? _simpleCondition;
         private readonly Expression<Func<T, IFactContext, bool>>? _contextCondition;
-        private readonly Action<T>? _simpleAction;
-        private readonly Action<T, IFactContext>? _contextAction;
+        private Action<T>? _simpleAction;
+        private Action<T, IFactContext>? _contextAction;
 
         private readonly HashSet<Type> _explicitDependencies = new();
         private DependencyAnalysisResult? _analysisResult;
 
         private int _priority;
         private readonly HashSet<string> _tags = new();
+
+        // Cached compiled delegates for performance
+        private Func<T, bool>? _compiledSimpleCondition;
+        private Func<T, IFactContext, bool>? _compiledContextCondition;
 
         public DependentRule(string id, string name, Expression<Func<T, bool>> condition)
         {
@@ -762,6 +901,12 @@ namespace RulesEngine.Linq.Dependencies
         }
 
         /// <summary>
+        /// The result of dependency analysis, if analyzed.
+        /// Null until AnalyzeDependencies() is called.
+        /// </summary>
+        public DependencyAnalysisResult? AnalysisResult => _analysisResult;
+
+        /// <summary>
         /// Explicitly declare a dependency on a fact type.
         /// </summary>
         public DependentRule<T> DependsOn<TFact>() where TFact : class
@@ -794,7 +939,7 @@ namespace RulesEngine.Linq.Dependencies
         /// </summary>
         public DependentRule<T> Then(Action<T> action)
         {
-            // TODO: Store and use in Execute
+            _simpleAction = action ?? throw new ArgumentNullException(nameof(action));
             return this;
         }
 
@@ -803,7 +948,7 @@ namespace RulesEngine.Linq.Dependencies
         /// </summary>
         public DependentRule<T> Then(Action<T, IFactContext> action)
         {
-            // TODO: Store and use in ExecuteWithContext
+            _contextAction = action ?? throw new ArgumentNullException(nameof(action));
             return this;
         }
 
@@ -836,16 +981,18 @@ namespace RulesEngine.Linq.Dependencies
                 throw new InvalidOperationException(
                     "This rule requires context. Use EvaluateWithContext instead.");
 
-            // TODO: Cache compiled delegate
-            return _simpleCondition.Compile()(fact);
+            // Use cached delegate for performance
+            _compiledSimpleCondition ??= _simpleCondition.Compile();
+            return _compiledSimpleCondition(fact);
         }
 
         public bool EvaluateWithContext(T fact, IFactContext context)
         {
             if (_contextCondition != null)
             {
-                // TODO: Cache compiled delegate
-                return _contextCondition.Compile()(fact, context);
+                // Use cached delegate for performance
+                _compiledContextCondition ??= _contextCondition.Compile();
+                return _compiledContextCondition(fact, context);
             }
 
             // Fall back to simple condition

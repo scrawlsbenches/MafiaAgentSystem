@@ -1,3 +1,6 @@
+// NOTE: These domain objects are for internal use by RulesEngine.Linq tests.
+// Feel free to add properties as needed for testing scenarios.
+
 namespace Mafia.Domain;
 
 /// <summary>
@@ -14,6 +17,7 @@ public class AgentMessage
     public Dictionary<string, object> Payload { get; set; } = new();
     public HashSet<string> RequiredCapabilities { get; set; } = new();
     public string? Scope { get; set; } // For broadcasts
+    public int Priority { get; set; } // For rule-based prioritization
 
     // Mutable state (modified by rules)
     public bool Blocked { get; set; }
