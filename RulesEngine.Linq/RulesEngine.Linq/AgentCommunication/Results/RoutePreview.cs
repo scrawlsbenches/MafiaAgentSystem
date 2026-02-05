@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using Mafia.Domain;
 
 namespace RulesEngine.Linq.AgentCommunication;
