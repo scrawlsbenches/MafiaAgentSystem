@@ -43,25 +43,12 @@ This ensures future sessions can continue seamlessly.
 - .NET 8.0 SDK required (`dotnet --version` should show 8.x)
 
 ### Install .NET SDK 8.0 (Ubuntu 24.04)
+
+Ubuntu 24.04 includes .NET 8.0 in its official repositories. No Microsoft repository needed.
+
 ```bash
-# Download Microsoft repository configuration
-wget https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb
-
-# Install repository (as root, no sudo needed in web environment)
-dpkg -i packages-microsoft-prod.deb
-rm packages-microsoft-prod.deb
-
-# Fix /tmp permissions to prevent GPG errors
-chmod 1777 /tmp
-
-# IMPORTANT: Run FULL apt-get update (not just Microsoft repo)
-# The Ubuntu archive has dotnet packages too, and apt needs fresh package
-# lists to find current versions. Updating only the Microsoft repo leaves
-# stale Ubuntu package lists that may reference versions no longer available.
-apt-get update 2>&1 | tail -20
-
-# Install .NET SDK 8.0
-apt-get install -y dotnet-sdk-8.0 2>&1 | tail -20
+# Update package lists and install .NET SDK 8.0
+apt-get update && apt-get install -y dotnet-sdk-8.0
 ```
 
 ## Build & Test
