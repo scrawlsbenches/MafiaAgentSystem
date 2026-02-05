@@ -399,5 +399,96 @@ namespace RulesEngine.Linq.Tests
         }
 
         #endregion
+
+        #region DependencyGraph Integration
+
+        [Test]
+        public void RulesContext_HasDependencyGraph_WhenSchemaConfigured()
+        {
+            // Arrange
+            using var context = new RulesContext();
+
+            // Act
+            context.ConfigureSchema(schema =>
+            {
+                schema.RegisterFactType<Agent>();
+                schema.RegisterFactType<AgentMessage>();
+            });
+
+            // Assert
+            Assert.NotNull(context.DependencyGraph);
+        }
+
+        [Test]
+        public void DependencyGraph_TracksRuleDependencies_WhenRulesAdded()
+        {
+            // Arrange
+            using var context = new RulesContext();
+            context.ConfigureSchema(schema =>
+            {
+                schema.RegisterFactType<Agent>();
+                schema.RegisterFactType<Territory>();
+                schema.RegisterFactType<AgentMessage>();
+            });
+
+            // Create rule: AgentMessage depends on Agent
+            var rule1 = new DependentRule<AgentMessage>(
+                "route-message",
+                "Route based on agents",
+                (m, ctx) => ctx.Facts<Agent>().Any(a => a.Status == AgentStatus.Available))
+                .Then(m => { });
+
+            // Create rule: Agent depends on Territory (for territory-based assignment)
+            var rule2 = new DependentRule<Agent>(
+                "assign-territory",
+                "Assign based on territory",
+                (a, ctx) => ctx.Facts<Territory>().Any(t => t.ControlledBy == a.FamilyId))
+                .Then(a => { });
+
+            // Act
+            context.GetRuleSet<AgentMessage>().Add(rule1);
+            context.GetRuleSet<Agent>().Add(rule2);
+
+            // Assert - DependencyGraph should track: AgentMessage -> Agent -> Territory
+            var graph = context.DependencyGraph!;
+            var loadOrder = graph.GetLoadOrder().ToList();
+
+            // Territory should come before Agent, Agent before AgentMessage
+            var territoryIndex = loadOrder.IndexOf(typeof(Territory));
+            var agentIndex = loadOrder.IndexOf(typeof(Agent));
+            var messageIndex = loadOrder.IndexOf(typeof(AgentMessage));
+
+            Assert.True(territoryIndex < agentIndex, "Territory should load before Agent");
+            Assert.True(agentIndex < messageIndex, "Agent should load before AgentMessage");
+        }
+
+        [Test]
+        public void DependencyGraph_GetLoadOrder_ReturnsCorrectOrder()
+        {
+            // Arrange
+            using var context = new RulesContext();
+            context.ConfigureSchema(schema =>
+            {
+                schema.RegisterFactType<Agent>();
+                schema.RegisterFactType<AgentMessage>();
+            });
+
+            // AgentMessage rule depends on Agent
+            var rule = new DependentRule<AgentMessage>(
+                "check-agents",
+                "Check available agents",
+                (m, ctx) => ctx.Facts<Agent>().Any())
+                .Then(m => { });
+
+            context.GetRuleSet<AgentMessage>().Add(rule);
+
+            // Act
+            var loadOrder = context.DependencyGraph!.GetLoadOrder().ToList();
+
+            // Assert - Agent should come before AgentMessage
+            Assert.True(loadOrder.IndexOf(typeof(Agent)) < loadOrder.IndexOf(typeof(AgentMessage)));
+        }
+
+        #endregion
     }
 }

@@ -20,6 +20,7 @@ namespace RulesEngine.Linq
         private readonly ConcurrentDictionary<Type, object> _ruleSets = new();
         private readonly IRuleProvider _provider;
         private FactSchema? _schema;
+        private DependencyGraph? _dependencyGraph;
         private bool _disposed;
 
         public RulesContext() : this(new InMemoryRuleProvider()) { }
@@ -36,6 +37,13 @@ namespace RulesEngine.Linq
         /// Used for dependency validation and analysis at registration time.
         /// </summary>
         public IFactSchema? Schema => _schema;
+
+        /// <summary>
+        /// The dependency graph for this context.
+        /// Tracks dependencies between fact types for load ordering.
+        /// Created when ConfigureSchema is called.
+        /// </summary>
+        public DependencyGraph? DependencyGraph => _dependencyGraph;
 
         public IRuleSet<T> GetRuleSet<T>() where T : class
         {
@@ -66,6 +74,7 @@ namespace RulesEngine.Linq
             if (_schema != null) throw new InvalidOperationException("Schema has already been configured.");
 
             _schema = new FactSchema();
+            _dependencyGraph = new DependencyGraph();
             var builder = new FactSchemaBuilderAdapter(_schema);
             configure(builder);
         }
@@ -155,6 +164,12 @@ namespace RulesEngine.Linq
             if (_context.Schema != null && rule is DependentRule<T> dependentRule)
             {
                 dependentRule.AnalyzeDependencies(_context.Schema);
+
+                // Update the dependency graph with detected dependencies
+                if (_context.DependencyGraph != null)
+                {
+                    _context.DependencyGraph.AddFactType(typeof(T), dependentRule.AllDependencies);
+                }
             }
 
             lock (_lock)
