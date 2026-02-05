@@ -438,9 +438,8 @@ When rules reference other fact types, evaluation order matters (e.g., Agent rul
 ```csharp
 // Schema configuration (EF Core OnModelCreating analog)
 context.ConfigureSchema(schema => {
-    schema.DefineFactType<Territory>();
-    schema.DefineFactType<Agent>();
-    schema.AddDependency<Agent, Territory>(); // Agent rules depend on Territory
+    schema.RegisterFactType<Territory>();
+    schema.RegisterFactType<Agent>(cfg => cfg.DependsOn<Territory>()); // Agent rules depend on Territory
 });
 
 // DependencyGraph provides topological ordering
@@ -716,3 +715,4 @@ Key transcripts:
 | `AgentRouting/MIDDLEWARE_EXPLAINED.md` | Middleware concepts tutorial |
 | `AgentRouting/MIDDLEWARE_POTENTIAL.md` | Advanced middleware patterns |
 | `AgentRouting/AgentRouting.MafiaDemo/ARCHITECTURE.md` | Game architecture |
+| `RulesEngine.Linq/AUDIT_2026-02-05.md` | Bugs, design flaws, test gaps with priority ordering |
