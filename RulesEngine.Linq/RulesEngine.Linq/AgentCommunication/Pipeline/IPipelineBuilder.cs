@@ -1,3 +1,5 @@
+using System;
+
 namespace RulesEngine.Linq.AgentCommunication;
 
 /// <summary>
