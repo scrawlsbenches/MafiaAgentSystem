@@ -710,14 +710,18 @@ namespace RulesEngine.Linq.Dependencies
         private readonly string _name;
         private readonly Expression<Func<T, bool>>? _simpleCondition;
         private readonly Expression<Func<T, IFactContext, bool>>? _contextCondition;
-        private readonly Action<T>? _simpleAction;
-        private readonly Action<T, IFactContext>? _contextAction;
+        private Action<T>? _simpleAction;
+        private Action<T, IFactContext>? _contextAction;
 
         private readonly HashSet<Type> _explicitDependencies = new();
         private DependencyAnalysisResult? _analysisResult;
 
         private int _priority;
         private readonly HashSet<string> _tags = new();
+
+        // Cached compiled delegates for performance
+        private Func<T, bool>? _compiledSimpleCondition;
+        private Func<T, IFactContext, bool>? _compiledContextCondition;
 
         public DependentRule(string id, string name, Expression<Func<T, bool>> condition)
         {
@@ -794,7 +798,7 @@ namespace RulesEngine.Linq.Dependencies
         /// </summary>
         public DependentRule<T> Then(Action<T> action)
         {
-            // TODO: Store and use in Execute
+            _simpleAction = action ?? throw new ArgumentNullException(nameof(action));
             return this;
         }
 
@@ -803,7 +807,7 @@ namespace RulesEngine.Linq.Dependencies
         /// </summary>
         public DependentRule<T> Then(Action<T, IFactContext> action)
         {
-            // TODO: Store and use in ExecuteWithContext
+            _contextAction = action ?? throw new ArgumentNullException(nameof(action));
             return this;
         }
 
@@ -836,16 +840,18 @@ namespace RulesEngine.Linq.Dependencies
                 throw new InvalidOperationException(
                     "This rule requires context. Use EvaluateWithContext instead.");
 
-            // TODO: Cache compiled delegate
-            return _simpleCondition.Compile()(fact);
+            // Use cached delegate for performance
+            _compiledSimpleCondition ??= _simpleCondition.Compile();
+            return _compiledSimpleCondition(fact);
         }
 
         public bool EvaluateWithContext(T fact, IFactContext context)
         {
             if (_contextCondition != null)
             {
-                // TODO: Cache compiled delegate
-                return _contextCondition.Compile()(fact, context);
+                // Use cached delegate for performance
+                _compiledContextCondition ??= _contextCondition.Compile();
+                return _compiledContextCondition(fact, context);
             }
 
             // Fall back to simple condition
