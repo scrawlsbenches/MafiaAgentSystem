@@ -242,8 +242,9 @@ namespace RulesEngine.Linq
 
     /// <summary>
     /// In-memory session implementation with unit of work semantics.
+    /// Also implements IFactContext to allow cross-fact queries during rule evaluation.
     /// </summary>
-    public class RuleSession : IRuleSession
+    public class RuleSession : IRuleSession, Dependencies.IFactContext
     {
         private readonly RulesContext _context;
         private readonly ConcurrentDictionary<Type, object> _factSets = new();
@@ -428,6 +429,50 @@ namespace RulesEngine.Linq
             if (_state != SessionState.Active)
                 throw new InvalidOperationException($"Session is {_state}, expected Active");
         }
+
+        #region IFactContext Implementation
+
+        /// <summary>
+        /// Returns queryable facts of type T for cross-fact rule evaluation.
+        /// </summary>
+        IQueryable<T> Dependencies.IFactContext.Facts<T>()
+        {
+            // IFactSet<T> already implements IQueryable<T>
+            return Facts<T>();
+        }
+
+        /// <summary>
+        /// Find a fact by its key. Uses the "Id" property by convention.
+        /// </summary>
+        T? Dependencies.IFactContext.FindByKey<T>(object key) where T : class
+        {
+            var keyString = key?.ToString();
+            if (string.IsNullOrEmpty(keyString))
+                return null;
+
+            // Convention: look for "Id" property
+            var idProperty = typeof(T).GetProperty("Id");
+            if (idProperty == null)
+                return null;
+
+            // Enumerate to avoid expression tree issues with reflection
+            foreach (var fact in Facts<T>())
+            {
+                var idValue = idProperty.GetValue(fact);
+                if (idValue != null && idValue.ToString() == keyString)
+                    return fact;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Returns all fact types that have been inserted into this session.
+        /// </summary>
+        IReadOnlySet<Type> Dependencies.IFactContext.RegisteredFactTypes =>
+            _factSets.Keys.ToHashSet();
+
+        #endregion
     }
 
     #endregion
