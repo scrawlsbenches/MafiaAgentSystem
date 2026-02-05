@@ -1204,5 +1204,179 @@ namespace RulesEngine.Linq.Tests
         }
 
         #endregion
+
+        #region Generic Rewriter Dispatch (any IRule<T> with FactQueryExpression)
+
+        [Test]
+        public void FactQueryExpression_ContainsFactQuery_DetectsDirectNode()
+        {
+            // Arrange - an expression with FactQueryExpression
+            var fqe = new FactQueryExpression(typeof(Agent));
+            var param = System.Linq.Expressions.Expression.Parameter(typeof(AgentMessage), "m");
+            var anyMethod = typeof(Queryable).GetMethods()
+                .First(m => m.Name == "Any" && m.GetParameters().Length == 1)
+                .MakeGenericMethod(typeof(Agent));
+            var body = System.Linq.Expressions.Expression.Call(anyMethod, fqe);
+            var lambda = System.Linq.Expressions.Expression.Lambda<Func<AgentMessage, bool>>(body, param);
+
+            // Act & Assert
+            Assert.True(FactQueryExpression.ContainsFactQuery(lambda));
+        }
+
+        [Test]
+        public void FactQueryExpression_ContainsFactQuery_ReturnsFalseForSimple()
+        {
+            // Arrange - a simple expression without FactQueryExpression
+            System.Linq.Expressions.Expression<Func<AgentMessage, bool>> lambda =
+                m => m.Type == MessageType.Request;
+
+            // Act & Assert
+            Assert.False(FactQueryExpression.ContainsFactQuery(lambda));
+        }
+
+        [Test]
+        public void Session_Evaluate_HandlesCustomIRuleWithFactQueryExpression()
+        {
+            // Arrange - a custom IRule<T> (not Rule<T> or DependentRule<T>)
+            // whose Condition contains FactQueryExpression
+            using var context = new RulesContext();
+
+            var fqe = new FactQueryExpression(typeof(Agent));
+            var msgParam = System.Linq.Expressions.Expression.Parameter(typeof(AgentMessage), "m");
+
+            // Build: m => Facts<Agent>().Any(a => a.Status == AgentStatus.Available)
+            var agentParam = System.Linq.Expressions.Expression.Parameter(typeof(Agent), "a");
+            var statusProp = System.Linq.Expressions.Expression.Property(agentParam, nameof(Agent.Status));
+            var availableConst = System.Linq.Expressions.Expression.Constant(AgentStatus.Available);
+            var statusEquals = System.Linq.Expressions.Expression.Equal(statusProp, availableConst);
+            var predicate = System.Linq.Expressions.Expression.Lambda<Func<Agent, bool>>(statusEquals, agentParam);
+
+            var anyMethod = typeof(Queryable).GetMethods()
+                .First(m => m.Name == "Any" && m.GetParameters().Length == 2)
+                .MakeGenericMethod(typeof(Agent));
+            var anyCall = System.Linq.Expressions.Expression.Call(anyMethod, fqe,
+                System.Linq.Expressions.Expression.Quote(predicate));
+
+            var condition = System.Linq.Expressions.Expression.Lambda<Func<AgentMessage, bool>>(anyCall, msgParam);
+
+            var customRule = new CustomTestRule<AgentMessage>("custom-1", "Custom FQE Rule", condition);
+            context.GetRuleSet<AgentMessage>().Add(customRule);
+
+            using var session = context.CreateSession();
+            session.Insert(new Agent { Id = "A1", Status = AgentStatus.Available });
+            session.Insert(new AgentMessage { Id = "M1", Type = MessageType.Request });
+
+            // Act - session should detect FactQueryExpression and use rewriter
+            var result = session.Evaluate<AgentMessage>();
+
+            // Assert - the rule matched (rewriter substituted actual Agent facts)
+            Assert.Equal(1, result.Matches.Count);
+            Assert.Equal("custom-1", result.Matches[0].MatchedRules[0].Id);
+        }
+
+        [Test]
+        public void Session_Evaluate_CustomIRule_NoMatchWhenFactsEmpty()
+        {
+            // Arrange - same custom rule, but no Agent facts inserted
+            using var context = new RulesContext();
+
+            var fqe = new FactQueryExpression(typeof(Agent));
+            var msgParam = System.Linq.Expressions.Expression.Parameter(typeof(AgentMessage), "m");
+            var anyMethod = typeof(Queryable).GetMethods()
+                .First(m => m.Name == "Any" && m.GetParameters().Length == 1)
+                .MakeGenericMethod(typeof(Agent));
+            var anyCall = System.Linq.Expressions.Expression.Call(anyMethod, fqe);
+            var condition = System.Linq.Expressions.Expression.Lambda<Func<AgentMessage, bool>>(anyCall, msgParam);
+
+            var customRule = new CustomTestRule<AgentMessage>("custom-2", "Custom FQE No Match", condition);
+            context.GetRuleSet<AgentMessage>().Add(customRule);
+
+            using var session = context.CreateSession();
+            // No Agent facts inserted
+            session.Insert(new AgentMessage { Id = "M1", Type = MessageType.Request });
+
+            // Act
+            var result = session.Evaluate<AgentMessage>();
+
+            // Assert - no match because no Agent facts
+            Assert.Equal(0, result.Matches.Count);
+        }
+
+        [Test]
+        public void Session_Evaluate_CustomIRule_ExecutesAction()
+        {
+            // Arrange
+            using var context = new RulesContext();
+
+            var fqe = new FactQueryExpression(typeof(Agent));
+            var msgParam = System.Linq.Expressions.Expression.Parameter(typeof(AgentMessage), "m");
+            var anyMethod = typeof(Queryable).GetMethods()
+                .First(m => m.Name == "Any" && m.GetParameters().Length == 1)
+                .MakeGenericMethod(typeof(Agent));
+            var anyCall = System.Linq.Expressions.Expression.Call(anyMethod, fqe);
+            var condition = System.Linq.Expressions.Expression.Lambda<Func<AgentMessage, bool>>(anyCall, msgParam);
+
+            bool actionExecuted = false;
+            var customRule = new CustomTestRule<AgentMessage>("custom-3", "Custom With Action", condition)
+            {
+                Action = m => { actionExecuted = true; m.Flag("routed"); }
+            };
+            context.GetRuleSet<AgentMessage>().Add(customRule);
+
+            using var session = context.CreateSession();
+            session.Insert(new Agent { Id = "A1", Status = AgentStatus.Available });
+            var msg = new AgentMessage { Id = "M1" };
+            session.Insert(msg);
+
+            // Act
+            var result = session.Evaluate<AgentMessage>();
+
+            // Assert - action was executed
+            Assert.True(actionExecuted);
+            Assert.True(msg.Flags.Contains("routed"));
+        }
+
+        /// <summary>
+        /// A minimal IRule&lt;T&gt; implementation that is NOT Rule&lt;T&gt; or DependentRule&lt;T&gt;.
+        /// Used to verify that the session's generic rewriter dispatch handles
+        /// FactQueryExpression in any IRule&lt;T&gt;'s Condition.
+        /// </summary>
+        private class CustomTestRule<T> : IRule<T> where T : class
+        {
+            public string Id { get; }
+            public string Name { get; }
+            public string Description => Name;
+            public int Priority { get; set; }
+            public IReadOnlyList<string> Tags => Array.Empty<string>();
+            public System.Linq.Expressions.Expression<Func<T, bool>> Condition { get; }
+            public Action<T>? Action { get; set; }
+
+            public CustomTestRule(string id, string name,
+                System.Linq.Expressions.Expression<Func<T, bool>> condition)
+            {
+                Id = id;
+                Name = name;
+                Condition = condition;
+            }
+
+            public bool Evaluate(T fact)
+            {
+                // This should NOT be called by the session if it detects
+                // FactQueryExpression and routes through the rewriter.
+                // If it IS called, the expression can't compile (FactQueryExpression
+                // nodes aren't reducible), so this will throw.
+                throw new InvalidOperationException(
+                    $"CustomTestRule.Evaluate was called directly. " +
+                    $"Session should have detected FactQueryExpression and used the rewriter.");
+            }
+
+            public RuleResult Execute(T fact)
+            {
+                Action?.Invoke(fact);
+                return RuleResult.Success(Id, Name);
+            }
+        }
+
+        #endregion
     }
 }

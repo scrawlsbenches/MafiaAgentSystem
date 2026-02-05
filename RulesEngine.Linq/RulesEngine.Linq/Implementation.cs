@@ -393,6 +393,10 @@ namespace RulesEngine.Linq
         private readonly List<EvaluationError> _errors = new();
         private SessionState _state = SessionState.Active;
 
+        // Cache for rewritten conditions of generic IRule<T> implementations
+        // that contain FactQueryExpression but aren't Rule<T> (which has its own cache)
+        private readonly ConcurrentDictionary<string, Delegate> _rewrittenConditionCache = new();
+
         public RuleSession(RulesContext context)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
@@ -558,6 +562,22 @@ namespace RulesEngine.Linq
                                 continue;
                             }
                         }
+                        // Generic path: any IRule<T> whose Condition contains FactQueryExpression.
+                        // This handles custom implementations, decorators, composites, etc.
+                        // that aren't DependentRule or Rule<T> but still reference cross-fact queries.
+                        else if (FactQueryExpression.ContainsFactQuery(rule.Condition))
+                        {
+                            var compiled = GetOrCompileRewrittenCondition(rule, rewriter);
+                            matched = compiled(fact);
+                            if (matched)
+                            {
+                                result = rule.Execute(fact);
+                            }
+                            else
+                            {
+                                continue;
+                            }
+                        }
                         else
                         {
                             // Standard rule - no rewriting needed
@@ -682,6 +702,24 @@ namespace RulesEngine.Linq
         internal FactQueryRewriter CreateFactQueryRewriter()
         {
             return new FactQueryRewriter(type => GetFactsAsQueryable(type));
+        }
+
+        /// <summary>
+        /// Rewrites, compiles, and caches a rule's Condition expression.
+        /// Used by the generic rewriter dispatch for IRule&lt;T&gt; implementations
+        /// that contain FactQueryExpression but aren't Rule&lt;T&gt; (which has its own cache).
+        /// </summary>
+        private Func<T, bool> GetOrCompileRewrittenCondition<T>(IRule<T> rule, FactQueryRewriter rewriter) where T : class
+        {
+            if (_rewrittenConditionCache.TryGetValue(rule.Id, out var cached))
+                return (Func<T, bool>)cached;
+
+            var rewritten = rewriter.Rewrite(rule.Condition);
+            var lambda = (Expression<Func<T, bool>>)rewritten;
+            var compiled = lambda.Compile();
+
+            _rewrittenConditionCache[rule.Id] = compiled;
+            return compiled;
         }
 
         private void ThrowIfNotActive()

@@ -280,6 +280,85 @@ namespace RulesEngine.Linq
         /// String representation for debugging.
         /// </summary>
         public override string ToString() => $"Facts<{FactType.Name}>()";
+
+        /// <summary>
+        /// Checks whether an expression tree contains FactQueryExpression nodes
+        /// (or closure-captured FactQueryable&lt;T&gt; instances that represent them).
+        ///
+        /// Used by the evaluation pipeline to detect rules that need rewriting
+        /// before compilation, regardless of concrete IRule&lt;T&gt; implementation.
+        /// </summary>
+        public static bool ContainsFactQuery(Expression expression)
+        {
+            var detector = new FactQueryDetector();
+            detector.Visit(expression);
+            return detector.Found;
+        }
+
+        /// <summary>
+        /// Visitor that detects FactQueryExpression nodes in an expression tree.
+        /// Handles three patterns:
+        /// 1. Direct FactQueryExpression extension nodes
+        /// 2. Constant FactQueryable&lt;T&gt; instances
+        /// 3. Closure member access to FactQueryable&lt;T&gt; fields
+        /// </summary>
+        private class FactQueryDetector : ExpressionVisitor
+        {
+            public bool Found { get; private set; }
+
+            protected override Expression VisitExtension(Expression node)
+            {
+                if (node is FactQueryExpression)
+                {
+                    Found = true;
+                    return node;
+                }
+                return base.VisitExtension(node);
+            }
+
+            protected override Expression VisitConstant(ConstantExpression node)
+            {
+                if (node.Value != null)
+                {
+                    var type = node.Value.GetType();
+                    if (type.IsGenericType &&
+                        type.GetGenericTypeDefinition() == typeof(FactQueryable<>))
+                    {
+                        Found = true;
+                    }
+                }
+                return base.VisitConstant(node);
+            }
+
+            protected override Expression VisitMember(MemberExpression node)
+            {
+                if (node.Expression is ConstantExpression ce && ce.Value != null)
+                {
+                    try
+                    {
+                        var value = Expression.Lambda(node).Compile().DynamicInvoke();
+                        if (value is FactQueryExpression)
+                        {
+                            Found = true;
+                        }
+                        else if (value != null)
+                        {
+                            var valueType = value.GetType();
+                            if (valueType.IsGenericType &&
+                                valueType.GetGenericTypeDefinition() == typeof(FactQueryable<>))
+                            {
+                                Found = true;
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Ignore evaluation errors
+                    }
+                }
+                return base.VisitMember(node);
+            }
+        }
     }
 
     /// <summary>
