@@ -436,8 +436,12 @@ namespace RulesEngine.Linq
     /// This is the bridge between expression trees (defined at rule creation time)
     /// and actual facts (available at evaluation time).
     ///
+    /// Handles two patterns:
+    /// 1. Direct FactQueryExpression nodes (from FactQueryable.Expression)
+    /// 2. MemberExpression accessing a closure field that contains a FactQueryable
+    ///
     /// Example:
-    ///   Before: Call(Any, FactQueryExpression(Agent), Lambda)
+    ///   Before: Call(Any, MemberAccess(closure, "agents"), Lambda)  // agents is FactQueryable
     ///   After:  Call(Any, Constant(agentList.AsQueryable()), Lambda)
     /// </summary>
     public class FactQueryRewriter : ExpressionVisitor
@@ -473,6 +477,46 @@ namespace RulesEngine.Linq
                 return Expression.Constant(facts, fqe.Type);
             }
             return base.VisitExtension(node);
+        }
+
+        /// <summary>
+        /// Handle MemberExpression accessing closure fields that contain FactQueryable instances.
+        /// When a rule captures context.Facts&lt;T&gt;() in a closure, the expression tree
+        /// contains MemberAccess(closure, "fieldName") where the field value is a FactQueryable.
+        /// </summary>
+        protected override Expression VisitMember(MemberExpression node)
+        {
+            if (node.Expression is ConstantExpression ce && ce.Value != null)
+            {
+                try
+                {
+                    // Evaluate the member access to get the actual value
+                    var value = Expression.Lambda(node).Compile().DynamicInvoke();
+
+                    if (value != null)
+                    {
+                        var valueType = value.GetType();
+                        if (valueType.IsGenericType &&
+                            valueType.GetGenericTypeDefinition() == typeof(FactQueryable<>))
+                        {
+                            // Get the fact type from FactQueryable<T>
+                            var factType = valueType.GetGenericArguments()[0];
+
+                            // Resolve actual facts from session
+                            var facts = _factResolver(factType);
+
+                            // Return a constant expression with the actual facts
+                            var queryableType = typeof(IQueryable<>).MakeGenericType(factType);
+                            return Expression.Constant(facts, queryableType);
+                        }
+                    }
+                }
+                catch
+                {
+                    // If evaluation fails, continue with normal visiting
+                }
+            }
+            return base.VisitMember(node);
         }
     }
 

@@ -133,28 +133,35 @@ namespace RulesEngine.Linq
                 return base.VisitConstant(node);
             }
 
-            // Check member access on FactQueryable (e.g., closure.Facts<T>().Expression)
+            // Check member access on closure fields that might be FactQueryable<T>
             protected override Expression VisitMember(MemberExpression node)
             {
                 if (node.Expression is ConstantExpression ce && ce.Value != null)
                 {
-                    // Check if we're accessing the Expression property of a FactQueryable
-                    var memberType = node.Type;
-                    if (typeof(Expression).IsAssignableFrom(memberType))
+                    // Evaluate the member access to get the actual value
+                    try
                     {
-                        // Evaluate the member access to see if it's a FactQueryExpression
-                        try
+                        var value = Expression.Lambda(node).Compile().DynamicInvoke();
+
+                        // Check if the value is a FactQueryExpression
+                        if (value is FactQueryExpression)
                         {
-                            var value = Expression.Lambda(node).Compile().DynamicInvoke();
-                            if (value is FactQueryExpression)
+                            Found = true;
+                        }
+                        // Check if the value is a FactQueryable<T>
+                        else if (value != null)
+                        {
+                            var valueType = value.GetType();
+                            if (valueType.IsGenericType &&
+                                valueType.GetGenericTypeDefinition() == typeof(FactQueryable<>))
                             {
                                 Found = true;
                             }
                         }
-                        catch
-                        {
-                            // Ignore evaluation errors
-                        }
+                    }
+                    catch
+                    {
+                        // Ignore evaluation errors
                     }
                 }
                 return base.VisitMember(node);

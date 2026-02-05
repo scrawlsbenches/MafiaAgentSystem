@@ -548,5 +548,326 @@ namespace RulesEngine.Linq.Tests
         }
 
         #endregion
+
+        #region Closure-Captured Cross-Fact Queries (EF Core-inspired pattern)
+
+        [Test]
+        public void ClosureCapture_RuleWithFactsAny_MatchesWhenAgentAvailable()
+        {
+            // Arrange
+            using var context = new RulesContext();
+
+            // Capture context.Facts<Agent>() in a closure - this returns FactQueryable
+            // whose Expression is FactQueryExpression (not actual data)
+            var agents = context.Facts<Agent>();
+
+            // Create rule that uses the captured queryable
+            // At definition time: agents.Any(...) builds an expression tree with FactQueryExpression
+            // At evaluation time: FactQueryRewriter substitutes actual session data
+            var rule = new Rule<AgentMessage>(
+                "route-if-available",
+                "Route if any agent available",
+                m => m.Type == MessageType.Request && agents.Any(a => a.Status == AgentStatus.Available))
+                .Then(m => m.Flags.Add("routed-closure"));
+
+            context.GetRuleSet<AgentMessage>().Add(rule);
+
+            using var session = context.CreateSession();
+
+            // Insert an available agent
+            session.Insert(new Agent { Id = "A1", Status = AgentStatus.Available });
+
+            // Insert a message
+            var message = new AgentMessage { Id = "M1", Type = MessageType.Request };
+            session.Insert(message);
+
+            // Act
+            var result = session.Evaluate<AgentMessage>();
+
+            // Assert - Rule should match because there's an available agent
+            Assert.Equal(1, result.Matches.Count);
+            Assert.True(message.Flags.Contains("routed-closure"));
+        }
+
+        [Test]
+        public void ClosureCapture_RuleWithFactsAny_DoesNotMatchWhenNoAgentAvailable()
+        {
+            // Arrange
+            using var context = new RulesContext();
+            var agents = context.Facts<Agent>();
+
+            var rule = new Rule<AgentMessage>(
+                "route-if-available",
+                "Route if any agent available",
+                m => m.Type == MessageType.Request && agents.Any(a => a.Status == AgentStatus.Available))
+                .Then(m => m.Flags.Add("routed-closure"));
+
+            context.GetRuleSet<AgentMessage>().Add(rule);
+
+            using var session = context.CreateSession();
+
+            // Insert agent that is NOT available
+            session.Insert(new Agent { Id = "A1", Status = AgentStatus.Busy });
+
+            var message = new AgentMessage { Id = "M1", Type = MessageType.Request };
+            session.Insert(message);
+
+            // Act
+            var result = session.Evaluate<AgentMessage>();
+
+            // Assert - Rule should NOT match because no agent is available
+            Assert.Equal(0, result.Matches.Count);
+            Assert.False(message.Flags.Contains("routed-closure"));
+        }
+
+        [Test]
+        public void ClosureCapture_RuleWithComplexQuery_WorksCorrectly()
+        {
+            // Arrange
+            using var context = new RulesContext();
+            var agents = context.Facts<Agent>();
+
+            // More complex query: check if any soldier has low task count
+            var rule = new Rule<AgentMessage>(
+                "route-to-idle-soldier",
+                "Route if idle soldier exists",
+                m => m.Type == MessageType.Request &&
+                     agents.Any(a => a.Role == AgentRole.Soldier &&
+                                     a.Status == AgentStatus.Available &&
+                                     a.CurrentTaskCount < 3))
+                .Then(m => m.Flags.Add("idle-soldier-found"));
+
+            context.GetRuleSet<AgentMessage>().Add(rule);
+
+            using var session = context.CreateSession();
+
+            // Insert soldiers with varying task counts
+            session.InsertAll(new[]
+            {
+                new Agent { Id = "A1", Role = AgentRole.Soldier, Status = AgentStatus.Available, CurrentTaskCount = 5 },
+                new Agent { Id = "A2", Role = AgentRole.Soldier, Status = AgentStatus.Available, CurrentTaskCount = 2 }, // This one matches
+                new Agent { Id = "A3", Role = AgentRole.Capo, Status = AgentStatus.Available, CurrentTaskCount = 0 } // Wrong role
+            });
+
+            var message = new AgentMessage { Id = "M1", Type = MessageType.Request };
+            session.Insert(message);
+
+            // Act
+            var result = session.Evaluate<AgentMessage>();
+
+            // Assert
+            Assert.Equal(1, result.Matches.Count);
+            Assert.True(message.Flags.Contains("idle-soldier-found"));
+        }
+
+        [Test]
+        public void ClosureCapture_RuleRequiresRewriting_IsTrue()
+        {
+            // Arrange
+            using var context = new RulesContext();
+            var agents = context.Facts<Agent>();
+
+            // Rule with closure-captured Facts<T>()
+            var ruleWithClosure = new Rule<AgentMessage>(
+                "with-closure",
+                "Has closure",
+                m => agents.Any());
+
+            // Rule without closure
+            var ruleWithoutClosure = new Rule<AgentMessage>(
+                "no-closure",
+                "No closure",
+                m => m.Type == MessageType.Request);
+
+            // Assert
+            Assert.True(ruleWithClosure.RequiresRewriting, "Rule with closure should require rewriting");
+            Assert.False(ruleWithoutClosure.RequiresRewriting, "Rule without closure should not require rewriting");
+        }
+
+        [Test]
+        public void ClosureCapture_DirectEvaluate_ThrowsForRuleRequiringRewriting()
+        {
+            // Arrange
+            using var context = new RulesContext();
+            var agents = context.Facts<Agent>();
+
+            var rule = new Rule<AgentMessage>(
+                "needs-rewriting",
+                "Needs rewriting",
+                m => agents.Any());
+
+            var message = new AgentMessage { Id = "M1" };
+
+            // Act & Assert - Direct Evaluate should throw
+            Assert.Throws<InvalidOperationException>(() => rule.Evaluate(message));
+        }
+
+        [Test]
+        public void ClosureCapture_MultipleFactTypes_WorksTogether()
+        {
+            // Arrange
+            using var context = new RulesContext();
+            var agents = context.Facts<Agent>();
+            var territories = context.Facts<Territory>();
+
+            // Rule that queries both Agent and Territory
+            var rule = new Rule<AgentMessage>(
+                "multi-fact-check",
+                "Check agents and territories",
+                m => agents.Any(a => a.Status == AgentStatus.Available) &&
+                     territories.Any(t => t.Value > 1000)) // High value territory
+                .Then(m => m.Flags.Add("safe-route-available"));
+
+            context.GetRuleSet<AgentMessage>().Add(rule);
+
+            using var session = context.CreateSession();
+
+            session.Insert(new Agent { Id = "A1", Status = AgentStatus.Available });
+            session.Insert(new Territory { Id = "T1", Name = "Downtown", Value = 5000 });
+
+            var message = new AgentMessage { Id = "M1", Type = MessageType.Request };
+            session.Insert(message);
+
+            // Act
+            var result = session.Evaluate<AgentMessage>();
+
+            // Assert
+            Assert.Equal(1, result.Matches.Count);
+            Assert.True(message.Flags.Contains("safe-route-available"));
+        }
+
+        [Test]
+        public void ClosureCapture_EmptyFactSet_AnyReturnsFalse()
+        {
+            // Arrange
+            using var context = new RulesContext();
+            var agents = context.Facts<Agent>();
+
+            var rule = new Rule<AgentMessage>(
+                "check-agents",
+                "Check for agents",
+                m => agents.Any()) // No agents inserted
+                .Then(m => m.Flags.Add("has-agents"));
+
+            context.GetRuleSet<AgentMessage>().Add(rule);
+
+            using var session = context.CreateSession();
+
+            // Don't insert any agents - fact set will be empty
+
+            var message = new AgentMessage { Id = "M1" };
+            session.Insert(message);
+
+            // Act
+            var result = session.Evaluate<AgentMessage>();
+
+            // Assert - Rule should not match because no agents exist
+            Assert.Equal(0, result.Matches.Count);
+            Assert.False(message.Flags.Contains("has-agents"));
+        }
+
+        [Test]
+        public void ClosureCapture_WithCount_WorksCorrectly()
+        {
+            // Arrange
+            using var context = new RulesContext();
+            var agents = context.Facts<Agent>();
+
+            // Rule that uses Count()
+            var rule = new Rule<AgentMessage>(
+                "need-backup",
+                "Request backup if few agents",
+                m => m.Type == MessageType.Alert && agents.Count(a => a.Status == AgentStatus.Available) < 2)
+                .Then(m => m.Flags.Add("backup-requested"));
+
+            context.GetRuleSet<AgentMessage>().Add(rule);
+
+            using var session = context.CreateSession();
+
+            // Insert only one available agent
+            session.Insert(new Agent { Id = "A1", Status = AgentStatus.Available });
+
+            var message = new AgentMessage { Id = "M1", Type = MessageType.Alert };
+            session.Insert(message);
+
+            // Act
+            var result = session.Evaluate<AgentMessage>();
+
+            // Assert
+            Assert.Equal(1, result.Matches.Count);
+            Assert.True(message.Flags.Contains("backup-requested"));
+        }
+
+        [Test]
+        public void ClosureCapture_SessionCacheIsUsed_ForSameSession()
+        {
+            // Arrange
+            using var context = new RulesContext();
+            var agents = context.Facts<Agent>();
+
+            var rule = new Rule<AgentMessage>(
+                "cached-rule",
+                "Uses cache",
+                m => agents.Any(a => a.Status == AgentStatus.Available));
+
+            context.GetRuleSet<AgentMessage>().Add(rule);
+
+            using var session = context.CreateSession();
+
+            session.Insert(new Agent { Id = "A1", Status = AgentStatus.Available });
+            session.Insert(new AgentMessage { Id = "M1" });
+            session.Insert(new AgentMessage { Id = "M2" });
+
+            // Act - Evaluate twice, should use cached compiled condition
+            var result = session.Evaluate<AgentMessage>();
+
+            // Assert - Both messages should match
+            Assert.Equal(2, result.Matches.Count);
+        }
+
+        [Test]
+        public void ClosureCapture_MixedWithRegularRules_WorksTogether()
+        {
+            // Arrange
+            using var context = new RulesContext();
+            var agents = context.Facts<Agent>();
+
+            // Closure-based rule
+            var closureRule = new Rule<AgentMessage>(
+                "closure-rule",
+                "Closure based",
+                m => m.Type == MessageType.Request && agents.Any(a => a.Status == AgentStatus.Available))
+                .WithPriority(100)
+                .Then(m => m.Flags.Add("closure-matched"));
+
+            // Regular rule (no closure)
+            var regularRule = new Rule<AgentMessage>(
+                "regular-rule",
+                "Regular rule",
+                m => m.Type == MessageType.Alert)
+                .WithPriority(50)
+                .Then(m => m.Flags.Add("regular-matched"));
+
+            context.GetRuleSet<AgentMessage>().Add(closureRule);
+            context.GetRuleSet<AgentMessage>().Add(regularRule);
+
+            using var session = context.CreateSession();
+
+            session.Insert(new Agent { Id = "A1", Status = AgentStatus.Available });
+
+            var request = new AgentMessage { Id = "M1", Type = MessageType.Request };
+            var alert = new AgentMessage { Id = "M2", Type = MessageType.Alert };
+            session.InsertAll(new[] { request, alert });
+
+            // Act
+            var result = session.Evaluate<AgentMessage>();
+
+            // Assert
+            Assert.Equal(2, result.Matches.Count);
+            Assert.True(request.Flags.Contains("closure-matched"));
+            Assert.True(alert.Flags.Contains("regular-matched"));
+        }
+
+        #endregion
     }
 }
