@@ -766,6 +766,12 @@ namespace RulesEngine.Linq.Dependencies
         }
 
         /// <summary>
+        /// The result of dependency analysis, if analyzed.
+        /// Null until AnalyzeDependencies() is called.
+        /// </summary>
+        public DependencyAnalysisResult? AnalysisResult => _analysisResult;
+
+        /// <summary>
         /// Explicitly declare a dependency on a fact type.
         /// </summary>
         public DependentRule<T> DependsOn<TFact>() where TFact : class

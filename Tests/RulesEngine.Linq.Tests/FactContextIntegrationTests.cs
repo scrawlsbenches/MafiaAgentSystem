@@ -210,5 +210,101 @@ namespace RulesEngine.Linq.Tests
         }
 
         #endregion
+
+        #region AnalyzeDependencies at Registration
+
+        [Test]
+        public void RuleSet_Add_CallsAnalyzeDependencies_WhenSchemaConfigured()
+        {
+            // Arrange
+            using var context = new RulesContext();
+
+            // Configure schema with fact types
+            context.ConfigureSchema(schema =>
+            {
+                schema.RegisterFactType<Agent>();
+                schema.RegisterFactType<AgentMessage>();
+            });
+
+            // Create a rule that depends on Agent
+            var rule = new DependentRule<AgentMessage>(
+                "route-message",
+                "Route based on agents",
+                (m, ctx) => ctx.Facts<Agent>().Any(a => a.Status == AgentStatus.Available))
+                .DependsOn<Agent>()
+                .Then(m => { });
+
+            // Before adding: only explicit dependencies
+            var beforeDeps = rule.AllDependencies;
+            Assert.Equal(1, beforeDeps.Count); // Only explicit Agent dependency
+
+            // Act
+            context.GetRuleSet<AgentMessage>().Add(rule);
+
+            // Assert - After adding with schema, analysis should have detected Facts<Agent>() call
+            var afterDeps = rule.AllDependencies;
+            Assert.True(afterDeps.Contains(typeof(Agent)));
+
+            // The rule should have been analyzed (has analysis result)
+            Assert.NotNull(rule.AnalysisResult);
+        }
+
+        [Test]
+        public void RuleSet_Add_ValidatesDependencies_AgainstSchema()
+        {
+            // Arrange
+            using var context = new RulesContext();
+
+            // Configure schema WITHOUT Agent registered
+            context.ConfigureSchema(schema =>
+            {
+                schema.RegisterFactType<AgentMessage>();
+                // Note: Agent is NOT registered
+            });
+
+            // Create a rule that explicitly depends on Agent (not in schema)
+            var rule = new DependentRule<AgentMessage>(
+                "invalid-rule",
+                "Has unregistered dependency",
+                m => m.Type == MessageType.Request)
+                .DependsOn<Agent>()  // Agent not in schema!
+                .Then(m => { });
+
+            // Act & Assert - Should throw because Agent is not in schema
+            Assert.Throws<InvalidOperationException>(() =>
+            {
+                context.GetRuleSet<AgentMessage>().Add(rule);
+            });
+        }
+
+        [Test]
+        public void RuleSet_Add_DetectsDependencies_FromContextFactsCall()
+        {
+            // Arrange
+            using var context = new RulesContext();
+
+            // Configure schema with all fact types
+            context.ConfigureSchema(schema =>
+            {
+                schema.RegisterFactType<Agent>();
+                schema.RegisterFactType<AgentMessage>();
+            });
+
+            // Create a rule that queries Facts<Agent>() but doesn't explicitly declare it
+            var rule = new DependentRule<AgentMessage>(
+                "detect-deps",
+                "Detect dependencies from expression",
+                (m, ctx) => ctx.Facts<Agent>().Count() > 0)
+                // Note: No explicit .DependsOn<Agent>() call
+                .Then(m => { });
+
+            // Act
+            context.GetRuleSet<AgentMessage>().Add(rule);
+
+            // Assert - Dependency on Agent should be detected from expression
+            Assert.True(rule.AllDependencies.Contains(typeof(Agent)));
+        }
+
+        #endregion
     }
 }

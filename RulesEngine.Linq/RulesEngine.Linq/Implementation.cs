@@ -7,6 +7,7 @@ namespace RulesEngine.Linq
     using System.Linq;
     using System.Linq.Expressions;
     using System.Reflection;
+    using RulesEngine.Linq.Dependencies;
 
     #region RulesContext
 
@@ -18,6 +19,7 @@ namespace RulesEngine.Linq
     {
         private readonly ConcurrentDictionary<Type, object> _ruleSets = new();
         private readonly IRuleProvider _provider;
+        private FactSchema? _schema;
         private bool _disposed;
 
         public RulesContext() : this(new InMemoryRuleProvider()) { }
@@ -28,6 +30,12 @@ namespace RulesEngine.Linq
         }
 
         public IRuleProvider Provider => _provider;
+
+        /// <summary>
+        /// The schema for this context, if configured.
+        /// Used for dependency validation and analysis at registration time.
+        /// </summary>
+        public IFactSchema? Schema => _schema;
 
         public IRuleSet<T> GetRuleSet<T>() where T : class
         {
@@ -47,6 +55,21 @@ namespace RulesEngine.Linq
             return new SchemaBuilder<T>(this);
         }
 
+        /// <summary>
+        /// Configure the schema for this context.
+        /// The schema defines which fact types are valid and their relationships.
+        /// Rules added after configuration will be validated against the schema.
+        /// </summary>
+        public void ConfigureSchema(Action<IFactSchemaBuilder> configure)
+        {
+            if (configure == null) throw new ArgumentNullException(nameof(configure));
+            if (_schema != null) throw new InvalidOperationException("Schema has already been configured.");
+
+            _schema = new FactSchema();
+            var builder = new FactSchemaBuilderAdapter(_schema);
+            configure(builder);
+        }
+
         public IRuleSession CreateSession() => new RuleSession(this);
 
         public void Dispose()
@@ -54,6 +77,45 @@ namespace RulesEngine.Linq
             if (_disposed) return;
             _disposed = true;
             _ruleSets.Clear();
+        }
+    }
+
+    /// <summary>
+    /// Builder interface for configuring the fact schema.
+    /// </summary>
+    public interface IFactSchemaBuilder
+    {
+        /// <summary>
+        /// Register a fact type in the schema.
+        /// </summary>
+        void RegisterFactType<T>() where T : class;
+
+        /// <summary>
+        /// Register a fact type with configuration.
+        /// </summary>
+        void RegisterFactType<T>(Action<FactTypeSchemaBuilder<T>> configure) where T : class;
+    }
+
+    /// <summary>
+    /// Adapter to use FactSchema with the builder interface.
+    /// </summary>
+    internal class FactSchemaBuilderAdapter : IFactSchemaBuilder
+    {
+        private readonly FactSchema _schema;
+
+        public FactSchemaBuilderAdapter(FactSchema schema)
+        {
+            _schema = schema;
+        }
+
+        public void RegisterFactType<T>() where T : class
+        {
+            _schema.RegisterType<T>();
+        }
+
+        public void RegisterFactType<T>(Action<FactTypeSchemaBuilder<T>> configure) where T : class
+        {
+            _schema.RegisterType(configure);
         }
     }
 
@@ -88,6 +150,13 @@ namespace RulesEngine.Linq
         public virtual void Add(IRule<T> rule)
         {
             if (rule == null) throw new ArgumentNullException(nameof(rule));
+
+            // If schema is configured, analyze and validate dependencies
+            if (_context.Schema != null && rule is DependentRule<T> dependentRule)
+            {
+                dependentRule.AnalyzeDependencies(_context.Schema);
+            }
+
             lock (_lock)
             {
                 if (_rulesById.ContainsKey(rule.Id))
