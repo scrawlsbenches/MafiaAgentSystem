@@ -6,6 +6,7 @@ namespace RulesEngine.Linq
     using System.Collections.Generic;
     using System.Linq;
     using System.Linq.Expressions;
+    using RulesEngine.Linq.Dependencies; // For IFactSchema
 
     #region In-Memory Provider
 
@@ -217,6 +218,261 @@ namespace RulesEngine.Linq
             if (node.Value is FactSet<T>)
                 return Expression.Constant(_factSet.GetFacts().AsQueryable());
             return base.VisitConstant(node);
+        }
+    }
+
+    #endregion
+
+    #region Fact Query Expression (EF Core-inspired pattern)
+
+    /// <summary>
+    /// Custom expression node representing "query facts of type T".
+    ///
+    /// This is the key to closure-driven cross-fact queries. When a rule captures
+    /// context.Facts&lt;Agent&gt;(), the expression tree contains this node instead of
+    /// actual data. At evaluation time, FactQueryRewriter substitutes real facts.
+    ///
+    /// Pattern inspired by EF Core's EntityQueryRootExpression.
+    ///
+    /// Example expression tree for: context.Facts&lt;Agent&gt;().Any(a => a.Available)
+    ///   Call(Any,
+    ///     FactQueryExpression(typeof(Agent)),  &lt;-- This node
+    ///     Lambda(a => a.Available))
+    /// </summary>
+    public class FactQueryExpression : Expression
+    {
+        /// <summary>
+        /// Creates a new fact query expression for the specified fact type.
+        /// </summary>
+        /// <param name="factType">The type of facts to query (e.g., typeof(Agent))</param>
+        public FactQueryExpression(Type factType)
+        {
+            FactType = factType ?? throw new ArgumentNullException(nameof(factType));
+            Type = typeof(IQueryable<>).MakeGenericType(factType);
+        }
+
+        /// <summary>
+        /// The fact type this expression queries.
+        /// </summary>
+        public Type FactType { get; }
+
+        /// <summary>
+        /// Returns ExpressionType.Extension for custom expression nodes.
+        /// </summary>
+        public override ExpressionType NodeType => ExpressionType.Extension;
+
+        /// <summary>
+        /// The type this expression evaluates to: IQueryable&lt;FactType&gt;.
+        /// </summary>
+        public override Type Type { get; }
+
+        /// <summary>
+        /// This expression has no children to visit.
+        /// </summary>
+        protected override Expression VisitChildren(ExpressionVisitor visitor) => this;
+
+        /// <summary>
+        /// Indicates this node can be reduced (though we handle it via rewriting).
+        /// </summary>
+        public override bool CanReduce => false;
+
+        /// <summary>
+        /// String representation for debugging.
+        /// </summary>
+        public override string ToString() => $"Facts<{FactType.Name}>()";
+    }
+
+    /// <summary>
+    /// IQueryable implementation that uses FactQueryExpression as its expression root.
+    ///
+    /// This is returned by RulesContext.Facts&lt;T&gt;(). It builds expression trees
+    /// but throws if you try to enumerate it outside of rule evaluation.
+    ///
+    /// WHY THIS EXISTS:
+    /// When you write context.Facts&lt;Agent&gt;().Where(a => a.Available), we need:
+    /// 1. An IQueryable that LINQ methods can chain on
+    /// 2. An Expression property that returns FactQueryExpression (not actual data)
+    /// 3. Enumeration blocked until evaluation time
+    /// </summary>
+    public class FactQueryable<T> : IQueryable<T>, IOrderedQueryable<T> where T : class
+    {
+        private readonly FactQueryProvider _provider;
+        private readonly Expression _expression;
+
+        /// <summary>
+        /// Creates a new FactQueryable with FactQueryExpression as its root.
+        /// </summary>
+        public FactQueryable(FactQueryProvider provider)
+        {
+            _provider = provider ?? throw new ArgumentNullException(nameof(provider));
+            _expression = new FactQueryExpression(typeof(T));
+        }
+
+        /// <summary>
+        /// Creates a FactQueryable with a custom expression (for chained queries).
+        /// </summary>
+        internal FactQueryable(FactQueryProvider provider, Expression expression)
+        {
+            _provider = provider ?? throw new ArgumentNullException(nameof(provider));
+            _expression = expression ?? throw new ArgumentNullException(nameof(expression));
+        }
+
+        public Type ElementType => typeof(T);
+
+        /// <summary>
+        /// The expression tree representing this query.
+        /// For the root, this is FactQueryExpression. For chained queries,
+        /// this includes the full expression tree (Where, Any, etc.).
+        /// </summary>
+        public Expression Expression => _expression;
+
+        public IQueryProvider Provider => _provider;
+
+        /// <summary>
+        /// Throws - enumeration only allowed during rule evaluation via rewriter.
+        /// </summary>
+        public IEnumerator<T> GetEnumerator()
+        {
+            throw new InvalidOperationException(
+                "Facts<T>() cannot be enumerated directly. " +
+                "It can only be used within rule expressions and is evaluated during Session.Evaluate().");
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    /// <summary>
+    /// Query provider for FactQueryable. Builds expression trees but throws on execution.
+    ///
+    /// This provider is used at rule DEFINITION time. It allows LINQ methods to build
+    /// expression trees, but blocks actual execution. Real execution happens at
+    /// EVALUATION time when FactQueryRewriter substitutes actual session data.
+    /// </summary>
+    public class FactQueryProvider : IQueryProvider
+    {
+        private readonly IFactSchema? _schema;
+
+        public FactQueryProvider(IFactSchema? schema = null)
+        {
+            _schema = schema;
+        }
+
+        public IQueryable CreateQuery(Expression expression)
+        {
+            var elementType = expression.Type.GetSequenceElementType() ?? typeof(object);
+            var queryType = typeof(FactQueryable<>).MakeGenericType(elementType);
+            // Use reflection to invoke the internal constructor (provider, expression)
+            var instance = Activator.CreateInstance(queryType,
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+                null, new object[] { this, expression }, null);
+            return (IQueryable)instance!;
+        }
+
+        public IQueryable<TElement> CreateQuery<TElement>(Expression expression)
+        {
+            // Validate fact type is registered if we have a schema
+            ValidateFactTypeIfNeeded(expression);
+
+            // Create appropriate queryable based on element type
+            var elementType = typeof(TElement);
+            var queryableType = typeof(FactQueryable<>).MakeGenericType(elementType);
+            var instance = Activator.CreateInstance(queryableType,
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+                null, new object[] { this, expression }, null);
+            return (IQueryable<TElement>)instance!;
+        }
+
+        public object? Execute(Expression expression)
+        {
+            throw new InvalidOperationException(
+                "Facts<T>() queries cannot be executed directly. " +
+                "They are evaluated during Session.Evaluate() when actual facts are available.");
+        }
+
+        public TResult Execute<TResult>(Expression expression)
+        {
+            throw new InvalidOperationException(
+                "Facts<T>() queries cannot be executed directly. " +
+                "They are evaluated during Session.Evaluate() when actual facts are available.");
+        }
+
+        private void ValidateFactTypeIfNeeded(Expression expression)
+        {
+            if (_schema == null) return;
+
+            // Walk expression to find FactQueryExpression nodes and validate their types
+            var validator = new FactTypeValidator(_schema);
+            validator.Visit(expression);
+        }
+
+        /// <summary>
+        /// Validates that all FactQueryExpression nodes reference registered fact types.
+        /// </summary>
+        private class FactTypeValidator : ExpressionVisitor
+        {
+            private readonly IFactSchema _schema;
+
+            public FactTypeValidator(IFactSchema schema) => _schema = schema;
+
+            protected override Expression VisitExtension(Expression node)
+            {
+                if (node is FactQueryExpression fqe)
+                {
+                    if (!_schema.IsRegistered(fqe.FactType))
+                    {
+                        throw new InvalidOperationException(
+                            $"Fact type {fqe.FactType.Name} is not registered in the schema. " +
+                            $"Call schema.RegisterFactType<{fqe.FactType.Name}>() in ConfigureSchema.");
+                    }
+                }
+                return base.VisitExtension(node);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Rewrites FactQueryExpression nodes to actual session data at evaluation time.
+    ///
+    /// This is the bridge between expression trees (defined at rule creation time)
+    /// and actual facts (available at evaluation time).
+    ///
+    /// Example:
+    ///   Before: Call(Any, FactQueryExpression(Agent), Lambda)
+    ///   After:  Call(Any, Constant(agentList.AsQueryable()), Lambda)
+    /// </summary>
+    public class FactQueryRewriter : ExpressionVisitor
+    {
+        private readonly Func<Type, IQueryable> _factResolver;
+
+        /// <summary>
+        /// Creates a rewriter that resolves facts using the provided function.
+        /// </summary>
+        /// <param name="factResolver">
+        /// Function that returns IQueryable for a given fact type.
+        /// Typically: type => session.GetFactsForType(type).AsQueryable()
+        /// </param>
+        public FactQueryRewriter(Func<Type, IQueryable> factResolver)
+        {
+            _factResolver = factResolver ?? throw new ArgumentNullException(nameof(factResolver));
+        }
+
+        /// <summary>
+        /// Rewrites the expression, substituting FactQueryExpression with actual data.
+        /// </summary>
+        public Expression Rewrite(Expression expression)
+        {
+            return Visit(expression);
+        }
+
+        protected override Expression VisitExtension(Expression node)
+        {
+            if (node is FactQueryExpression fqe)
+            {
+                // Resolve actual facts from session
+                var facts = _factResolver(fqe.FactType);
+                return Expression.Constant(facts, fqe.Type);
+            }
+            return base.VisitExtension(node);
         }
     }
 

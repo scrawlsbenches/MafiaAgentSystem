@@ -23,6 +23,7 @@ namespace RulesEngine.Linq.Dependencies
     using System.Linq;
     using System.Linq.Expressions;
     using System.Reflection;
+    using RulesEngine.Linq; // For FactQueryExpression
 
     #region Interfaces
 
@@ -346,6 +347,27 @@ namespace RulesEngine.Linq.Dependencies
         }
 
         /// <summary>
+        /// Detect FactQueryExpression nodes (closure-captured Facts&lt;T&gt;() calls).
+        /// These nodes are created when a rule captures context.Facts&lt;T&gt;() in a closure.
+        /// </summary>
+        protected override Expression VisitExtension(Expression node)
+        {
+            if (node is FactQueryExpression fqe)
+            {
+                // Validate against schema
+                if (!_schema.IsRegistered(fqe.FactType))
+                {
+                    throw new InvalidOperationException(
+                        $"Rule references Facts<{fqe.FactType.Name}>() but {fqe.FactType.Name} is not registered in the schema. " +
+                        $"Register it in OnModelCreating before using it in rules.");
+                }
+
+                _detectedDependencies.Add(fqe.FactType);
+            }
+            return base.VisitExtension(node);
+        }
+
+        /// <summary>
         /// Detect ctx.Facts&lt;T&gt;() method calls.
         /// </summary>
         protected override Expression VisitMethodCall(MethodCallExpression node)
@@ -413,7 +435,8 @@ namespace RulesEngine.Linq.Dependencies
         }
 
         /// <summary>
-        /// Handle closures - detect captured variables that implement IFactContext.
+        /// Handle closures - detect captured variables that implement IFactContext
+        /// or FactQueryable instances.
         /// </summary>
         protected override Expression VisitConstant(ConstantExpression node)
         {
@@ -424,6 +447,20 @@ namespace RulesEngine.Linq.Dependencies
             if (node.Value != null)
             {
                 var type = node.Value.GetType();
+
+                // Check for FactQueryable<T> instances (closure-captured context.Facts<T>())
+                if (type.IsGenericType &&
+                    type.GetGenericTypeDefinition() == typeof(FactQueryable<>))
+                {
+                    var factType = type.GetGenericArguments()[0];
+                    if (!_schema.IsRegistered(factType))
+                    {
+                        throw new InvalidOperationException(
+                            $"Rule references Facts<{factType.Name}>() but {factType.Name} is not registered in the schema. " +
+                            $"Register it in OnModelCreating before using it in rules.");
+                    }
+                    _detectedDependencies.Add(factType);
+                }
 
                 // Check if this is a closure class (compiler-generated)
                 if (IsClosureClass(type))

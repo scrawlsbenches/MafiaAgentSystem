@@ -1,6 +1,7 @@
 namespace RulesEngine.Linq
 {
     using System;
+    using System.Collections.Concurrent;
     using System.Collections.Generic;
     using System.Linq;
     using System.Linq.Expressions;
@@ -8,12 +9,32 @@ namespace RulesEngine.Linq
     /// <summary>
     /// Standard rule implementation with expression-based condition.
     /// Supports fluent configuration, composition, and tagging.
+    ///
+    /// CLOSURE-DRIVEN QUERIES:
+    /// Rules can capture context.Facts&lt;T&gt;() in their expressions. These create
+    /// FactQueryExpression nodes that are resolved at evaluation time.
+    ///
+    /// Example:
+    ///   Rule.When&lt;Message&gt;(m => context.Facts&lt;Agent&gt;().Any(a => a.Available))
+    ///
+    /// At creation time, context.Facts&lt;Agent&gt;() returns a FactQueryable whose
+    /// Expression property is FactQueryExpression. This gets embedded in the rule's
+    /// expression tree.
+    ///
+    /// At evaluation time, FactQueryRewriter substitutes actual session data before
+    /// the expression is compiled and executed.
     /// </summary>
     public class Rule<T> : IRule<T> where T : class
     {
-        private readonly Func<T, bool> _compiledCondition;
+        private Func<T, bool>? _compiledCondition;
+        private readonly bool _requiresRewriting;
         private readonly List<Action<T>> _actions = new();
         private readonly List<string> _tags = new();
+
+        // Cache for rewritten+compiled conditions per session
+        // Key is session ID to avoid stale data between evaluations
+        // ConcurrentDictionary for thread-safe access during concurrent evaluations
+        private readonly ConcurrentDictionary<Guid, Func<T, bool>> _sessionCompiledCache = new();
 
         public string Id { get; private set; }
         public string Name { get; private set; }
@@ -21,6 +42,12 @@ namespace RulesEngine.Linq
         public int Priority { get; private set; }
         public Expression<Func<T, bool>> Condition { get; }
         public IReadOnlyList<string> Tags => _tags;
+
+        /// <summary>
+        /// Whether this rule's condition contains FactQueryExpression nodes
+        /// that need to be rewritten with actual session data before evaluation.
+        /// </summary>
+        public bool RequiresRewriting => _requiresRewriting;
 
         public Rule(string id, string name, Expression<Func<T, bool>> condition,
             string description = "", int priority = 0)
@@ -37,12 +64,20 @@ namespace RulesEngine.Linq
             Description = description;
             Priority = priority;
             Condition = condition;
-            _compiledCondition = condition.Compile();
+
+            // Check if expression contains FactQueryExpression nodes
+            _requiresRewriting = ContainsFactQueryExpression(condition);
+
+            // Only compile immediately if no rewriting needed
+            if (!_requiresRewriting)
+            {
+                _compiledCondition = condition.Compile();
+            }
         }
 
         // Private constructor for cloning/composition
         private Rule(string id, string name, Expression<Func<T, bool>> condition,
-            Func<T, bool> compiledCondition, string description, int priority,
+            Func<T, bool>? compiledCondition, bool requiresRewriting, string description, int priority,
             List<string> tags, List<Action<T>> actions)
         {
             Id = id;
@@ -51,8 +86,79 @@ namespace RulesEngine.Linq
             Priority = priority;
             Condition = condition;
             _compiledCondition = compiledCondition;
+            _requiresRewriting = requiresRewriting;
             _tags = new List<string>(tags);
             _actions = new List<Action<T>>(actions);
+        }
+
+        /// <summary>
+        /// Checks if an expression contains FactQueryExpression nodes.
+        /// </summary>
+        private static bool ContainsFactQueryExpression(Expression expression)
+        {
+            var detector = new FactQueryExpressionDetector();
+            detector.Visit(expression);
+            return detector.Found;
+        }
+
+        /// <summary>
+        /// Visitor that detects FactQueryExpression nodes in an expression tree.
+        /// </summary>
+        private class FactQueryExpressionDetector : ExpressionVisitor
+        {
+            public bool Found { get; private set; }
+
+            protected override Expression VisitExtension(Expression node)
+            {
+                if (node is FactQueryExpression)
+                {
+                    Found = true;
+                    return node; // Don't need to continue once found
+                }
+                return base.VisitExtension(node);
+            }
+
+            // Also check for closure-captured FactQueryable instances
+            protected override Expression VisitConstant(ConstantExpression node)
+            {
+                if (node.Value != null)
+                {
+                    var type = node.Value.GetType();
+                    if (type.IsGenericType &&
+                        type.GetGenericTypeDefinition() == typeof(FactQueryable<>))
+                    {
+                        Found = true;
+                    }
+                }
+                return base.VisitConstant(node);
+            }
+
+            // Check member access on FactQueryable (e.g., closure.Facts<T>().Expression)
+            protected override Expression VisitMember(MemberExpression node)
+            {
+                if (node.Expression is ConstantExpression ce && ce.Value != null)
+                {
+                    // Check if we're accessing the Expression property of a FactQueryable
+                    var memberType = node.Type;
+                    if (typeof(Expression).IsAssignableFrom(memberType))
+                    {
+                        // Evaluate the member access to see if it's a FactQueryExpression
+                        try
+                        {
+                            var value = Expression.Lambda(node).Compile().DynamicInvoke();
+                            if (value is FactQueryExpression)
+                            {
+                                Found = true;
+                            }
+                        }
+                        catch
+                        {
+                            // Ignore evaluation errors
+                        }
+                    }
+                }
+                return base.VisitMember(node);
+            }
         }
 
         #region Fluent Configuration
@@ -127,7 +233,11 @@ namespace RulesEngine.Linq
             if (other == null) throw new ArgumentNullException(nameof(other));
 
             var combined = CombineExpressions(Condition, other.Condition, Expression.AndAlso);
-            var compiledCombined = combined.Compile();
+            var combinedRequiresRewriting = _requiresRewriting || other._requiresRewriting ||
+                                            ContainsFactQueryExpression(combined);
+
+            // Only compile if no rewriting needed
+            Func<T, bool>? compiledCombined = combinedRequiresRewriting ? null : combined.Compile();
 
             var composedTags = new List<string>(_tags);
             foreach (var tag in other._tags)
@@ -144,6 +254,7 @@ namespace RulesEngine.Linq
                 $"{Name} AND {other.Name}",
                 combined,
                 compiledCombined,
+                combinedRequiresRewriting,
                 Description,
                 Math.Max(Priority, other.Priority),
                 composedTags,
@@ -156,7 +267,11 @@ namespace RulesEngine.Linq
             if (other == null) throw new ArgumentNullException(nameof(other));
 
             var combined = CombineExpressions(Condition, other.Condition, Expression.OrElse);
-            var compiledCombined = combined.Compile();
+            var combinedRequiresRewriting = _requiresRewriting || other._requiresRewriting ||
+                                            ContainsFactQueryExpression(combined);
+
+            // Only compile if no rewriting needed
+            Func<T, bool>? compiledCombined = combinedRequiresRewriting ? null : combined.Compile();
 
             var composedTags = new List<string>(_tags);
             foreach (var tag in other._tags)
@@ -173,6 +288,7 @@ namespace RulesEngine.Linq
                 $"{Name} OR {other.Name}",
                 combined,
                 compiledCombined,
+                combinedRequiresRewriting,
                 Description,
                 Math.Max(Priority, other.Priority),
                 composedTags,
@@ -204,12 +320,25 @@ namespace RulesEngine.Linq
 
         #region Evaluation
 
+        /// <summary>
+        /// Evaluates the rule condition against the fact.
+        /// For rules that require rewriting (contain FactQueryExpression),
+        /// this will throw - use EvaluateWithRewriter instead.
+        /// </summary>
         public bool Evaluate(T fact)
         {
             if (fact == null) return false;
+
+            if (_requiresRewriting)
+            {
+                throw new InvalidOperationException(
+                    $"Rule '{Name}' contains cross-fact queries (context.Facts<T>()) and requires " +
+                    "rewriting before evaluation. Use EvaluateWithRewriter or evaluate through Session.Evaluate().");
+            }
+
             try
             {
-                return _compiledCondition(fact);
+                return _compiledCondition!(fact);
             }
             catch
             {
@@ -217,12 +346,118 @@ namespace RulesEngine.Linq
             }
         }
 
+        /// <summary>
+        /// Evaluates the rule condition with a rewriter that substitutes FactQueryExpression
+        /// nodes with actual session data.
+        /// </summary>
+        /// <param name="fact">The fact to evaluate against.</param>
+        /// <param name="rewriter">The rewriter that resolves FactQueryExpression to actual data.</param>
+        /// <param name="sessionId">Session ID for caching compiled conditions.</param>
+        public bool EvaluateWithRewriter(T fact, FactQueryRewriter rewriter, Guid sessionId)
+        {
+            if (fact == null) return false;
+
+            try
+            {
+                var compiled = GetOrCompileWithRewriter(rewriter, sessionId);
+                return compiled(fact);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Gets a compiled condition for the given session, rewriting if necessary.
+        /// Results are cached per session ID.
+        /// </summary>
+        private Func<T, bool> GetOrCompileWithRewriter(FactQueryRewriter rewriter, Guid sessionId)
+        {
+            // If no rewriting needed, use the pre-compiled condition
+            if (!_requiresRewriting && _compiledCondition != null)
+            {
+                return _compiledCondition;
+            }
+
+            // Check cache for this session
+            if (_sessionCompiledCache.TryGetValue(sessionId, out var cached))
+            {
+                return cached;
+            }
+
+            // Rewrite the expression tree to substitute actual facts
+            var rewrittenExpression = rewriter.Rewrite(Condition);
+            var rewrittenLambda = (Expression<Func<T, bool>>)rewrittenExpression;
+            var compiled = rewrittenLambda.Compile();
+
+            // Cache for this session
+            _sessionCompiledCache[sessionId] = compiled;
+
+            return compiled;
+        }
+
+        /// <summary>
+        /// Clears the compiled condition cache for a specific session.
+        /// Should be called when a session is disposed.
+        /// </summary>
+        public void ClearSessionCache(Guid sessionId)
+        {
+            _sessionCompiledCache.TryRemove(sessionId, out _);
+        }
+
         public RuleResult Execute(T fact)
+        {
+            if (_requiresRewriting)
+            {
+                throw new InvalidOperationException(
+                    $"Rule '{Name}' contains cross-fact queries (context.Facts<T>()) and requires " +
+                    "rewriting before execution. Use ExecuteWithRewriter or execute through Session.Evaluate().");
+            }
+
+            bool matched;
+            try
+            {
+                matched = _compiledCondition!(fact);
+                if (!matched)
+                    return RuleResult.NoMatch(Id, Name);
+            }
+            catch (Exception ex)
+            {
+                return RuleResult.Error(Id, Name, ex.Message);
+            }
+
+            try
+            {
+                foreach (var action in _actions)
+                    action(fact);
+
+                return RuleResult.Success(Id, Name);
+            }
+            catch (Exception ex)
+            {
+                return new RuleResult
+                {
+                    RuleId = Id,
+                    RuleName = Name,
+                    Matched = true,
+                    ActionExecuted = false,
+                    ExecutedAt = DateTime.UtcNow,
+                    ErrorMessage = ex.Message
+                };
+            }
+        }
+
+        /// <summary>
+        /// Executes the rule with a rewriter that substitutes FactQueryExpression
+        /// nodes with actual session data.
+        /// </summary>
+        public RuleResult ExecuteWithRewriter(T fact, FactQueryRewriter rewriter, Guid sessionId)
         {
             bool matched;
             try
             {
-                matched = _compiledCondition(fact);
+                matched = EvaluateWithRewriter(fact, rewriter, sessionId);
                 if (!matched)
                     return RuleResult.NoMatch(Id, Name);
             }
