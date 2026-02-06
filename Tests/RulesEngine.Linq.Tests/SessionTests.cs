@@ -216,6 +216,30 @@ namespace RulesEngine.Linq.Tests
         }
 
         [Test]
+        public void Session_EvaluateT_SetsStateToEvaluating()
+        {
+            using var context = new RulesContext();
+
+            SessionState? stateDuringAction = null;
+            IRuleSession? sessionRef = null;
+
+            context.GetRuleSet<Order>().Add(
+                new Rule<Order>("R1", "Track state", o => true)
+                    .WithAction(o => stateDuringAction = sessionRef!.State));
+
+            using var session = context.CreateSession();
+            sessionRef = session;
+
+            session.Insert(new Order { Id = "O1", Total = 100 });
+
+            // Act
+            session.Evaluate<Order>();
+
+            // Assert: state should have been Evaluating during the rule action
+            Assert.Equal(SessionState.Evaluating, stateDuringAction);
+        }
+
+        [Test]
         public void Session_WithMatchingRules_ReturnsFactRuleMatches()
         {
             using var context = new RulesContext();

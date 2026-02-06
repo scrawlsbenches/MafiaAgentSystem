@@ -1205,6 +1205,133 @@ namespace RulesEngine.Linq.Tests
 
         #endregion
 
+        #region Stale Cache on Re-evaluation (#2)
+
+        [Test]
+        public void Session_ReEvaluation_ReflectsNewlyInsertedFactType()
+        {
+            // Arrange: Rule that queries agents via closure capture (Path 2)
+            using var context = new RulesContext();
+            var agents = context.Facts<Agent>();
+
+            var rule = new Rule<AgentMessage>(
+                "check-agents", "Check agents",
+                m => agents.Any(a => a.Status == AgentStatus.Available));
+
+            context.GetRuleSet<AgentMessage>().Add(rule);
+
+            using var session = context.CreateSession();
+            var message = new AgentMessage { Id = "M1", Type = MessageType.Request };
+            session.Insert(message);
+
+            // First evaluation: no agents, rule should not match
+            var result1 = session.Evaluate<AgentMessage>();
+            Assert.Equal(0, result1.Matches.Count);
+
+            // Insert an agent (new fact type not previously in session)
+            session.Insert(new Agent { Id = "A1", Status = AgentStatus.Available });
+
+            // Second evaluation: agent exists now, rule SHOULD match
+            var result2 = session.Evaluate<AgentMessage>();
+            Assert.Equal(1, result2.Matches.Count);
+        }
+
+        [Test]
+        public void Session_ReEvaluation_Path3_ReflectsNewFacts()
+        {
+            // Arrange: Custom IRule<T> with hand-built FactQueryExpression (Path 3)
+            using var context = new RulesContext();
+
+            var fqe = new FactQueryExpression(typeof(Agent));
+            var msgParam = System.Linq.Expressions.Expression.Parameter(typeof(AgentMessage), "m");
+            var anyMethod = typeof(Queryable).GetMethods()
+                .First(m => m.Name == "Any" && m.GetParameters().Length == 1)
+                .MakeGenericMethod(typeof(Agent));
+            var anyCall = System.Linq.Expressions.Expression.Call(anyMethod, fqe);
+            var condition = System.Linq.Expressions.Expression.Lambda<Func<AgentMessage, bool>>(anyCall, msgParam);
+
+            var customRule = new CustomTestRule<AgentMessage>("custom-stale", "Stale Cache Test", condition);
+            context.GetRuleSet<AgentMessage>().Add(customRule);
+
+            using var session = context.CreateSession();
+            session.Insert(new AgentMessage { Id = "M1" });
+
+            // First evaluation: no agents
+            var result1 = session.Evaluate<AgentMessage>();
+            Assert.Equal(0, result1.Matches.Count);
+
+            // Insert an agent
+            session.Insert(new Agent { Id = "A1", Status = AgentStatus.Available });
+
+            // Second evaluation: should see the new agent
+            var result2 = session.Evaluate<AgentMessage>();
+            Assert.Equal(1, result2.Matches.Count);
+        }
+
+        #endregion
+
+        #region DependencyGraph Cycle Detection (#11)
+
+        [Test]
+        public void DependencyGraph_DirectCycle_ThrowsOnGetLoadOrder()
+        {
+            var graph = new DependencyGraph();
+            graph.AddDependency(typeof(Agent), typeof(Territory));
+            graph.AddDependency(typeof(Territory), typeof(Agent));
+
+            Assert.Throws<InvalidOperationException>(() => graph.GetLoadOrder());
+        }
+
+        [Test]
+        public void DependencyGraph_TransitiveCycle_ThrowsOnGetLoadOrder()
+        {
+            var graph = new DependencyGraph();
+            graph.AddDependency(typeof(Agent), typeof(Territory));
+            graph.AddDependency(typeof(Territory), typeof(AgentMessage));
+            graph.AddDependency(typeof(AgentMessage), typeof(Agent));
+
+            Assert.Throws<InvalidOperationException>(() => graph.GetLoadOrder());
+        }
+
+        [Test]
+        public void DependencyGraph_SelfReferential_ThrowsOnGetLoadOrder()
+        {
+            var graph = new DependencyGraph();
+            graph.AddDependency(typeof(Agent), typeof(Agent));
+
+            Assert.Throws<InvalidOperationException>(() => graph.GetLoadOrder());
+        }
+
+        [Test]
+        public void DependencyGraph_WouldCreateCycle_DetectsDirectCycle()
+        {
+            var graph = new DependencyGraph();
+            graph.AddDependency(typeof(Agent), typeof(Territory));
+
+            Assert.True(graph.WouldCreateCycle(typeof(Territory), typeof(Agent)));
+        }
+
+        [Test]
+        public void DependencyGraph_WouldCreateCycle_DetectsTransitiveCycle()
+        {
+            var graph = new DependencyGraph();
+            graph.AddDependency(typeof(Agent), typeof(Territory));
+            graph.AddDependency(typeof(Territory), typeof(AgentMessage));
+
+            Assert.True(graph.WouldCreateCycle(typeof(AgentMessage), typeof(Agent)));
+        }
+
+        [Test]
+        public void DependencyGraph_WouldCreateCycle_AllowsValidDependency()
+        {
+            var graph = new DependencyGraph();
+            graph.AddDependency(typeof(Agent), typeof(Territory));
+
+            Assert.False(graph.WouldCreateCycle(typeof(Agent), typeof(AgentMessage)));
+        }
+
+        #endregion
+
         #region Generic Rewriter Dispatch (any IRule<T> with FactQueryExpression)
 
         [Test]
