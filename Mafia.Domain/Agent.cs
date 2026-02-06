@@ -19,6 +19,8 @@ public class Agent
     public double ReputationScore { get; set; } = 1.0;
     public HashSet<string> Capabilities { get; set; } = new();
     public string? TerritoryId { get; set; } // Which territory this agent is assigned to
+    public bool IsDeploymentReady { get; set; } // Set by rules: agent has capacity for new tasks
+    public bool InDangerZone { get; set; } // Set by rules: agent is in a high-heat territory
 
     // Navigation (resolved by context)
     public Agent? Superior { get; set; }
