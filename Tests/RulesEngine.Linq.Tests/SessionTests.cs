@@ -145,6 +145,29 @@ namespace RulesEngine.Linq.Tests
         }
 
         [Test]
+        public void Session_Evaluate_ReportsTotalRulesEvaluated()
+        {
+            // Arrange: 2 rules, 2 facts
+            using var context = new RulesContext();
+            context.GetRuleSet<Order>()
+                .WithRule(new Rule<Order>("R1", "High Value", o => o.Total > 150))
+                .WithRule(new Rule<Order>("R2", "Active", o => o.IsActive));
+
+            using var session = context.CreateSession();
+            session.InsertAll(new[]
+            {
+                new Order { Id = "O1", Total = 200, IsActive = true },
+                new Order { Id = "O2", Total = 100, IsActive = false },
+            });
+
+            // Act
+            var result = session.Evaluate();
+
+            // Assert: 2 rules were evaluated, regardless of how many facts matched
+            Assert.Equal(2, result.TotalRulesEvaluated);
+        }
+
+        [Test]
         public void Session_Commit_ChangesState()
         {
             using var context = new RulesContext();

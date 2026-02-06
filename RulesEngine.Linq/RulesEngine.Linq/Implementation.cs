@@ -481,6 +481,10 @@ namespace RulesEngine.Linq
                 var countProperty = factSetType.GetProperty("Count")!;
                 totalFacts += (int)countProperty.GetValue(factSetObj)!;
                 totalMatches += matches.Count;
+
+                var rulesEvaluatedProperty = typeResult.GetType().GetProperty("RulesEvaluated");
+                if (rulesEvaluatedProperty != null)
+                    totalRules += (int)rulesEvaluatedProperty.GetValue(typeResult)!;
             }
 
             _state = SessionState.Active;
@@ -628,7 +632,8 @@ namespace RulesEngine.Linq
                 Matches = matches,
                 FactsWithMatches = factsWithMatches,
                 FactsWithoutMatches = factsWithoutMatches,
-                MatchCountByRule = matchCountByRule
+                MatchCountByRule = matchCountByRule,
+                RulesEvaluated = rules.Count
             };
         }
 
@@ -816,6 +821,12 @@ namespace RulesEngine.Linq
         public required IReadOnlyList<T> FactsWithMatches { get; init; }
         public required IReadOnlyList<T> FactsWithoutMatches { get; init; }
         public required IReadOnlyDictionary<string, int> MatchCountByRule { get; init; }
+
+        /// <summary>
+        /// Number of rules evaluated for this fact type.
+        /// Used by RuleSession.Evaluate() to compute TotalRulesEvaluated.
+        /// </summary>
+        public int RulesEvaluated { get; init; }
     }
 
     #endregion
