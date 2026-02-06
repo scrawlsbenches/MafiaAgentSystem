@@ -458,9 +458,6 @@ namespace RulesEngine.Linq.Tests
 
             // --- Agent rules (depend on Territory — territories evaluated first) ---
             // Use DependentRule to query territories that were just assessed.
-            // NOTE: Cross-fact predicates go through the query provider, which validates
-            // expression trees for remote-translatability. Use scalar properties (bool,
-            // int, string, enum) in predicates, not collection methods like HashSet.Contains().
             context.GetRuleSet<Agent>().Add(new DependentRule<Agent>(
                 "soldier-in-hot-zone",
                 "Flag soldiers assigned to high-heat territories",
@@ -469,17 +466,17 @@ namespace RulesEngine.Linq.Tests
                             && ctx.Facts<Territory>().Any(t => t.Id == a.TerritoryId
                                                                && t.Status == "high-heat"))
                 .DependsOn<Territory>()
-                .Then(a => a.InDangerZone = true));
+                .Then(a => a.Capabilities.Add("in-danger-zone")));
 
             // --- Message rules (depend on Agent — agents evaluated first) ---
             // Use DependentRule to query agent state AFTER agent rules fired.
-            // The boolean InDangerZone was set by the agent rule above — safe in expression trees.
+            // HashSet.Contains() works naturally in cross-fact predicates.
             context.GetRuleSet<AgentMessage>().Add(new DependentRule<AgentMessage>(
                 "hot-zone-request",
                 "Flag requests to agents in hot zones",
                 (msg, ctx) => msg.Type == MessageType.Request
                               && ctx.Facts<Agent>().Any(a => a.Id == msg.ToId
-                                                             && a.InDangerZone))
+                                                             && a.Capabilities.Contains("in-danger-zone")))
                 .DependsOn<Agent>()
                 .Then(msg => msg.Flag("destination-in-hot-zone")));
 
@@ -518,7 +515,7 @@ namespace RulesEngine.Linq.Tests
             //    (Carlo is compromised, Vito/Tom/Sonny aren't soldiers)
             //    Paulie is at docks (heat 30, no "high-heat" status) → not flagged
             var paulie = agents.First(a => a.Id == "paulie");
-            Assert.False(paulie.InDangerZone);
+            Assert.False(paulie.Capabilities.Contains("in-danger-zone"));
 
             // 3. Message rules ran AFTER agents: Paulie not in hot zone → message not flagged
             Assert.False(msg.Flags.Contains("destination-in-hot-zone"));
@@ -774,8 +771,6 @@ namespace RulesEngine.Linq.Tests
                 }));
 
             // Closure capture: mark agents with available capacity.
-            // Use boolean IsDeploymentReady — scalar properties are safe in cross-fact
-            // predicates (the query provider validates expression trees for translatability).
             var allTerritories = context.Facts<Territory>();
             agentRules.Add(new Rule<Agent>(
                 "capacity-check",
@@ -785,25 +780,25 @@ namespace RulesEngine.Linq.Tests
                      && allTerritories.Any(t => t.Id == a.TerritoryId
                                                 && (t.Status == "safe-ops" || t.HeatLevel <= 30)))
                 .WithPriority(50)
-                .Then(a => a.IsDeploymentReady = true));
+                .Then(a => a.Capabilities.Add("deployment-ready")));
 
             // === MESSAGE RULES (depend on Agent results) ===
             var messageRules = context.GetRuleSet<AgentMessage>();
 
             // Route requests to agents with capacity (set by agent rules above).
-            // The boolean IsDeploymentReady was set by the agent capacity-check rule.
+            // HashSet.Contains() works naturally in cross-fact predicates.
             messageRules.Add(new DependentRule<AgentMessage>(
                 "smart-route",
                 "Route to agents with available capacity",
                 (msg, ctx) => msg.Type == MessageType.Request
                               && !msg.Blocked
-                              && ctx.Facts<Agent>().Any(a => a.IsDeploymentReady))
+                              && ctx.Facts<Agent>().Any(a => a.Capabilities.Contains("deployment-ready")))
                 .DependsOn<Agent>()
                 .WithPriority(100)
                 .Then((msg, ctx) =>
                 {
                     var target = ctx.Facts<Agent>()
-                        .Where(a => a.IsDeploymentReady)
+                        .Where(a => a.Capabilities.Contains("deployment-ready"))
                         .OrderBy(a => a.CurrentTaskCount)
                         .First();
                     msg.RouteTo(target);
@@ -853,15 +848,15 @@ namespace RulesEngine.Linq.Tests
 
             // Paulie: docks (safe-ops), task count 1 < 3 → deployment-ready
             var paulie = agents.First(a => a.Id == "paulie");
-            Assert.True(paulie.IsDeploymentReady);
+            Assert.True(paulie.Capabilities.Contains("deployment-ready"));
 
             // Rocco: suburb (safe-ops), task count 0 < 3 → deployment-ready
             var rocco = agents.First(a => a.Id == "rocco");
-            Assert.True(rocco.IsDeploymentReady);
+            Assert.True(rocco.Capabilities.Contains("deployment-ready"));
 
             // Clemenza: docks (safe-ops), but task count 3 (not < 3) → not deployment-ready
             var clemenza = agents.First(a => a.Id == "clemenza");
-            Assert.False(clemenza.IsDeploymentReady);
+            Assert.False(clemenza.Capabilities.Contains("deployment-ready"));
 
             // Step 3: Message rules fired last (using agent results)
             // Request routed to agent with capacity, lowest task count → Rocco (0 tasks)

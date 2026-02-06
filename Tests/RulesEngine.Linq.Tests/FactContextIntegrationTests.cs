@@ -1741,5 +1741,88 @@ namespace RulesEngine.Linq.Tests
         }
 
         #endregion
+
+        #region Collection methods in cross-fact predicates (validator whitelist)
+
+        [Test]
+        public void DependentRule_HashSetContains_WorksInCrossFactPredicate()
+        {
+            // This is what a developer naturally writes: use HashSet.Contains()
+            // in a cross-fact predicate to check agent capabilities.
+            using var context = new RulesContext();
+
+            // Schema ensures Agent is evaluated before AgentMessage
+            context.ConfigureSchema(schema =>
+            {
+                schema.RegisterFactType<Agent>();
+                schema.RegisterFactType<AgentMessage>(cfg => cfg.DependsOn<Agent>());
+            });
+
+            // Agent rule marks agents with a capability
+            context.GetRuleSet<Agent>().Add(new Rule<Agent>(
+                "mark-available", "Mark available soldiers",
+                a => a.Role == AgentRole.Soldier && a.Status == AgentStatus.Available)
+                .Then(a => a.Capabilities.Add("field-ready")));
+
+            // Message rule checks that capability via DependentRule cross-fact query.
+            // HashSet<string>.Contains() must be translatable for this to work.
+            context.GetRuleSet<AgentMessage>().Add(new DependentRule<AgentMessage>(
+                "route-to-ready", "Route to field-ready agent",
+                (msg, ctx) => msg.Type == MessageType.Request
+                              && ctx.Facts<Agent>().Any(a => a.Capabilities.Contains("field-ready")))
+                .DependsOn<Agent>()
+                .Then((msg, ctx) =>
+                {
+                    var target = ctx.Facts<Agent>()
+                        .First(a => a.Capabilities.Contains("field-ready"));
+                    msg.RouteTo(target);
+                }));
+
+            using var session = context.CreateSession();
+            session.Insert(new Agent
+            {
+                Id = "rocco", Name = "Rocco", Role = AgentRole.Soldier,
+                Status = AgentStatus.Available
+            });
+            var msg = new AgentMessage { Id = "M1", Type = MessageType.Request };
+            session.Insert(msg);
+
+            var result = session.Evaluate();
+
+            // Should work — no errors, message routed to Rocco
+            Assert.False(result.HasErrors,
+                result.HasErrors ? $"Errors: {string.Join("; ", result.Errors.Select(e => e.Exception.Message))}" : "");
+            Assert.Equal("rocco", msg.ToId);
+        }
+
+        [Test]
+        public void Validator_UnknownMethod_ThrowsNotImplementedWithInstructions()
+        {
+            // When a method is not in the whitelist and not on a known type,
+            // the validator should throw NotImplementedException with actionable instructions.
+            using var context = new RulesContext();
+
+            context.GetRuleSet<AgentMessage>().Add(new DependentRule<AgentMessage>(
+                "uses-custom-method", "Uses custom method",
+                (msg, ctx) => ctx.Facts<Agent>().Any(a => CustomPredicate(a)))
+                .DependsOn<Agent>());
+
+            using var session = context.CreateSession();
+            session.Insert(new Agent { Id = "A1" });
+            session.Insert(new AgentMessage { Id = "M1" });
+
+            var result = session.Evaluate();
+
+            // Should have an error with NotImplementedException
+            Assert.True(result.HasErrors);
+            var error = result.Errors[0];
+            Assert.IsType<NotImplementedException>(error.Exception);
+            Assert.Contains("CustomPredicate", error.Exception.Message);
+            Assert.Contains("IsTranslatable", error.Exception.Message);
+        }
+
+        private static bool CustomPredicate(Agent a) => a.Status == AgentStatus.Available;
+
+        #endregion
     }
 }

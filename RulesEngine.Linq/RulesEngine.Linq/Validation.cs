@@ -73,8 +73,10 @@ namespace RulesEngine.Linq
 
             if (_errors.Count > 0)
             {
-                throw new InvalidOperationException(
-                    $"Expression cannot be translated: {string.Join("; ", _errors)}");
+                throw new NotImplementedException(
+                    $"Expression cannot be translated: {string.Join("; ", _errors)}. " +
+                    $"To add support for a new method, add its name to TranslatableMethods and its " +
+                    $"declaring type to IsTranslatable() in {nameof(ExpressionValidator)} (Validation.cs).");
             }
         }
 
@@ -194,6 +196,36 @@ namespace RulesEngine.Linq
 
             // Enum methods
             if (declaringType == typeof(Enum)) return true;
+
+            // Collection types — methods like Contains, Add, Remove on ICollection<T>, ISet<T>, etc.
+            if (declaringType?.IsGenericType == true)
+            {
+                var genericDef = declaringType.GetGenericTypeDefinition();
+                if (genericDef == typeof(ICollection<>) ||
+                    genericDef == typeof(ISet<>) ||
+                    genericDef == typeof(IList<>) ||
+                    genericDef == typeof(IReadOnlyCollection<>) ||
+                    genericDef == typeof(IReadOnlyList<>) ||
+                    genericDef == typeof(HashSet<>) ||
+                    genericDef == typeof(List<>))
+                    return true;
+            }
+
+            // Concrete types implementing collection interfaces
+            if (declaringType != null && declaringType.IsGenericType)
+            {
+                foreach (var iface in declaringType.GetInterfaces())
+                {
+                    if (iface.IsGenericType)
+                    {
+                        var ifaceDef = iface.GetGenericTypeDefinition();
+                        if (ifaceDef == typeof(ICollection<>) ||
+                            ifaceDef == typeof(ISet<>) ||
+                            ifaceDef == typeof(IList<>))
+                            return true;
+                    }
+                }
+            }
 
             return false;
         }
