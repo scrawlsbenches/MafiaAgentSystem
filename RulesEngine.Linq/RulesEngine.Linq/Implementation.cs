@@ -375,7 +375,7 @@ namespace RulesEngine.Linq
         public IEnumerator<T> GetEnumerator() => _facts.GetEnumerator();
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-        internal IReadOnlyList<T> GetFacts() => _facts;
+        internal IReadOnlyList<T> GetFacts() => _facts.AsReadOnly();
     }
 
     #endregion

@@ -318,9 +318,6 @@ namespace RulesEngine.Linq.Dependencies
         private readonly List<string> _navigationPaths = new();
         private readonly List<string> _warnings = new();
 
-        // Track the current parameter type for navigation analysis
-        private Type? _currentFactType;
-
         public DependencyExtractor(IFactSchema schema)
         {
             _schema = schema ?? throw new ArgumentNullException(nameof(schema));
@@ -331,7 +328,6 @@ namespace RulesEngine.Linq.Dependencies
         /// </summary>
         public DependencyAnalysisResult Analyze<TFact>(Expression expression) where TFact : class
         {
-            _currentFactType = typeof(TFact);
             _detectedDependencies.Clear();
             _navigationPaths.Clear();
             _warnings.Clear();

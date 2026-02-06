@@ -638,38 +638,4 @@ namespace RulesEngine.Linq
         public bool HasMatches => MatchedRules.Count > 0;
     }
 
-    /// <summary>
-    /// Queryable wrapper for facts that can include matching rule information.
-    /// </summary>
-    public class FactWithRulesQueryable<T> where T : class
-    {
-        private readonly IEnumerable<T> _facts;
-        private readonly IEnumerable<IRule<T>> _rules;
-
-        public FactWithRulesQueryable(IEnumerable<T> facts, IEnumerable<IRule<T>> rules)
-        {
-            _facts = facts;
-            _rules = rules;
-        }
-
-        public IEnumerable<FactRuleMatch<T>> WithMatchingRules()
-        {
-            foreach (var fact in _facts)
-            {
-                var matchingRules = _rules.Where(r => r.Evaluate(fact)).ToList();
-                var results = matchingRules.Select(r => r.Execute(fact)).ToList();
-                yield return new FactRuleMatch<T>
-                {
-                    Fact = fact,
-                    MatchedRules = matchingRules,
-                    Results = results
-                };
-            }
-        }
-
-        public IEnumerable<FactRuleMatch<T>> Where(Func<FactRuleMatch<T>, bool> predicate)
-        {
-            return WithMatchingRules().Where(predicate);
-        }
-    }
 }

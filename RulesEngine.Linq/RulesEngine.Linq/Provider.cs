@@ -559,6 +559,29 @@ namespace RulesEngine.Linq
         }
 
         /// <summary>
+        /// Handle bare ConstantExpression nodes that contain FactQueryable&lt;T&gt; instances.
+        /// This mirrors FactQueryDetector.VisitConstant for completeness.
+        /// Normal C# closures produce MemberAccess(Constant(DisplayClass), field), not bare constants,
+        /// so this only applies to hand-built expression trees using Expression.Constant(factQueryable).
+        /// </summary>
+        protected override Expression VisitConstant(ConstantExpression node)
+        {
+            if (node.Value != null)
+            {
+                var type = node.Value.GetType();
+                if (type.IsGenericType &&
+                    type.GetGenericTypeDefinition() == typeof(FactQueryable<>))
+                {
+                    var factType = type.GetGenericArguments()[0];
+                    var facts = _factResolver(factType);
+                    var queryableType = typeof(IQueryable<>).MakeGenericType(factType);
+                    return Expression.Constant(facts, queryableType);
+                }
+            }
+            return base.VisitConstant(node);
+        }
+
+        /// <summary>
         /// Handle MemberExpression accessing closure fields that contain FactQueryable instances.
         /// When a rule captures context.Facts&lt;T&gt;() in a closure, the expression tree
         /// contains MemberAccess(closure, "fieldName") where the field value is a FactQueryable.
