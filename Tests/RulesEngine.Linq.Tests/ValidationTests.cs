@@ -161,7 +161,7 @@ namespace RulesEngine.Linq.Tests
             var validator = new ExpressionValidator();
             Expression<Func<Order, bool>> expr = o => CustomHelper(o.Total);
 
-            Assert.Throws<InvalidOperationException>(() => validator.Validate(expr));
+            Assert.Throws<NotImplementedException>(() => validator.Validate(expr));
         }
 
         #endregion
@@ -263,7 +263,7 @@ namespace RulesEngine.Linq.Tests
 
             // Should throw for invalid expression
             Expression<Func<Order, bool>> invalidExpr = o => CustomHelper(o.Total);
-            Assert.Throws<InvalidOperationException>(() =>
+            Assert.Throws<NotImplementedException>(() =>
                 provider.ValidateExpression(invalidExpr));
         }
 

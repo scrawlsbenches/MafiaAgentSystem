@@ -151,7 +151,7 @@ namespace RulesEngine.Linq.Tests
             var threshold = 100m;
             Expression<Func<Order, bool>> expr = o => o.Total > threshold;
 
-            Assert.Throws<InvalidOperationException>(() => provider.ValidateExpression(expr));
+            Assert.Throws<NotImplementedException>(() => provider.ValidateExpression(expr));
         }
 
         #endregion
@@ -323,7 +323,7 @@ namespace RulesEngine.Linq.Tests
 
             // The rule itself compiles, but provider validation should catch it
             // when the expression is validated through the provider
-            Assert.Throws<InvalidOperationException>(() =>
+            Assert.Throws<NotImplementedException>(() =>
                 provider.ValidateExpression(rule.Condition));
         }
 

@@ -64,7 +64,7 @@ namespace RulesEngine.Linq
         /// <exception cref="InvalidOperationException">
         /// Thrown if enumerated directly (must be used within rule expressions).
         /// </exception>
-        public IQueryable<T> Facts<T>() where T : class
+        public FactQueryable<T> Facts<T>() where T : class
         {
             // Create provider lazily, with schema for validation if available
             _factQueryProvider ??= new FactQueryProvider(_schema);
@@ -202,6 +202,14 @@ namespace RulesEngine.Linq
         public virtual void Add(IRule<T> rule)
         {
             if (rule == null) throw new ArgumentNullException(nameof(rule));
+
+            // Validate the rule's condition expression against the provider's capabilities.
+            // This ensures both Rule<T> (closure capture) and DependentRule<T> (context parameter)
+            // get the same translatability check at registration time — not silently at evaluation.
+            // The provider's ExpressionCapabilities control what's allowed (closures, subqueries,
+            // method calls), so a permissive in-memory provider and a strict remote provider
+            // can use the same Add() path with different capability flags.
+            _context.Provider.ValidateExpression(rule.Condition);
 
             // If schema is configured, analyze and validate dependencies
             if (_context.Schema != null)
@@ -375,7 +383,7 @@ namespace RulesEngine.Linq
         public IEnumerator<T> GetEnumerator() => _facts.GetEnumerator();
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-        internal IReadOnlyList<T> GetFacts() => _facts;
+        internal IReadOnlyList<T> GetFacts() => _facts.AsReadOnly();
     }
 
     #endregion
@@ -481,6 +489,10 @@ namespace RulesEngine.Linq
                 var countProperty = factSetType.GetProperty("Count")!;
                 totalFacts += (int)countProperty.GetValue(factSetObj)!;
                 totalMatches += matches.Count;
+
+                var rulesEvaluatedProperty = typeResult.GetType().GetProperty("RulesEvaluated");
+                if (rulesEvaluatedProperty != null)
+                    totalRules += (int)rulesEvaluatedProperty.GetValue(typeResult)!;
             }
 
             _state = SessionState.Active;
@@ -500,8 +512,28 @@ namespace RulesEngine.Linq
         public IEvaluationResult<T> Evaluate<T>() where T : class
         {
             ThrowIfNotActive();
-            var factSet = Facts<T>();
-            return EvaluateFactSet((FactSet<T>)factSet);
+            _state = SessionState.Evaluating;
+
+            try
+            {
+                var factSet = Facts<T>();
+                return EvaluateFactSet((FactSet<T>)factSet);
+            }
+            finally
+            {
+                _state = SessionState.Active;
+            }
+        }
+
+        /// <summary>
+        /// Dispatch classification for rules. Determined once per rule (not per fact).
+        /// </summary>
+        private enum RuleDispatchKind
+        {
+            Dependent,        // DependentRule<T> — uses EvaluateWithContext
+            ClosureRewriting, // Rule<T> with RequiresRewriting — uses EvaluateWithRewriter
+            GenericRewriting, // Any IRule<T> with FactQueryExpression — session rewrites
+            Standard          // No cross-fact references — direct Evaluate
         }
 
         private EvaluationResultImpl<T> EvaluateFactSet<T>(FactSet<T> factSet) where T : class
@@ -522,73 +554,81 @@ namespace RulesEngine.Linq
             // Create rewriter for rules containing FactQueryExpression (closure-captured cross-fact queries)
             var rewriter = CreateFactQueryRewriter();
 
+            // Clear stale caches from previous evaluations on this session (#2).
+            // Caches bake fact data into compiled delegates via Expression.Constant.
+            // If facts changed since last evaluation, stale delegates see old data.
+            _rewrittenConditionCache.Clear();
+            foreach (var rule in rules)
+            {
+                if (rule is Rule<T> ruleT)
+                    ruleT.ClearSessionCache(SessionId);
+            }
+
+            // Pre-classify rules for dispatch — once per rule, not per fact (#5).
+            // ContainsFactQuery walks the entire expression tree, so hoisting it
+            // outside the fact loop avoids O(facts × rules × tree-depth) waste.
+            var classifiedRules = new List<(IRule<T> rule, RuleDispatchKind kind)>(rules.Count);
+            foreach (var rule in rules)
+            {
+                RuleDispatchKind kind;
+                if (rule is DependentRule<T>)
+                    kind = RuleDispatchKind.Dependent;
+                else if (rule is Rule<T> rt && rt.RequiresRewriting)
+                    kind = RuleDispatchKind.ClosureRewriting;
+                else if (FactQueryExpression.ContainsFactQuery(rule.Condition))
+                    kind = RuleDispatchKind.GenericRewriting;
+                else
+                    kind = RuleDispatchKind.Standard;
+                classifiedRules.Add((rule, kind));
+            }
+
             foreach (var fact in factSet)
             {
                 var matchedRules = new List<IRule<T>>();
                 var ruleResults = new List<RuleResult>();
 
-                foreach (var rule in rules)
+                foreach (var (rule, kind) in classifiedRules)
                 {
                     try
                     {
                         bool matched;
                         RuleResult result;
 
-                        // Check if rule is a DependentRule that needs context (explicit parameter pattern)
-                        if (rule is DependentRule<T> dependentRule)
+                        switch (kind)
                         {
-                            // Pass the session as IFactContext for cross-fact queries
-                            matched = dependentRule.EvaluateWithContext(fact, this);
-                            if (matched)
+                            case RuleDispatchKind.Dependent:
                             {
+                                var dependentRule = (DependentRule<T>)rule;
+                                matched = dependentRule.EvaluateWithContext(fact, this);
+                                if (!matched) continue;
                                 result = dependentRule.ExecuteWithContext(fact, this);
+                                break;
                             }
-                            else
+
+                            case RuleDispatchKind.ClosureRewriting:
                             {
-                                continue;
-                            }
-                        }
-                        // Check if rule is a Rule<T> with closure-captured cross-fact queries
-                        else if (rule is Rule<T> ruleT && ruleT.RequiresRewriting)
-                        {
-                            // Use rewriter to substitute FactQueryExpression with actual session data
-                            matched = ruleT.EvaluateWithRewriter(fact, rewriter, SessionId);
-                            if (matched)
-                            {
+                                var ruleT = (Rule<T>)rule;
+                                matched = ruleT.EvaluateWithRewriter(fact, rewriter, SessionId);
+                                if (!matched) continue;
                                 result = ruleT.ExecuteWithRewriter(fact, rewriter, SessionId);
+                                break;
                             }
-                            else
+
+                            case RuleDispatchKind.GenericRewriting:
                             {
-                                continue;
-                            }
-                        }
-                        // Generic path: any IRule<T> whose Condition contains FactQueryExpression.
-                        // This handles custom implementations, decorators, composites, etc.
-                        // that aren't DependentRule or Rule<T> but still reference cross-fact queries.
-                        else if (FactQueryExpression.ContainsFactQuery(rule.Condition))
-                        {
-                            var compiled = GetOrCompileRewrittenCondition(rule, rewriter);
-                            matched = compiled(fact);
-                            if (matched)
-                            {
+                                var compiled = GetOrCompileRewrittenCondition(rule, rewriter);
+                                matched = compiled(fact);
+                                if (!matched) continue;
                                 result = rule.Execute(fact);
+                                break;
                             }
-                            else
+
+                            default: // Standard
                             {
-                                continue;
-                            }
-                        }
-                        else
-                        {
-                            // Standard rule - no rewriting needed
-                            matched = rule.Evaluate(fact);
-                            if (matched)
-                            {
+                                matched = rule.Evaluate(fact);
+                                if (!matched) continue;
                                 result = rule.Execute(fact);
-                            }
-                            else
-                            {
-                                continue;
+                                break;
                             }
                         }
 
@@ -628,7 +668,8 @@ namespace RulesEngine.Linq
                 Matches = matches,
                 FactsWithMatches = factsWithMatches,
                 FactsWithoutMatches = factsWithoutMatches,
-                MatchCountByRule = matchCountByRule
+                MatchCountByRule = matchCountByRule,
+                RulesEvaluated = rules.Count
             };
         }
 
@@ -650,12 +691,50 @@ namespace RulesEngine.Linq
         {
             if (_state == SessionState.Disposed) return;
 
+            // Clear session-specific caches from rules to prevent memory leaks (#3).
+            // Each session leaves compiled delegates (holding fact data via closures)
+            // in Rule<T>._sessionCompiledCache. Clean them up.
+            ClearAllRuleSessionCaches();
+            _rewrittenConditionCache.Clear();
+
             // Clear this session from the context
             if (_context.CurrentSession == this)
                 _context.SetCurrentSession(null);
 
             _factSets.Clear();
             _state = SessionState.Disposed;
+        }
+
+        /// <summary>
+        /// Clears session-specific compiled caches from all rules across all fact types.
+        /// </summary>
+        private void ClearAllRuleSessionCaches()
+        {
+            foreach (var factType in _factSets.Keys)
+            {
+                try
+                {
+                    var clearMethod = typeof(RuleSession)
+                        .GetMethod(nameof(ClearRuleSessionCachesForType),
+                            BindingFlags.NonPublic | BindingFlags.Instance)!
+                        .MakeGenericMethod(factType);
+                    clearMethod.Invoke(this, null);
+                }
+                catch
+                {
+                    // Best-effort cleanup during disposal
+                }
+            }
+        }
+
+        private void ClearRuleSessionCachesForType<T>() where T : class
+        {
+            var ruleSet = _context.GetRuleSet<T>();
+            foreach (var rule in ruleSet)
+            {
+                if (rule is Rule<T> ruleT)
+                    ruleT.ClearSessionCache(SessionId);
+            }
         }
 
         /// <summary>
@@ -816,6 +895,12 @@ namespace RulesEngine.Linq
         public required IReadOnlyList<T> FactsWithMatches { get; init; }
         public required IReadOnlyList<T> FactsWithoutMatches { get; init; }
         public required IReadOnlyDictionary<string, int> MatchCountByRule { get; init; }
+
+        /// <summary>
+        /// Number of rules evaluated for this fact type.
+        /// Used by RuleSession.Evaluate() to compute TotalRulesEvaluated.
+        /// </summary>
+        public int RulesEvaluated { get; init; }
     }
 
     #endregion

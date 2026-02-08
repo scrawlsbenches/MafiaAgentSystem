@@ -353,7 +353,12 @@ namespace RulesEngine.Linq
                     }
                     catch
                     {
-                        // Ignore evaluation errors
+                        // Conservative: if we can't evaluate the closure field, assume it
+                        // might be a FactQueryable. Better to trigger unnecessary rewriting
+                        // (which will throw with a clear message) than to silently skip it
+                        // and send the rule down the Standard path where it fails with
+                        // "cannot be enumerated directly".
+                        Found = true;
                     }
                 }
                 return base.VisitMember(node);
@@ -559,6 +564,29 @@ namespace RulesEngine.Linq
         }
 
         /// <summary>
+        /// Handle bare ConstantExpression nodes that contain FactQueryable&lt;T&gt; instances.
+        /// This mirrors FactQueryDetector.VisitConstant for completeness.
+        /// Normal C# closures produce MemberAccess(Constant(DisplayClass), field), not bare constants,
+        /// so this only applies to hand-built expression trees using Expression.Constant(factQueryable).
+        /// </summary>
+        protected override Expression VisitConstant(ConstantExpression node)
+        {
+            if (node.Value != null)
+            {
+                var type = node.Value.GetType();
+                if (type.IsGenericType &&
+                    type.GetGenericTypeDefinition() == typeof(FactQueryable<>))
+                {
+                    var factType = type.GetGenericArguments()[0];
+                    var facts = _factResolver(factType);
+                    var queryableType = typeof(IQueryable<>).MakeGenericType(factType);
+                    return Expression.Constant(facts, queryableType);
+                }
+            }
+            return base.VisitConstant(node);
+        }
+
+        /// <summary>
         /// Handle MemberExpression accessing closure fields that contain FactQueryable instances.
         /// When a rule captures context.Facts&lt;T&gt;() in a closure, the expression tree
         /// contains MemberAccess(closure, "fieldName") where the field value is a FactQueryable.
@@ -590,9 +618,19 @@ namespace RulesEngine.Linq
                         }
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // If evaluation fails, continue with normal visiting
+                    // Surface the error clearly. If we can't evaluate a closure field,
+                    // the FactQueryable (if any) stays in the compiled tree and later
+                    // throws a confusing "cannot be enumerated directly" error.
+                    // Better to fail here with context about what went wrong.
+                    var inner = ex is System.Reflection.TargetInvocationException tie
+                        ? tie.InnerException ?? ex : ex;
+                    throw new InvalidOperationException(
+                        $"Failed to evaluate closure field '{node.Member.Name}' on " +
+                        $"{node.Member.DeclaringType?.Name} during fact query rewriting. " +
+                        $"Check that the captured variable is accessible and not null. " +
+                        $"Detail: {inner.Message}", inner);
                 }
             }
             return base.VisitMember(node);

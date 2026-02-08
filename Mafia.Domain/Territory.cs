@@ -13,5 +13,7 @@ public class Territory
     public string? ControlledById { get; set; } // FamilyId (foreign key)
     public Family? ControlledBy { get; set; } // Navigation property
     public double Value { get; set; }
+    public double Revenue { get; set; }
+    public int HeatLevel { get; set; } // 0-100: law enforcement attention
     public string? Status { get; set; } // e.g., "occupied", "guarded", etc.
 }
