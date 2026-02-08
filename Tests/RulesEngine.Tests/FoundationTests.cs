@@ -1002,7 +1002,7 @@ public class FoundationTests
     /// AsyncRuleBuilder.Build() without condition should throw.
     /// </summary>
     [Test]
-    public void AsyncRuleBuilder_Build_NoCondition_ThrowsInvalidOperationException()
+    public void AsyncRuleBuilder_Build_NoCondition_ThrowsRuleValidationException()
     {
         // Arrange
         var builder = new AsyncRuleBuilder<TestFact>()
@@ -1010,7 +1010,7 @@ public class FoundationTests
             .WithName("Async No Condition");
 
         // Act & Assert
-        Assert.Throws<InvalidOperationException>(() => builder.Build());
+        Assert.Throws<RuleValidationException>(() => builder.Build());
     }
 
     /// <summary>

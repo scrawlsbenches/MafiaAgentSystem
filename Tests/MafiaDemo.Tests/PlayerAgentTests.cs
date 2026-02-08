@@ -763,7 +763,7 @@ public class PlayerAgentTests
     #region PlayerAgent ExecuteMissionAsync Tests
 
     [Test]
-    public async void ExecuteMissionAsync_AppliesResultsToCharacter()
+    public async Task ExecuteMissionAsync_AppliesResultsToCharacter()
     {
         var agent = new PlayerAgent("Mission Tony");
         var initialRespect = agent.Character.Respect;
@@ -781,7 +781,7 @@ public class PlayerAgentTests
     }
 
     [Test]
-    public async void ExecuteMissionAsync_TracksMission()
+    public async Task ExecuteMissionAsync_TracksMission()
     {
         var agent = new PlayerAgent("Tracking Tony");
 
@@ -797,7 +797,7 @@ public class PlayerAgentTests
     }
 
     [Test]
-    public async void ExecuteMissionAsync_ClampsRespectBetween0And100()
+    public async Task ExecuteMissionAsync_ClampsRespectBetween0And100()
     {
         var agent = new PlayerAgent("Extreme Tony");
         agent.Character.Respect = 95;
@@ -812,7 +812,7 @@ public class PlayerAgentTests
     }
 
     [Test]
-    public async void ExecuteMissionAsync_ClampsHeatBetween0And100()
+    public async Task ExecuteMissionAsync_ClampsHeatBetween0And100()
     {
         var agent = new PlayerAgent("Heat Tony");
         agent.Character.Heat = 90;
@@ -832,7 +832,7 @@ public class PlayerAgentTests
     #region PlayerAgent Promotion Tests
 
     [Test]
-    public async void ExecuteMissionAsync_PromotesToSoldier_WhenRespectReaches40()
+    public async Task ExecuteMissionAsync_PromotesToSoldier_WhenRespectReaches40()
     {
         var agent = new PlayerAgent("Promotable Tony");
         agent.Character.Respect = 38;
@@ -852,7 +852,7 @@ public class PlayerAgentTests
     }
 
     [Test]
-    public async void ExecuteMissionAsync_RecordsPromotionAchievement()
+    public async Task ExecuteMissionAsync_RecordsPromotionAchievement()
     {
         var agent = new PlayerAgent("Achievement Tony");
         agent.Character.Respect = 38;
@@ -876,7 +876,7 @@ public class PlayerAgentTests
     #region PlayerAgent ProcessWeekAsync Tests
 
     [Test]
-    public async void ProcessWeekAsync_IncrementsWeek()
+    public async Task ProcessWeekAsync_IncrementsWeek()
     {
         var agent = new PlayerAgent("Weekly Tony");
         var initialWeek = agent.Character.Week;
@@ -888,7 +888,7 @@ public class PlayerAgentTests
     }
 
     [Test]
-    public async void ProcessWeekAsync_AppliesNaturalHeatDecay()
+    public async Task ProcessWeekAsync_AppliesNaturalHeatDecay()
     {
         // Test the natural heat decay logic (Heat -= 3) that happens at start of week
         // Note: If a mission is accepted and executed, additional heat may be added
@@ -910,7 +910,7 @@ public class PlayerAgentTests
     }
 
     [Test]
-    public async void ProcessWeekAsync_ReturnsWeekResult()
+    public async Task ProcessWeekAsync_ReturnsWeekResult()
     {
         var agent = new PlayerAgent("Result Tony");
         var gameState = new GameState();
@@ -924,7 +924,7 @@ public class PlayerAgentTests
     }
 
     [Test]
-    public async void ProcessWeekAsync_ExecutesMission_WhenAccepted()
+    public async Task ProcessWeekAsync_ExecutesMission_WhenAccepted()
     {
         var agent = new PlayerAgent("Accepting Tony");
         agent.Character.Money = 200m; // Desperate
@@ -940,7 +940,7 @@ public class PlayerAgentTests
     }
 
     [Test]
-    public async void ProcessWeekAsync_DoesNotExecuteMission_WhenRejected()
+    public async Task ProcessWeekAsync_DoesNotExecuteMission_WhenRejected()
     {
         var agent = new PlayerAgent("Rejecting Tony");
         agent.Character.Skills.Intimidation = 5;
@@ -1344,7 +1344,7 @@ public class PlayerAgentTests
     #region Integration Tests - Complex Scenarios
 
     [Test]
-    public async void Integration_FullWeekCycle_UpdatesCharacterCorrectly()
+    public async Task Integration_FullWeekCycle_UpdatesCharacterCorrectly()
     {
         var agent = new PlayerAgent("Full Cycle Tony");
         var initialWeek = agent.Character.Week;
@@ -1358,7 +1358,7 @@ public class PlayerAgentTests
     }
 
     [Test]
-    public async void Integration_MultipleWeeks_ProgressesCharacter()
+    public async Task Integration_MultipleWeeks_ProgressesCharacter()
     {
         var agent = new PlayerAgent("Progress Tony");
         var gameState = new GameState();

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
+using System.Diagnostics;
 
 namespace RulesEngine.Core;
 
@@ -438,15 +439,17 @@ public class RulesEngineCore<T> : IRulesEngine<T>
 
         var results = new List<RuleExecutionResult<T>>();
         var stopOnMatch = false;
+        int rulesExecuted = 0;
+        int? maxRules = _options.MaxRulesToExecute;
 
         // Process sync rules first
         var rulesToExecute = GetSortedRules();
 
         // Limit rules if configured
         IEnumerable<IRule<T>> limitedRules = rulesToExecute;
-        if (_options.MaxRulesToExecute.HasValue)
+        if (maxRules.HasValue)
         {
-            limitedRules = rulesToExecute.Take(_options.MaxRulesToExecute.Value);
+            limitedRules = rulesToExecute.Take(maxRules.Value);
         }
 
         foreach (var rule in limitedRules)
@@ -456,6 +459,7 @@ public class RulesEngineCore<T> : IRulesEngine<T>
             // Yield to allow cancellation between rules
             await Task.Yield();
 
+            var ruleStart = Stopwatch.StartNew();
             try
             {
                 bool matches = rule.Evaluate(fact);
@@ -467,7 +471,6 @@ public class RulesEngineCore<T> : IRulesEngine<T>
                     if (_options.StopOnFirstMatch)
                     {
                         stopOnMatch = true;
-                        break;
                     }
                 }
             }
@@ -476,19 +479,36 @@ public class RulesEngineCore<T> : IRulesEngine<T>
                 results.Add(new RuleExecutionResult<T>(rule,
                     RuleResult.Failure(rule.Id, ex.Message), false, ex));
             }
+            finally
+            {
+                ruleStart.Stop();
+                if (_options.TrackPerformance)
+                {
+                    TrackPerformance(rule.Id, ruleStart.Elapsed);
+                }
+                rulesExecuted++;
+            }
+
+            if (stopOnMatch)
+                break;
         }
 
         // If we stopped on first match, don't process async rules
         if (stopOnMatch)
             return results;
 
-        // Process async rules
+        // Process async rules, respecting combined MaxRulesToExecute limit
         var asyncRulesToExecute = GetSortedAsyncRules();
 
         foreach (var asyncRule in asyncRulesToExecute)
         {
+            // Check combined limit across sync + async rules
+            if (maxRules.HasValue && rulesExecuted >= maxRules.Value)
+                break;
+
             cancellationToken.ThrowIfCancellationRequested();
 
+            var ruleStart = Stopwatch.StartNew();
             try
             {
                 bool matches = await asyncRule.EvaluateAsync(fact, cancellationToken);
@@ -505,6 +525,15 @@ public class RulesEngineCore<T> : IRulesEngine<T>
             {
                 results.Add(new RuleExecutionResult<T>(asyncRule,
                     RuleResult.Failure(asyncRule.Id, ex.Message), false, ex));
+            }
+            finally
+            {
+                ruleStart.Stop();
+                if (_options.TrackPerformance)
+                {
+                    TrackPerformance(asyncRule.Id, ruleStart.Elapsed);
+                }
+                rulesExecuted++;
             }
         }
 
@@ -930,7 +959,7 @@ public class ImmutableRulesEngine<T>
             throw new RuleValidationException($"Rule with ID '{rule.Id}' already exists", rule.Id);
 
         var newRules = _rules.Add(rule);
-        return new ImmutableRulesEngine<T>(newRules, _options, _metrics);
+        return new ImmutableRulesEngine<T>(newRules, _options, new ConcurrentDictionary<string, RulePerformanceMetrics>(_metrics));
     }
 
     /// <summary>
@@ -965,7 +994,7 @@ public class ImmutableRulesEngine<T>
         }
 
         var newRules = _rules.AddRange(rules);
-        return new ImmutableRulesEngine<T>(newRules, _options, _metrics);
+        return new ImmutableRulesEngine<T>(newRules, _options, new ConcurrentDictionary<string, RulePerformanceMetrics>(_metrics));
     }
 
     /// <summary>
@@ -974,7 +1003,7 @@ public class ImmutableRulesEngine<T>
     public ImmutableRulesEngine<T> WithoutRule(string ruleId)
     {
         var newRules = _rules.RemoveAll(r => r.Id == ruleId);
-        return new ImmutableRulesEngine<T>(newRules, _options, _metrics);
+        return new ImmutableRulesEngine<T>(newRules, _options, new ConcurrentDictionary<string, RulePerformanceMetrics>(_metrics));
     }
 
     /// <summary>
@@ -999,17 +1028,24 @@ public class ImmutableRulesEngine<T>
         var startTime = DateTime.UtcNow;
 
         // Snapshot rules (already immutable, so this is safe)
-        var sortedRules = _rules
-            .OrderByDescending(r => r.Priority)
-            .ToList();
+        IEnumerable<IRule<T>> sortedRules = _rules
+            .OrderByDescending(r => r.Priority);
+
+        // Limit rules if configured
+        if (_options.MaxRulesToExecute.HasValue)
+        {
+            sortedRules = sortedRules.Take(_options.MaxRulesToExecute.Value);
+        }
+
+        var rulesList = sortedRules.ToList();
 
         if (_options.EnableParallelExecution)
         {
-            ExecuteParallel(fact, sortedRules, result, cancellationToken);
+            ExecuteParallel(fact, rulesList, result, cancellationToken);
         }
         else
         {
-            ExecuteSequential(fact, sortedRules, result, cancellationToken);
+            ExecuteSequential(fact, rulesList, result, cancellationToken);
         }
 
         result.TotalExecutionTime = DateTime.UtcNow - startTime;

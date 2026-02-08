@@ -963,7 +963,7 @@ public class StorySystemIntegrationTests : MafiaTestBase
     #region PlayerAgent Story System Integration Tests
 
     [Test]
-    public async void PlayerAgent_WithStorySystem_AppliesConsequenceRules()
+    public async Task PlayerAgent_WithStorySystem_AppliesConsequenceRules()
     {
         // Arrange - Create PlayerAgent with Story System components wired up
         GameTimingOptions.Current = GameTimingOptions.Instant;
@@ -1037,7 +1037,7 @@ public class StorySystemIntegrationTests : MafiaTestBase
     }
 
     [Test]
-    public async void PlayerAgent_WithStorySystem_RecordsIntelForInformationMissions()
+    public async Task PlayerAgent_WithStorySystem_RecordsIntelForInformationMissions()
     {
         // Arrange
         GameTimingOptions.Current = GameTimingOptions.Instant;
@@ -1104,7 +1104,7 @@ public class StorySystemIntegrationTests : MafiaTestBase
     }
 
     [Test]
-    public async void PlayerAgent_WithoutStorySystem_StillWorksNormally()
+    public async Task PlayerAgent_WithoutStorySystem_StillWorksNormally()
     {
         // Arrange - PlayerAgent without Story System components
         GameTimingOptions.Current = GameTimingOptions.Instant;
@@ -1139,7 +1139,7 @@ public class StorySystemIntegrationTests : MafiaTestBase
     }
 
     [Test]
-    public async void PlayerAgent_FailedMission_DoesNotRecordIntel()
+    public async Task PlayerAgent_FailedMission_DoesNotRecordIntel()
     {
         // Arrange
         GameTimingOptions.Current = GameTimingOptions.Instant;

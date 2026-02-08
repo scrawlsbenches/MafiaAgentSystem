@@ -167,17 +167,17 @@ public class AsyncRuleBuilder<T>
     /// <summary>
     /// Builds the async rule with the configured settings.
     /// </summary>
-    /// <exception cref="InvalidOperationException">Thrown when required properties are not set</exception>
+    /// <exception cref="RuleValidationException">Thrown when required properties are not set</exception>
     public IAsyncRule<T> Build()
     {
         if (string.IsNullOrEmpty(_id))
-            throw new InvalidOperationException("Rule ID is required");
+            throw new RuleValidationException("Rule ID is required");
         if (string.IsNullOrEmpty(_name))
-            throw new InvalidOperationException("Rule name is required");
+            throw new RuleValidationException("Rule name is required", _id);
         if (_condition == null)
-            throw new InvalidOperationException("Rule condition is required");
+            throw new RuleValidationException("Rule condition is required", _id);
         if (_action == null)
-            throw new InvalidOperationException("Rule action is required");
+            throw new RuleValidationException("Rule action is required", _id);
 
         return new AsyncRule<T>(_id, _name, _condition, _action, _priority);
     }
