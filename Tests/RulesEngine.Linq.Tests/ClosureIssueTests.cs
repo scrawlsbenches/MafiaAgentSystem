@@ -95,23 +95,27 @@ namespace RulesEngine.Linq.Tests
         }
 
         // =====================================================================
-        // ISSUE 2: Closure path skips validation that DependentRule enforces
+        // ISSUE 2 (FIXED): Both paths now validate at Add() time
         //
-        // The ExpressionValidator checks that method calls are "translatable"
-        // (safe for remote serialization). DependentRule goes through this
-        // validator via FactSetQueryProvider. Rule<T> with closures does NOT —
-        // FactQueryRewriter substitutes plain EnumerableQuery, bypassing validation.
+        // RuleSet.Add() validates rule.Condition against the provider's
+        // ExpressionValidator. Both Rule<T> (closure) and DependentRule<T>
+        // (context parameter) get the same translatability check. Custom
+        // methods that aren't in the whitelist are rejected with
+        // NotImplementedException at Add() time — not silently at evaluation.
         //
-        // Result: the same predicate logic is accepted in Rule<T> but rejected
-        // in DependentRule<T>.
+        // WHY AT ADD() TIME:
+        // - Fail fast: the developer gets immediate feedback when registering rules
+        // - Consistent: both cross-fact patterns go through the same validator
+        // - The provider's ExpressionCapabilities control what's allowed,
+        //   so a permissive in-memory provider and a strict remote provider
+        //   can use the same Add() path with different capability flags
         // =====================================================================
 
         [Test]
-        public void Issue2_ClosurePath_AllowsUntranslatableMethod_ThatContextPathRejects()
+        public void Issue2_ClosurePath_RejectsUntranslatableMethod_AtAddTime()
         {
-            // A custom static method in a cross-fact predicate.
-            // Rule<T> (closure) accepts it; DependentRule<T> (context) rejects it.
-
+            // A custom static method in a cross-fact predicate via closure.
+            // Previously this was silently accepted. Now Add() validates.
             using var context = new RulesContext();
             context.ConfigureSchema(schema =>
             {
@@ -119,33 +123,25 @@ namespace RulesEngine.Linq.Tests
                 schema.RegisterFactType<AgentMessage>(cfg => cfg.DependsOn<Agent>());
             });
 
-            // --- Closure path: Rule<T> ---
             var agents = context.Facts<Agent>();
-            context.GetRuleSet<AgentMessage>().Add(new Rule<AgentMessage>(
+            var rule = new Rule<AgentMessage>(
                 "closure-custom", "Closure with custom method",
                 m => m.Type == MessageType.Request
-                     && agents.Any(a => IsHighValue(a)))  // custom method
-                .Then(m => m.Flag("closure-matched")));
+                     && agents.Any(a => IsHighValue(a)));  // custom method
 
-            using var session = context.CreateSession();
-            session.Insert(new Agent { Id = "A1", ReputationScore = 9.0, Status = AgentStatus.Available });
-            session.Insert(new AgentMessage { Id = "M1", Type = MessageType.Request });
-
-            var result = session.Evaluate();
-
-            // Closure path: custom method works fine in-memory, no validation error.
-            Assert.False(result.HasErrors);
-            var msg = session.Facts<AgentMessage>().First();
-            Assert.True(msg.Flags.Contains("closure-matched"));
+            // Add() now validates the condition — rejects untranslatable methods
+            var ex = Assert.Throws<NotImplementedException>(() =>
+                context.GetRuleSet<AgentMessage>().Add(rule));
+            Assert.Contains("IsHighValue", ex.Message);
+            Assert.Contains("not translatable", ex.Message);
+            Assert.Contains("IsTranslatable", ex.Message); // instructions for fixing
         }
 
         [Test]
-        public void Issue2_ContextPath_RejectsUntranslatableMethod_ThatClosurePathAllows()
+        public void Issue2_ContextPath_RejectsUntranslatableMethod_AtAddTime()
         {
-            // Same predicate as above, but through DependentRule<T>.
-            // The FactSetQueryProvider validates expression trees and rejects
-            // the custom method as not translatable.
-
+            // Same predicate through DependentRule<T>.
+            // Previously rejected at evaluation time. Now rejected at Add() time.
             using var context = new RulesContext();
             context.ConfigureSchema(schema =>
             {
@@ -153,34 +149,24 @@ namespace RulesEngine.Linq.Tests
                 schema.RegisterFactType<AgentMessage>(cfg => cfg.DependsOn<Agent>());
             });
 
-            // --- Context path: DependentRule<T> ---
-            context.GetRuleSet<AgentMessage>().Add(new DependentRule<AgentMessage>(
+            var rule = new DependentRule<AgentMessage>(
                 "context-custom", "Context with custom method",
                 (m, ctx) => m.Type == MessageType.Request
-                            && ctx.Facts<Agent>().Any(a => IsHighValue(a)))  // same custom method
-                .DependsOn<Agent>());
+                            && ctx.Facts<Agent>().Any(a => IsHighValue(a)))
+                .DependsOn<Agent>();
 
-            using var session = context.CreateSession();
-            session.Insert(new Agent { Id = "A1", ReputationScore = 9.0 });
-            session.Insert(new AgentMessage { Id = "M1", Type = MessageType.Request });
-
-            var result = session.Evaluate();
-
-            // Context path: custom method is rejected by the validator.
-            // Error is captured in result.Errors, not thrown.
-            Assert.True(result.HasErrors);
-            Assert.True(result.Errors.Count > 0);
-            var error = result.Errors[0];
-            Assert.Contains("IsHighValue", error.Exception.Message);
-            Assert.Contains("not translatable", error.Exception.Message);
+            // Add() validates — same error, same time, regardless of pattern
+            var ex = Assert.Throws<NotImplementedException>(() =>
+                context.GetRuleSet<AgentMessage>().Add(rule));
+            Assert.Contains("IsHighValue", ex.Message);
+            Assert.Contains("not translatable", ex.Message);
         }
 
         [Test]
-        public void Issue2_BothPaths_SameLogic_DifferentOutcome()
+        public void Issue2_BothPaths_SameLogic_SameOutcome()
         {
-            // Side-by-side: identical business logic, different results based
-            // solely on which pattern the developer chose.
-
+            // Both patterns now produce the same error at the same time.
+            // The developer gets consistent behavior regardless of pattern choice.
             using var context = new RulesContext();
             context.ConfigureSchema(schema =>
             {
@@ -189,32 +175,26 @@ namespace RulesEngine.Linq.Tests
             });
 
             var agents = context.Facts<Agent>();
+            var ruleSet = context.GetRuleSet<AgentMessage>();
 
-            // Closure: uses custom method
-            context.GetRuleSet<AgentMessage>().Add(new Rule<AgentMessage>(
-                "closure-version", "Closure version",
-                m => agents.Any(a => IsHighValue(a)))
-                .Then(m => m.Flag("closure")));
+            // Closure: rejects at Add()
+            var closureEx = Assert.Throws<NotImplementedException>(() =>
+                ruleSet.Add(new Rule<AgentMessage>(
+                    "closure-version", "Closure version",
+                    m => agents.Any(a => IsHighValue(a)))));
 
-            // Context: uses SAME custom method
-            context.GetRuleSet<AgentMessage>().Add(new DependentRule<AgentMessage>(
-                "context-version", "Context version",
-                (m, ctx) => ctx.Facts<Agent>().Any(a => IsHighValue(a)))
-                .DependsOn<Agent>());
+            // Context: rejects at Add() with the same error
+            var contextEx = Assert.Throws<NotImplementedException>(() =>
+                ruleSet.Add(new DependentRule<AgentMessage>(
+                    "context-version", "Context version",
+                    (m, ctx) => ctx.Facts<Agent>().Any(a => IsHighValue(a)))
+                    .DependsOn<Agent>()));
 
-            using var session = context.CreateSession();
-            session.Insert(new Agent { Id = "A1", ReputationScore = 9.0 });
-            var msg = new AgentMessage { Id = "M1", Type = MessageType.Request };
-            session.Insert(msg);
-
-            var result = session.Evaluate();
-
-            // Closure version matched (no validation)
-            Assert.True(msg.Flags.Contains("closure"));
-
-            // Context version errored (validator rejected IsHighValue)
-            Assert.True(result.HasErrors);
-            Assert.Equal("context-version", result.Errors[0].RuleId);
+            // Both errors mention the same method and provide the same instructions
+            Assert.Contains("IsHighValue", closureEx.Message);
+            Assert.Contains("IsHighValue", contextEx.Message);
+            Assert.Contains("IsTranslatable", closureEx.Message);
+            Assert.Contains("IsTranslatable", contextEx.Message);
         }
 
         // =====================================================================

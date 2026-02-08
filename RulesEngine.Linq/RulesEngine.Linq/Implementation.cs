@@ -203,6 +203,14 @@ namespace RulesEngine.Linq
         {
             if (rule == null) throw new ArgumentNullException(nameof(rule));
 
+            // Validate the rule's condition expression against the provider's capabilities.
+            // This ensures both Rule<T> (closure capture) and DependentRule<T> (context parameter)
+            // get the same translatability check at registration time — not silently at evaluation.
+            // The provider's ExpressionCapabilities control what's allowed (closures, subqueries,
+            // method calls), so a permissive in-memory provider and a strict remote provider
+            // can use the same Add() path with different capability flags.
+            _context.Provider.ValidateExpression(rule.Condition);
+
             // If schema is configured, analyze and validate dependencies
             if (_context.Schema != null)
             {

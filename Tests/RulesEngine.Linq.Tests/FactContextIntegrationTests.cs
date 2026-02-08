@@ -1562,12 +1562,15 @@ namespace RulesEngine.Linq.Tests
         [Test]
         public void Session_Evaluate_CapturesRuleEvaluationErrors()
         {
-            // Arrange: a DependentRule whose context condition throws
+            // Arrange: a DependentRule that matches but whose action throws.
+            // The condition must be translatable (provider validates at Add() time),
+            // so we use a valid condition and put the failure in the action.
             using var context = new RulesContext();
 
             var throwingRule = new DependentRule<AgentMessage>(
-                "throwing-rule", "Throws on evaluate",
-                (m, ctx) => ThrowHelper());
+                "throwing-rule", "Throws on execute",
+                (m, ctx) => true)
+                .Then(m => ThrowingAction());
 
             context.GetRuleSet<AgentMessage>().Add(throwingRule);
 
@@ -1586,12 +1589,16 @@ namespace RulesEngine.Linq.Tests
         [Test]
         public void Session_Evaluate_ContinuesAfterRuleError()
         {
-            // Arrange: one throwing DependentRule and one good Rule<T>
+            // Arrange: one DependentRule whose action throws, one good Rule<T>.
+            // Both conditions are translatable (provider validates at Add() time).
+            // The throwing rule matches but fails during Execute — the session
+            // should capture that error and still evaluate remaining rules.
             using var context = new RulesContext();
 
             var throwingRule = new DependentRule<AgentMessage>(
-                "throwing-rule", "Throws on evaluate",
-                (m, ctx) => ThrowHelper())
+                "throwing-rule", "Throws on execute",
+                (m, ctx) => true)
+                .Then(m => ThrowingAction())
                 .WithPriority(100); // evaluated first
 
             var goodRule = new Rule<AgentMessage>(
@@ -1638,7 +1645,13 @@ namespace RulesEngine.Linq.Tests
             Assert.Equal("action-throws", result.Errors[0].RuleId);
         }
 
-        private static bool ThrowHelper()
+        /// <summary>
+        /// Simulates a broken action (e.g., database down, network error).
+        /// Used in tests that verify error accumulation during evaluation.
+        /// Must be an action (not a condition) because conditions are validated
+        /// at Add() time — untranslatable methods in conditions are rejected early.
+        /// </summary>
+        private static void ThrowingAction()
         {
             throw new InvalidOperationException("Rule evaluation failed");
         }
@@ -1799,26 +1812,21 @@ namespace RulesEngine.Linq.Tests
         public void Validator_UnknownMethod_ThrowsNotImplementedWithInstructions()
         {
             // When a method is not in the whitelist and not on a known type,
-            // the validator should throw NotImplementedException with actionable instructions.
+            // the provider should throw NotImplementedException with actionable instructions
+            // at Add() time — not silently at evaluation time. This gives developers
+            // immediate feedback about what method needs to be added to IsTranslatable().
             using var context = new RulesContext();
 
-            context.GetRuleSet<AgentMessage>().Add(new DependentRule<AgentMessage>(
+            var rule = new DependentRule<AgentMessage>(
                 "uses-custom-method", "Uses custom method",
                 (msg, ctx) => ctx.Facts<Agent>().Any(a => CustomPredicate(a)))
-                .DependsOn<Agent>());
+                .DependsOn<Agent>();
 
-            using var session = context.CreateSession();
-            session.Insert(new Agent { Id = "A1" });
-            session.Insert(new AgentMessage { Id = "M1" });
-
-            var result = session.Evaluate();
-
-            // Should have an error with NotImplementedException
-            Assert.True(result.HasErrors);
-            var error = result.Errors[0];
-            Assert.IsType<NotImplementedException>(error.Exception);
-            Assert.Contains("CustomPredicate", error.Exception.Message);
-            Assert.Contains("IsTranslatable", error.Exception.Message);
+            // Provider validation catches the untranslatable method at Add() time
+            var ex = Assert.Throws<NotImplementedException>(() =>
+                context.GetRuleSet<AgentMessage>().Add(rule));
+            Assert.Contains("CustomPredicate", ex.Message);
+            Assert.Contains("IsTranslatable", ex.Message);
         }
 
         private static bool CustomPredicate(Agent a) => a.Status == AgentStatus.Available;

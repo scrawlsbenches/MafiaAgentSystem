@@ -386,14 +386,23 @@ namespace RulesEngine.Linq.Tests
         [Test]
         public void ValidationMode_OnEvaluate_AllowsAddButFailsEvaluate()
         {
+            // OnEvaluate mode defers constraint validation to evaluation time.
+            // Note: Provider-level expression validation (translatability) always
+            // runs at Add() time regardless of ValidationMode — it's about correctness,
+            // not policy. Constraint validation (priority ranges, expression depth, etc.)
+            // is what ValidationMode controls.
+            //
+            // Here we use RequirePriorityRange instead of RequireLinqCompatible,
+            // because priority is a policy constraint that can legitimately be deferred.
             using var context = new RulesContext();
             context.ConfigureRuleSet<Order>()
-                .RequireLinqCompatible()
+                .RequirePriorityRange(0, 100)
                 .ValidateOn(ValidationMode.OnEvaluate)
                 .Build();
 
             var ruleSet = context.GetRuleSet<Order>();
-            var rule = new Rule<Order>("R1", "Test", o => CustomHelper(o.Total));
+            // Priority 101 violates the range — but OnEvaluate defers the check
+            var rule = new Rule<Order>("R1", "Test", o => o.Total > 100, priority: 101);
 
             ruleSet.Add(rule);
             Assert.Equal(1, ruleSet.Count);

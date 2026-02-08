@@ -670,11 +670,17 @@ namespace RulesEngine.Linq.Tests
         {
             using var context = new RulesContext();
 
-            // A DependentRule that throws (simulating a broken rule)
+            // A DependentRule that matches but whose action throws.
+            // The condition must be translatable (provider validates at Add() time),
+            // so the "bug" lives in the action, not the condition. This simulates
+            // a rule that evaluates correctly but fails during execution — e.g.,
+            // a database write, an external API call, or a state mutation that
+            // encounters unexpected data.
             context.GetRuleSet<AgentMessage>().Add(new DependentRule<AgentMessage>(
                 "broken-rule",
                 "This rule has a bug",
-                (msg, ctx) => BrokenCondition())
+                (msg, ctx) => true)
+                .Then(msg => BrokenAction())
                 .WithPriority(200));
 
             // A working rule that should still fire
@@ -869,7 +875,12 @@ namespace RulesEngine.Linq.Tests
             Assert.True(result.TotalRulesEvaluated > 0);
         }
 
-        private static bool BrokenCondition()
+        /// <summary>
+        /// Simulates a broken action (e.g., database write failure, API error).
+        /// Used in Act 8 to demonstrate resilient evaluation — the session captures
+        /// the error and continues evaluating remaining rules.
+        /// </summary>
+        private static void BrokenAction()
         {
             throw new InvalidOperationException("Database connection lost");
         }
