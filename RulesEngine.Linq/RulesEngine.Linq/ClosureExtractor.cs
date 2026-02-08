@@ -16,9 +16,7 @@ namespace RulesEngine.Linq
         public object? Value { get; init; }
         public Type Type { get; init; } = typeof(object);
         public bool IsSerializable { get; init; }
-
-        // TODO: Consider adding source location info for better error messages
-        // TODO: Consider adding the original MemberExpression for reconstruction
+        public string? ExtractionError { get; init; }
     }
 
     /// <summary>
@@ -279,11 +277,23 @@ namespace RulesEngine.Linq
                     IsSerializable = IsSerializableType(memberType)
                 };
             }
-            catch
+            catch (Exception ex)
             {
-                // TODO: Consider logging extraction failures
-                // For now, return null to indicate extraction failed
-                return null;
+                // Surface extraction failures so ValidateClosures can report them.
+                // The closure exists but its value couldn't be read — this will
+                // prevent serialization, so the developer needs to know.
+                // Unwrap TargetInvocationException to get the real error.
+                var inner = ex is System.Reflection.TargetInvocationException tie
+                    ? tie.InnerException ?? ex : ex;
+                return new ExtractedClosure
+                {
+                    Name = memberExpr.Member.Name,
+                    Value = null,
+                    Type = memberExpr.Type,
+                    IsSerializable = false,
+                    ExtractionError = $"Failed to evaluate closure field '{memberExpr.Member.Name}' " +
+                        $"on {memberExpr.Member.DeclaringType?.Name}: {inner.Message}"
+                };
             }
         }
 
@@ -301,6 +311,13 @@ namespace RulesEngine.Linq
 
             foreach (var closure in closures)
             {
+                // Extraction errors take precedence — the value couldn't be read at all
+                if (closure.ExtractionError != null)
+                {
+                    errors.Add(closure.ExtractionError);
+                    continue;
+                }
+
                 if (!closure.IsSerializable)
                 {
                     var typeName = closure.Type.Name;

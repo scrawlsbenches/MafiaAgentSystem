@@ -64,7 +64,7 @@ namespace RulesEngine.Linq
         /// <exception cref="InvalidOperationException">
         /// Thrown if enumerated directly (must be used within rule expressions).
         /// </exception>
-        public IQueryable<T> Facts<T>() where T : class
+        public FactQueryable<T> Facts<T>() where T : class
         {
             // Create provider lazily, with schema for validation if available
             _factQueryProvider ??= new FactQueryProvider(_schema);

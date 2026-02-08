@@ -353,7 +353,12 @@ namespace RulesEngine.Linq
                     }
                     catch
                     {
-                        // Ignore evaluation errors
+                        // Conservative: if we can't evaluate the closure field, assume it
+                        // might be a FactQueryable. Better to trigger unnecessary rewriting
+                        // (which will throw with a clear message) than to silently skip it
+                        // and send the rule down the Standard path where it fails with
+                        // "cannot be enumerated directly".
+                        Found = true;
                     }
                 }
                 return base.VisitMember(node);
@@ -613,9 +618,19 @@ namespace RulesEngine.Linq
                         }
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // If evaluation fails, continue with normal visiting
+                    // Surface the error clearly. If we can't evaluate a closure field,
+                    // the FactQueryable (if any) stays in the compiled tree and later
+                    // throws a confusing "cannot be enumerated directly" error.
+                    // Better to fail here with context about what went wrong.
+                    var inner = ex is System.Reflection.TargetInvocationException tie
+                        ? tie.InnerException ?? ex : ex;
+                    throw new InvalidOperationException(
+                        $"Failed to evaluate closure field '{node.Member.Name}' on " +
+                        $"{node.Member.DeclaringType?.Name} during fact query rewriting. " +
+                        $"Check that the captured variable is accessible and not null. " +
+                        $"Detail: {inner.Message}", inner);
                 }
             }
             return base.VisitMember(node);

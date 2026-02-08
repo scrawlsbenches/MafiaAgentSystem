@@ -533,5 +533,131 @@ namespace RulesEngine.Linq.Tests
         /// Works in LINQ-to-Objects but would fail in a remote provider.
         /// </summary>
         private static bool IsHighValue(Agent agent) => agent.ReputationScore > 7.0;
+
+        // =====================================================================
+        // FIXES: Silent catches must surface errors
+        //
+        // Three locations silently swallow exceptions:
+        //   1. ClosureExtractor.ExtractClosureValue catch (ClosureExtractor.cs)
+        //   2. FactQueryDetector.VisitMember catch (Provider.cs)
+        //   3. FactQueryRewriter.VisitMember catch (Provider.cs)
+        //
+        // These tests use a property that throws on access to trigger each catch.
+        // =====================================================================
+
+        /// <summary>
+        /// A type whose property throws — used to trigger silent catches.
+        /// Simulates a closure field that can't be evaluated.
+        /// </summary>
+        public class ThrowingCapture
+        {
+            public IQueryable<Agent> Agents
+            {
+                get => throw new InvalidOperationException("Property access failed: connection lost");
+            }
+        }
+
+        [Test]
+        public void Fix5a_ClosureExtractor_SurfacesExtractionError_WhenPropertyThrows()
+        {
+            // ClosureExtractor.ExtractClosureValue currently swallows exceptions.
+            // It should surface the error so ValidateClosures can report it.
+            var capture = new ThrowingCapture();
+
+            // Build expression: a => a.CurrentTaskCount > capture.Agents.Count()
+            // The closure captures 'capture'. When the extractor tries to evaluate
+            // capture.Agents, the property getter throws.
+            // We use a simpler form: build expression that references capture.Agents.
+            var param = Expression.Parameter(typeof(Agent), "a");
+            var captureConst = Expression.Constant(capture);
+            var agentsProp = Expression.Property(captureConst, nameof(ThrowingCapture.Agents));
+            // a => capture.Agents != null (arbitrary condition that references the closure)
+            var body = Expression.NotEqual(agentsProp, Expression.Constant(null, typeof(IQueryable<Agent>)));
+            var lambda = Expression.Lambda<Func<Agent, bool>>(body, param);
+
+            var extractor = new ClosureExtractor();
+            var closures = extractor.ExtractClosures(lambda);
+
+            // EXPECTED AFTER FIX: The extractor should report the closure with an error,
+            // not silently omit it. ValidateClosures should flag it.
+            Assert.True(closures.Count > 0, "Closure should be reported even when extraction fails");
+            var errorClosure = closures.First(c => c.Name == "Agents");
+            Assert.False(errorClosure.IsSerializable);
+            Assert.NotNull(errorClosure.ExtractionError);
+            Assert.Contains("Property access failed", errorClosure.ExtractionError!);
+        }
+
+        [Test]
+        public void Fix5a_ClosureExtractor_ValidateClosures_IncludesExtractionErrors()
+        {
+            // ValidateClosures should report extraction errors as validation failures.
+            var capture = new ThrowingCapture();
+
+            var param = Expression.Parameter(typeof(Agent), "a");
+            var captureConst = Expression.Constant(capture);
+            var agentsProp = Expression.Property(captureConst, nameof(ThrowingCapture.Agents));
+            var body = Expression.NotEqual(agentsProp, Expression.Constant(null, typeof(IQueryable<Agent>)));
+            var lambda = Expression.Lambda<Func<Agent, bool>>(body, param);
+
+            var extractor = new ClosureExtractor();
+            var result = extractor.ValidateClosures(lambda);
+
+            Assert.False(result.IsValid, "Extraction errors should cause validation failure");
+            Assert.True(result.Errors.Count > 0);
+            // Error message should mention the field and the cause
+            Assert.Contains("Agents", result.Errors[0]);
+        }
+
+        [Test]
+        public void Fix5b_FactQueryDetector_DetectsConservatively_WhenEvaluationFails()
+        {
+            // FactQueryDetector.VisitMember currently swallows exceptions.
+            // When evaluation fails, it should conservatively assume the field
+            // IS a FactQueryable (Found=true), since failing to detect means
+            // the rule goes down the Standard path and fails with a confusing error.
+            var capture = new ThrowingCapture();
+
+            var param = Expression.Parameter(typeof(Agent), "a");
+            var captureConst = Expression.Constant(capture);
+            var agentsProp = Expression.Property(captureConst, nameof(ThrowingCapture.Agents));
+            // Build: Enumerable.Any(capture.Agents, a => true)
+            var anyMethod = typeof(Enumerable).GetMethods()
+                .First(m => m.Name == "Any" && m.GetParameters().Length == 1)
+                .MakeGenericMethod(typeof(Agent));
+            var anyCall = Expression.Call(anyMethod, agentsProp);
+            var lambda = Expression.Lambda<Func<Agent, bool>>(anyCall, param);
+
+            // ContainsFactQuery should return true (conservative) rather than
+            // silently returning false and sending the rule down the wrong path.
+            bool containsFactQuery = FactQueryExpression.ContainsFactQuery(lambda);
+            Assert.True(containsFactQuery,
+                "Detector should conservatively report true when closure field evaluation fails");
+        }
+
+        [Test]
+        public void Fix5c_FactQueryRewriter_ThrowsClearly_WhenClosureEvaluationFails()
+        {
+            // FactQueryRewriter.VisitMember currently swallows exceptions.
+            // When it can't evaluate a closure field, it should throw with
+            // a clear message explaining the failure, not silently leave the
+            // FactQueryable in the tree (which later produces "cannot be enumerated").
+            var capture = new ThrowingCapture();
+
+            Func<Type, IQueryable> resolver = type => Array.Empty<Agent>().AsQueryable();
+            var rewriter = new FactQueryRewriter(resolver);
+
+            var param = Expression.Parameter(typeof(Agent), "a");
+            var captureConst = Expression.Constant(capture);
+            var agentsProp = Expression.Property(captureConst, nameof(ThrowingCapture.Agents));
+            // Build: capture.Agents != null (references the throwing property)
+            var body = Expression.NotEqual(agentsProp, Expression.Constant(null, typeof(IQueryable<Agent>)));
+            var lambda = Expression.Lambda<Func<Agent, bool>>(body, param);
+
+            // EXPECTED AFTER FIX: The rewriter should throw with context,
+            // not silently fall through and leave the FactQueryable in the tree.
+            var ex = Assert.Throws<InvalidOperationException>(() => rewriter.Rewrite(lambda));
+            Assert.Contains("Agents", ex.Message);
+            Assert.Contains("ThrowingCapture", ex.Message);
+        }
     }
 }
