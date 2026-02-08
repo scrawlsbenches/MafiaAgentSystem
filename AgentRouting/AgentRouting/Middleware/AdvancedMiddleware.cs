@@ -8,17 +8,21 @@ using AgentRouting.Middleware;
 namespace AgentRouting.Middleware.Advanced;
 
 /// <summary>
-/// Distributed tracing middleware for tracking messages across agents
-/// Implements OpenTelemetry-style tracing
+/// Distributed tracing middleware for tracking messages across agents.
+/// Implements OpenTelemetry-style tracing with bounded span storage
+/// to prevent unbounded memory growth in long-running applications.
 /// </summary>
 public class DistributedTracingMiddleware : MiddlewareBase
 {
     private readonly string _serviceName;
-    private readonly ConcurrentBag<TraceSpan> _spans = new();
-    
-    public DistributedTracingMiddleware(string serviceName = "AgentRouter")
+    private readonly ConcurrentQueue<TraceSpan> _spans = new();
+    private readonly int _maxSpans;
+    private int _spanCount;
+
+    public DistributedTracingMiddleware(string serviceName = "AgentRouter", int maxSpans = 10000)
     {
         _serviceName = serviceName;
+        _maxSpans = maxSpans;
     }
     
     public override async Task<MessageResult> InvokeAsync(
@@ -72,7 +76,7 @@ public class DistributedTracingMiddleware : MiddlewareBase
                 span.Tags["error.message"] = result.Error;
             }
             
-            _spans.Add(span);
+            AddSpan(span);
             
             return result;
         }
@@ -83,13 +87,25 @@ public class DistributedTracingMiddleware : MiddlewareBase
             span.Success = false;
             span.Tags["error.type"] = ex.GetType().Name;
             span.Tags["error.message"] = ex.Message;
-            _spans.Add(span);
+            AddSpan(span);
             throw;
         }
     }
     
+    private void AddSpan(TraceSpan span)
+    {
+        _spans.Enqueue(span);
+        var count = Interlocked.Increment(ref _spanCount);
+
+        // Evict oldest spans when over capacity
+        while (count > _maxSpans && _spans.TryDequeue(out _))
+        {
+            count = Interlocked.Decrement(ref _spanCount);
+        }
+    }
+
     public List<TraceSpan> GetTraces() => _spans.ToList();
-    
+
     public string ExportJaegerFormat()
     {
         var traces = GetTraces();
@@ -346,14 +362,15 @@ public class MessageQueueMiddleware : MiddlewareBase, IDisposable
     
     private async void ProcessBatch(object? state)
     {
-        // CRITICAL: async void methods must have try-catch at the top level.
-        // Without this, any unhandled exception will crash the application
-        // because Timer callbacks cannot propagate exceptions.
+        // CRITICAL: async void is required here because Timer callbacks must be void.
+        // The top-level try-catch prevents unhandled exceptions from crashing the app.
+        // The batch list is declared outside the inner try so the outer catch can
+        // complete any orphaned TaskCompletionSources — without this, callers would
+        // hang forever awaiting tcs.Task.
+        var batch = new List<(AgentMessage message, TaskCompletionSource<MessageResult> tcs)>();
         try
         {
             if (_next == null) return;
-
-            var batch = new List<(AgentMessage message, TaskCompletionSource<MessageResult> tcs)>();
 
             // Dequeue up to batchSize messages
             while (batch.Count < _batchSize && _queue.TryDequeue(out var item))
@@ -371,11 +388,11 @@ public class MessageQueueMiddleware : MiddlewareBase, IDisposable
                 try
                 {
                     var result = await _next(item.message, default);
-                    item.tcs.SetResult(result);
+                    item.tcs.TrySetResult(result);
                 }
                 catch (Exception ex)
                 {
-                    item.tcs.SetResult(MessageResult.Fail($"Batch processing error: {ex.Message}"));
+                    item.tcs.TrySetResult(MessageResult.Fail($"Batch processing error: {ex.Message}"));
                 }
             });
 
@@ -383,8 +400,12 @@ public class MessageQueueMiddleware : MiddlewareBase, IDisposable
         }
         catch (Exception ex)
         {
-            // Log the error but don't let it crash the application
             Console.WriteLine($"[Queue] CRITICAL: Batch processing failed: {ex.Message}");
+            // Complete any orphaned TCS items so callers don't hang forever
+            foreach (var item in batch)
+            {
+                item.tcs.TrySetResult(MessageResult.Fail($"Batch processing failed: {ex.Message}"));
+            }
         }
     }
 }

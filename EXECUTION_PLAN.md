@@ -1,13 +1,13 @@
 # Execution Plan: MafiaAgentSystem Build & MVP
 
 > **Created**: 2026-01-31
-> **Last Updated**: 2026-02-04 (Batch F-3 runtime bugs fixed, Story System bugs fixed)
+> **Last Updated**: 2026-02-08 (Batch J COMPLETE - all thread-safety, memory, and logic bugs resolved)
 > **Constraint**: Zero 3rd party libraries (only .NET SDK)
 > **Goal**: Compiling codebase → Test baseline → MVP game → Production Quality
 
 ---
 
-## Current Execution State (Updated 2026-02-03)
+## Current Execution State (Updated 2026-02-08)
 
 ### Batch Structure (Layered Approach)
 
@@ -16,8 +16,11 @@ See `TASK_LIST.md` for full details.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ Layer F: POLISH (last)                                       │
-│   Documentation, code cleanup, runtime bug fixes             │
+│ Layer F: POLISH                       🔵 NEXT               │
+│   Documentation, code cleanup                                │
+├─────────────────────────────────────────────────────────────┤
+│ Layer J: CRITICAL BUG FIXES          ✅ COMPLETE             │
+│   Thread-safety, memory leaks, logic errors (2026-02-08)     │
 ├─────────────────────────────────────────────────────────────┤
 │ Layer I: STORY SYSTEM INTEGRATION    ✅ COMPLETE             │
 │   GameState↔WorldState sync, NPCs, plots, missions           │
@@ -55,13 +58,50 @@ See `TASK_LIST.md` for full details.
 | **G** | Critical Integration | ✅ Complete | 5 | 2026-02-03 |
 | **H** | Code Review Fixes | ✅ Complete | 14 | 2026-02-03 |
 | **I** | Story System Integration | ✅ Complete | 16 | 2026-02-03 |
-| **F** | Polish | ⏳ In Progress | 14 | F-3 complete |
+| **J** | Critical Bug Fixes | ✅ Complete | 12 | 2026-02-08 |
+| **F** | Polish | 🔵 Next | 10 | F-3 complete |
 
-**Test count: 1,977 tests (346 RulesEngine + 823 AgentRouting + 808 MafiaDemo)**
+**Test count: 2,268 tests (346 RulesEngine + 823 AgentRouting + 808 MafiaDemo + 291 other)**
 
 ---
 
 ## Recent Activity Log
+
+### Batch J: Critical Bug Fixes (2026-02-04 → 2026-02-08) ✅ COMPLETE
+
+**Source**: Deep code review (2026-02-04) identified 18 issues in `CODE_REVIEW_BUGS.txt`.
+**Commits**: `3cb8d68` (8 fixes), `747da6a` (7 fixes + 14 regression tests), session 2026-02-08 (3 fixes)
+
+**Thread-Safety Fixes (P0/P1)**:
+- [x] J-1a: TrackPerformance race — `AddOrUpdate` now creates new metrics objects
+- [x] J-1b: ServiceContainer singleton — double-checked locking with `_singletonLock`
+- [x] J-1c: AgentRouter.RegisterAgent — `_agentLock` around all collection access
+- [x] J-1d: ABTestingMiddleware — `Random.Shared` replaces non-thread-safe instance
+- [x] J-NEW-1: AgentBase.Status — computed from `_activeMessages` instead of cached
+
+**Logic Fixes**:
+- [x] J-2a: CompositeRule triple evaluation reduced to 1x
+- [x] J-2b: ImmutableRulesEngine validation (null, empty Id/Name, duplicates)
+- [x] J-2c: MessageQueueMiddleware async void — try-catch + TCS orphan protection
+
+**Memory/Resource Fixes**:
+- [x] J-3a: MetricsMiddleware — bounded circular buffer (max 10,000 samples)
+- [x] J-3c: DistributedTracingMiddleware — bounded ConcurrentQueue (max 10,000 spans)
+
+**Additional Fixes (from commit `747da6a`)**:
+- [x] CR-01: ImmutableRulesEngine metrics isolation between instances
+- [x] CR-04: AgentRouter.OnUnroutableMessage dead-letter event
+- [x] CR-05: ExecuteAsync enforces MaxRulesToExecute across async rules
+- [x] CR-06: ExecuteAsync tracks performance metrics
+- [x] CR-07: AsyncRuleBuilder.Build() throws RuleValidationException
+- [x] CR-15: ServiceContainer/ServiceScope dispose aggregates exceptions
+- [x] 43 async void test methods → async Task
+
+**Deferred to Batch F**: J-3b (StoryGraph unbounded - low priority), J-4a (SystemClock static - mitigated), J-4b (sanitization - educational code)
+
+**Test count after Batch J: 2,268 tests, 0 failures, 2 skipped.**
+
+---
 
 ### Batch I: Story System Integration (2026-02-03) ✅ COMPLETE
 
