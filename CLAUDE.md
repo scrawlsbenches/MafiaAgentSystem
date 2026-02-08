@@ -5,7 +5,7 @@
 | What | Command/Location |
 |------|------------------|
 | Build | `dotnet build AgentRouting/AgentRouting.sln` |
-| Build LINQ | `dotnet build RulesEngine.Linq/RulesEngine.Linq.sln` |
+| Build LINQ | `dotnet build RulesEngine.Linq/RulesEngine.Linq/` |
 | Test | `dotnet run --project Tests/TestRunner/` |
 | Coverage | `dotnet exec tools/coverage/coverlet/tools/net6.0/any/coverlet.console.dll` |
 | Constraints | Zero 3rd party dependencies |
@@ -70,7 +70,7 @@ dotnet restore Tests/MafiaDemo.Tests/ --source /nonexistent
 dotnet restore Tests/TestRunner/ --source /nonexistent
 
 # Restore RulesEngine.Linq (experimental LINQ-based rules)
-dotnet restore RulesEngine.Linq/RulesEngine.Linq.sln --source /nonexistent
+dotnet restore RulesEngine.Linq/RulesEngine.Linq/ --source /nonexistent
 dotnet restore Tests/RulesEngine.Linq.Tests/ --source /nonexistent
 
 # Build everything (after restore)
@@ -83,7 +83,7 @@ dotnet build Tests/MafiaDemo.Tests/ --no-restore
 dotnet build Tests/TestRunner/ --no-restore
 
 # Build RulesEngine.Linq (experimental)
-dotnet build RulesEngine.Linq/RulesEngine.Linq.sln --no-restore
+dotnet build RulesEngine.Linq/RulesEngine.Linq/ --no-restore
 dotnet build Tests/RulesEngine.Linq.Tests/ --no-restore
 
 # Run all tests (auto-discovers built test assemblies)
@@ -146,7 +146,7 @@ dotnet exec tools/coverage/coverlet/tools/net6.0/any/coverlet.console.dll \
 | LCOV | `-f lcov` | IDE integration, line highlighting |
 | JSON | `-f json` | Programmatic analysis |
 
-### Current Coverage (as of 2026-02-03, 1,862 tests)
+### Current Coverage (as of 2026-02-08, 2,268 tests)
 
 | Module | Line | Branch | Method |
 |--------|------|--------|--------|

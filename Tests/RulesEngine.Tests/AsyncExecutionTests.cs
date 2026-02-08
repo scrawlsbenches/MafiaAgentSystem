@@ -127,12 +127,12 @@ public class AsyncExecutionTests
                 // Missing name, condition, action
                 .Build();
         }
-        catch (InvalidOperationException)
+        catch (RuleValidationException)
         {
             threw = true;
         }
 
-        Assert.True(threw, "Should throw InvalidOperationException for missing fields");
+        Assert.True(threw, "Should throw RuleValidationException for missing fields");
     }
 
     [Test]

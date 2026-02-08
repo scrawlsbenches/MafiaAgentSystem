@@ -20,6 +20,12 @@ public class AgentRouter
     private volatile MessageDelegate? _builtPipeline;
 
     /// <summary>
+    /// Raised when a message cannot be routed to any agent.
+    /// Use this to implement dead-letter queues or alerting.
+    /// </summary>
+    public event Action<AgentMessage, string>? OnUnroutableMessage;
+
+    /// <summary>
     /// Creates a new AgentRouter with explicit dependencies.
     /// Use AgentRouterBuilder for convenient construction with defaults.
     /// </summary>
@@ -179,6 +185,8 @@ public class AgentRouter
 
         if (string.IsNullOrEmpty(context.TargetAgentId))
         {
+            var reason = $"No agent available to handle message: [{message.Priority}] {message.Subject} from {message.SenderId} (Category: {message.Category})";
+            OnUnroutableMessage?.Invoke(message, reason);
             return MessageResult.Fail("No agent available to handle this message");
         }
 

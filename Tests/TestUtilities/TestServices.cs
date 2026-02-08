@@ -84,3 +84,29 @@ public class DependentService : IDependentService
 
     public DependentService(ITestService dependency) => Dependency = dependency;
 }
+
+/// <summary>
+/// Disposable service that throws on Dispose.
+/// Used to test exception aggregation during container disposal.
+/// </summary>
+public interface IThrowingDisposable : IDisposable
+{
+    bool DisposeCalled { get; }
+}
+
+public class ThrowingDisposableService : IThrowingDisposable
+{
+    public bool DisposeCalled { get; private set; }
+    private readonly string _message;
+
+    public ThrowingDisposableService(string message = "Disposal failed")
+    {
+        _message = message;
+    }
+
+    public void Dispose()
+    {
+        DisposeCalled = true;
+        throw new InvalidOperationException(_message);
+    }
+}

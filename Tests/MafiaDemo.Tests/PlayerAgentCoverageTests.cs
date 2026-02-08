@@ -29,7 +29,7 @@ public class PlayerAgentCoverageTests
     #region ExecuteMissionAsync - Skill Gain Application Tests
 
     [Test]
-    public async void ExecuteMissionAsync_AppliesIntimidationSkillGain()
+    public async Task ExecuteMissionAsync_AppliesIntimidationSkillGain()
     {
         EnsureInstantTiming();
         var agent = new PlayerAgent("Intimidation Tester");
@@ -45,7 +45,7 @@ public class PlayerAgentCoverageTests
     }
 
     [Test]
-    public async void ExecuteMissionAsync_AppliesNegotiationSkillGain()
+    public async Task ExecuteMissionAsync_AppliesNegotiationSkillGain()
     {
         EnsureInstantTiming();
         var agent = new PlayerAgent("Negotiation Tester");
@@ -61,7 +61,7 @@ public class PlayerAgentCoverageTests
     }
 
     [Test]
-    public async void ExecuteMissionAsync_AppliesStreetSmartsSkillGain()
+    public async Task ExecuteMissionAsync_AppliesStreetSmartsSkillGain()
     {
         EnsureInstantTiming();
         var agent = new PlayerAgent("StreetSmarts Tester");
@@ -76,7 +76,7 @@ public class PlayerAgentCoverageTests
     }
 
     [Test]
-    public async void ExecuteMissionAsync_AppliesLeadershipSkillGain()
+    public async Task ExecuteMissionAsync_AppliesLeadershipSkillGain()
     {
         EnsureInstantTiming();
         var agent = new PlayerAgent("Leadership Tester");
@@ -91,7 +91,7 @@ public class PlayerAgentCoverageTests
     }
 
     [Test]
-    public async void ExecuteMissionAsync_AppliesBusinessSkillGain()
+    public async Task ExecuteMissionAsync_AppliesBusinessSkillGain()
     {
         EnsureInstantTiming();
         var agent = new PlayerAgent("Business Tester");
@@ -106,7 +106,7 @@ public class PlayerAgentCoverageTests
     }
 
     [Test]
-    public async void ExecuteMissionAsync_SkillsClampedAtMax100()
+    public async Task ExecuteMissionAsync_SkillsClampedAtMax100()
     {
         EnsureInstantTiming();
         var agent = new PlayerAgent("Max Skill Tester");
@@ -126,7 +126,7 @@ public class PlayerAgentCoverageTests
     }
 
     [Test]
-    public async void ExecuteMissionAsync_AppliesMultipleSkillGains()
+    public async Task ExecuteMissionAsync_AppliesMultipleSkillGains()
     {
         EnsureInstantTiming();
         var agent = new PlayerAgent("Multi-Skill Tester");
@@ -161,7 +161,7 @@ public class PlayerAgentCoverageTests
     #region ExecuteMissionAsync - Mission State Tracking Tests
 
     [Test]
-    public async void ExecuteMissionAsync_SetsMissionStatusToCompleted_OnSuccess()
+    public async Task ExecuteMissionAsync_SetsMissionStatusToCompleted_OnSuccess()
     {
         EnsureInstantTiming();
         var agent = new PlayerAgent("Status Tester");
@@ -193,7 +193,7 @@ public class PlayerAgentCoverageTests
     }
 
     [Test]
-    public async void ExecuteMissionAsync_SetsMissionStatusToFailed_OnFailure()
+    public async Task ExecuteMissionAsync_SetsMissionStatusToFailed_OnFailure()
     {
         EnsureInstantTiming();
         var agent = new PlayerAgent("Failure Tester");
@@ -225,7 +225,7 @@ public class PlayerAgentCoverageTests
     }
 
     [Test]
-    public async void ExecuteMissionAsync_SetsCompletedAtTimestamp()
+    public async Task ExecuteMissionAsync_SetsCompletedAtTimestamp()
     {
         EnsureInstantTiming();
         var agent = new PlayerAgent("Timestamp Tester");
@@ -252,7 +252,7 @@ public class PlayerAgentCoverageTests
     }
 
     [Test]
-    public async void ExecuteMissionAsync_SetsOutcomeMessage()
+    public async Task ExecuteMissionAsync_SetsOutcomeMessage()
     {
         EnsureInstantTiming();
         var agent = new PlayerAgent("Outcome Tester");
@@ -275,7 +275,7 @@ public class PlayerAgentCoverageTests
     }
 
     [Test]
-    public async void ExecuteMissionAsync_AddsMissionToCompletedList_OnSuccess()
+    public async Task ExecuteMissionAsync_AddsMissionToCompletedList_OnSuccess()
     {
         EnsureInstantTiming();
         var agent = new PlayerAgent("Completed List Tester");
@@ -305,7 +305,7 @@ public class PlayerAgentCoverageTests
     #region ExecuteMissionAsync - Stat Clamping Tests
 
     [Test]
-    public async void ExecuteMissionAsync_RespectDoesNotGoBelowZero()
+    public async Task ExecuteMissionAsync_RespectDoesNotGoBelowZero()
     {
         EnsureInstantTiming();
         var agent = new PlayerAgent("Zero Respect Tester");
@@ -329,7 +329,7 @@ public class PlayerAgentCoverageTests
     }
 
     [Test]
-    public async void ExecuteMissionAsync_HeatDoesNotGoBelowZero()
+    public async Task ExecuteMissionAsync_HeatDoesNotGoBelowZero()
     {
         EnsureInstantTiming();
         var agent = new PlayerAgent("Zero Heat Tester");
@@ -352,7 +352,7 @@ public class PlayerAgentCoverageTests
     }
 
     [Test]
-    public async void ExecuteMissionAsync_RespectClampsAt100()
+    public async Task ExecuteMissionAsync_RespectClampsAt100()
     {
         EnsureInstantTiming();
         var agent = new PlayerAgent("Max Respect Tester");
@@ -393,7 +393,7 @@ public class PlayerAgentCoverageTests
     }
 
     [Test]
-    public async void ExecuteMissionAsync_HeatClampsAt100()
+    public async Task ExecuteMissionAsync_HeatClampsAt100()
     {
         EnsureInstantTiming();
         var agent = new PlayerAgent("Max Heat Tester");
@@ -421,7 +421,7 @@ public class PlayerAgentCoverageTests
     #region ExecuteMissionAsync - Promotion Tests
 
     [Test]
-    public async void ExecuteMissionAsync_PromotesFromAssociateToSoldier()
+    public async Task ExecuteMissionAsync_PromotesFromAssociateToSoldier()
     {
         EnsureInstantTiming();
         var agent = new PlayerAgent("Associate Promotee");
@@ -456,7 +456,7 @@ public class PlayerAgentCoverageTests
     }
 
     [Test]
-    public async void ExecuteMissionAsync_PromotesFromSoldierToCapo()
+    public async Task ExecuteMissionAsync_PromotesFromSoldierToCapo()
     {
         EnsureInstantTiming();
         var agent = new PlayerAgent("Soldier Promotee");
@@ -491,7 +491,7 @@ public class PlayerAgentCoverageTests
     }
 
     [Test]
-    public async void ExecuteMissionAsync_PromotesFromCapoToUnderboss()
+    public async Task ExecuteMissionAsync_PromotesFromCapoToUnderboss()
     {
         EnsureInstantTiming();
         var agent = new PlayerAgent("Capo Promotee");
@@ -526,7 +526,7 @@ public class PlayerAgentCoverageTests
     }
 
     [Test]
-    public async void ExecuteMissionAsync_PromotesFromUnderbossToDon()
+    public async Task ExecuteMissionAsync_PromotesFromUnderbossToDon()
     {
         EnsureInstantTiming();
         var agent = new PlayerAgent("Underboss Promotee");
@@ -561,7 +561,7 @@ public class PlayerAgentCoverageTests
     }
 
     [Test]
-    public async void ExecuteMissionAsync_DonCannotBePromotedFurther()
+    public async Task ExecuteMissionAsync_DonCannotBePromotedFurther()
     {
         EnsureInstantTiming();
         var agent = new PlayerAgent("Don Tester");
@@ -747,7 +747,7 @@ public class PlayerAgentCoverageTests
     #region ProcessWeekAsync - Heat Decay Tests
 
     [Test]
-    public async void ProcessWeekAsync_HeatDecaysBy3()
+    public async Task ProcessWeekAsync_HeatDecaysBy3()
     {
         EnsureInstantTiming();
         var agent = new PlayerAgent("Heat Decay Tester");
@@ -771,7 +771,7 @@ public class PlayerAgentCoverageTests
     }
 
     [Test]
-    public async void ProcessWeekAsync_HeatDecayDoesNotGoBelowZero()
+    public async Task ProcessWeekAsync_HeatDecayDoesNotGoBelowZero()
     {
         EnsureInstantTiming();
         var agent = new PlayerAgent("Zero Heat Decay Tester");
@@ -785,7 +785,7 @@ public class PlayerAgentCoverageTests
     }
 
     [Test]
-    public async void ProcessWeekAsync_WeekResultContainsCorrectWeek()
+    public async Task ProcessWeekAsync_WeekResultContainsCorrectWeek()
     {
         EnsureInstantTiming();
         var agent = new PlayerAgent("Week Result Tester");
@@ -799,7 +799,7 @@ public class PlayerAgentCoverageTests
     }
 
     [Test]
-    public async void ProcessWeekAsync_GeneratesMission()
+    public async Task ProcessWeekAsync_GeneratesMission()
     {
         EnsureInstantTiming();
         var agent = new PlayerAgent("Mission Gen Tester");
@@ -812,7 +812,7 @@ public class PlayerAgentCoverageTests
     }
 
     [Test]
-    public async void ProcessWeekAsync_MakesDecision()
+    public async Task ProcessWeekAsync_MakesDecision()
     {
         EnsureInstantTiming();
         var agent = new PlayerAgent("Decision Tester");
@@ -825,7 +825,7 @@ public class PlayerAgentCoverageTests
     }
 
     [Test]
-    public async void ProcessWeekAsync_ExecutesMissionWhenAccepted()
+    public async Task ProcessWeekAsync_ExecutesMissionWhenAccepted()
     {
         EnsureInstantTiming();
         var agent = new PlayerAgent("Accept Execute Tester");
@@ -842,7 +842,7 @@ public class PlayerAgentCoverageTests
     }
 
     [Test]
-    public async void ProcessWeekAsync_NoExecutionWhenRejected()
+    public async Task ProcessWeekAsync_NoExecutionWhenRejected()
     {
         EnsureInstantTiming();
         var personality = new PlayerPersonality { Caution = 90 }; // Very cautious

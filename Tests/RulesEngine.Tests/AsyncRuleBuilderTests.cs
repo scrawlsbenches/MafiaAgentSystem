@@ -122,19 +122,19 @@ public class AsyncRuleBuilderTests
     #region Build Validation Tests
 
     [Test]
-    public void Build_WithoutId_ThrowsInvalidOperationException()
+    public void Build_WithoutId_ThrowsRuleValidationException()
     {
         var builder = new AsyncRuleBuilder<TestFact>()
             .WithName("Test Rule")
             .WithCondition(async fact => { await Task.Yield(); return true; })
             .WithAction(async fact => { await Task.Yield(); return RuleResult.Success("test", "Test"); });
 
-        var ex = Assert.Throws<InvalidOperationException>(() => builder.Build());
+        var ex = Assert.Throws<RuleValidationException>(() => builder.Build());
         Assert.Contains("ID", ex.Message);
     }
 
     [Test]
-    public void Build_WithEmptyId_ThrowsInvalidOperationException()
+    public void Build_WithEmptyId_ThrowsRuleValidationException()
     {
         var builder = new AsyncRuleBuilder<TestFact>()
             .WithId("")
@@ -142,24 +142,24 @@ public class AsyncRuleBuilderTests
             .WithCondition(async fact => { await Task.Yield(); return true; })
             .WithAction(async fact => { await Task.Yield(); return RuleResult.Success("test", "Test"); });
 
-        var ex = Assert.Throws<InvalidOperationException>(() => builder.Build());
+        var ex = Assert.Throws<RuleValidationException>(() => builder.Build());
         Assert.Contains("ID", ex.Message);
     }
 
     [Test]
-    public void Build_WithoutName_ThrowsInvalidOperationException()
+    public void Build_WithoutName_ThrowsRuleValidationException()
     {
         var builder = new AsyncRuleBuilder<TestFact>()
             .WithId("test-id")
             .WithCondition(async fact => { await Task.Yield(); return true; })
             .WithAction(async fact => { await Task.Yield(); return RuleResult.Success("test", "Test"); });
 
-        var ex = Assert.Throws<InvalidOperationException>(() => builder.Build());
+        var ex = Assert.Throws<RuleValidationException>(() => builder.Build());
         Assert.Contains("name", ex.Message);
     }
 
     [Test]
-    public void Build_WithEmptyName_ThrowsInvalidOperationException()
+    public void Build_WithEmptyName_ThrowsRuleValidationException()
     {
         var builder = new AsyncRuleBuilder<TestFact>()
             .WithId("test-id")
@@ -167,31 +167,31 @@ public class AsyncRuleBuilderTests
             .WithCondition(async fact => { await Task.Yield(); return true; })
             .WithAction(async fact => { await Task.Yield(); return RuleResult.Success("test", "Test"); });
 
-        var ex = Assert.Throws<InvalidOperationException>(() => builder.Build());
+        var ex = Assert.Throws<RuleValidationException>(() => builder.Build());
         Assert.Contains("name", ex.Message);
     }
 
     [Test]
-    public void Build_WithoutCondition_ThrowsInvalidOperationException()
+    public void Build_WithoutCondition_ThrowsRuleValidationException()
     {
         var builder = new AsyncRuleBuilder<TestFact>()
             .WithId("test-id")
             .WithName("Test Rule")
             .WithAction(async fact => { await Task.Yield(); return RuleResult.Success("test", "Test"); });
 
-        var ex = Assert.Throws<InvalidOperationException>(() => builder.Build());
+        var ex = Assert.Throws<RuleValidationException>(() => builder.Build());
         Assert.Contains("condition", ex.Message);
     }
 
     [Test]
-    public void Build_WithoutAction_ThrowsInvalidOperationException()
+    public void Build_WithoutAction_ThrowsRuleValidationException()
     {
         var builder = new AsyncRuleBuilder<TestFact>()
             .WithId("test-id")
             .WithName("Test Rule")
             .WithCondition(async fact => { await Task.Yield(); return true; });
 
-        var ex = Assert.Throws<InvalidOperationException>(() => builder.Build());
+        var ex = Assert.Throws<RuleValidationException>(() => builder.Build());
         Assert.Contains("action", ex.Message);
     }
 

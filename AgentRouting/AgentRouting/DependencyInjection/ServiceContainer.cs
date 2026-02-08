@@ -139,21 +139,28 @@ public class ServiceContainer : IServiceContainer
         if (_disposed) return;
         _disposed = true;
 
-        // Dispose singletons in reverse order of registration (LIFO)
+        // Dispose singletons, collecting any exceptions rather than swallowing them
+        List<Exception>? exceptions = null;
         foreach (var singleton in _singletons.Values.OfType<IDisposable>())
         {
             try
             {
                 singleton.Dispose();
             }
-            catch
+            catch (Exception ex)
             {
-                // Swallow disposal exceptions
+                exceptions ??= new List<Exception>();
+                exceptions.Add(ex);
             }
         }
 
         _singletons.Clear();
         _descriptors.Clear();
+
+        if (exceptions != null)
+        {
+            throw new AggregateException("One or more services threw during disposal", exceptions);
+        }
     }
 
     private void ThrowIfDisposed()
@@ -250,20 +257,27 @@ internal class ServiceScope : IServiceScope
         if (_disposed) return;
         _disposed = true;
 
-        // Dispose scoped instances
+        // Dispose scoped instances, collecting any exceptions
+        List<Exception>? exceptions = null;
         foreach (var scoped in _scopedInstances.Values.OfType<IDisposable>())
         {
             try
             {
                 scoped.Dispose();
             }
-            catch
+            catch (Exception ex)
             {
-                // Swallow disposal exceptions
+                exceptions ??= new List<Exception>();
+                exceptions.Add(ex);
             }
         }
 
         _scopedInstances.Clear();
+
+        if (exceptions != null)
+        {
+            throw new AggregateException("One or more scoped services threw during disposal", exceptions);
+        }
     }
 
     private void ThrowIfDisposed()
