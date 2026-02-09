@@ -1082,6 +1082,12 @@ namespace RulesEngine.Linq.Dependencies
 
         public RuleResult Execute(T fact)
         {
+            // Check condition before executing (consistent with Rule<T>.Execute()).
+            // The session dispatch already verifies the condition via EvaluateWithContext,
+            // but direct callers expect Execute() to be self-contained.
+            if (!Evaluate(fact))
+                return RuleResult.NoMatch(_id, _name);
+
             if (_simpleAction != null)
             {
                 _simpleAction(fact);
@@ -1092,6 +1098,10 @@ namespace RulesEngine.Linq.Dependencies
 
         public RuleResult ExecuteWithContext(T fact, IFactContext context)
         {
+            // Check condition before executing (consistent with Rule<T>.Execute()).
+            if (!EvaluateWithContext(fact, context))
+                return RuleResult.NoMatch(_id, _name);
+
             if (_contextAction != null)
             {
                 _contextAction(fact, context);
@@ -1099,7 +1109,12 @@ namespace RulesEngine.Linq.Dependencies
             }
 
             // Fall back to simple action
-            return Execute(fact);
+            if (_simpleAction != null)
+            {
+                _simpleAction(fact);
+                return RuleResult.Success(_id, _name);
+            }
+            return RuleResult.Success(_id, _name);
         }
 
         /// <summary>

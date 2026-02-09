@@ -1832,5 +1832,45 @@ namespace RulesEngine.Linq.Tests
         private static bool CustomPredicate(Agent a) => a.Status == AgentStatus.Available;
 
         #endregion
+
+        #region DependentRule.Execute() Condition Check
+
+        [Test]
+        public void DependentRule_Execute_ReturnsNoMatch_WhenConditionFails()
+        {
+            // DependentRule.Execute() should check the condition before running actions,
+            // consistent with Rule<T>.Execute(). Direct callers should get NoMatch
+            // when the condition doesn't hold.
+            var actionCalled = false;
+            var rule = new DependentRule<Agent>(
+                "active-agents", "Active Agents Only",
+                a => a.Status == AgentStatus.Available)
+                .Then(a => actionCalled = true);
+
+            // Agent is NOT available
+            var agent = new Agent { Id = "A1", Status = AgentStatus.Busy };
+            var result = rule.Execute(agent);
+
+            Assert.False(result.Matched, "Execute should return NoMatch when condition is false");
+            Assert.False(actionCalled, "Action should not have been called when condition is false");
+        }
+
+        [Test]
+        public void DependentRule_Execute_ReturnsSuccess_WhenConditionPasses()
+        {
+            var actionCalled = false;
+            var rule = new DependentRule<Agent>(
+                "active-agents", "Active Agents Only",
+                a => a.Status == AgentStatus.Available)
+                .Then(a => actionCalled = true);
+
+            var agent = new Agent { Id = "A1", Status = AgentStatus.Available };
+            var result = rule.Execute(agent);
+
+            Assert.True(result.Matched, "Execute should return Success when condition is true");
+            Assert.True(actionCalled, "Action should have been called when condition is true");
+        }
+
+        #endregion
     }
 }

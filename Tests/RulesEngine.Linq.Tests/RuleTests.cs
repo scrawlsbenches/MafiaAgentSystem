@@ -86,12 +86,14 @@ namespace RulesEngine.Linq.Tests
         }
 
         [Test]
-        public void Rule_Evaluate_ReturnsFalseOnException()
+        public void Rule_Evaluate_PropagatesExceptions()
         {
+            // Exceptions from condition evaluation now propagate to the caller
+            // so the session error handler can capture them in IEvaluationResult.Errors.
             var rule = new Rule<Order>("R1", "Check Status", o => o.Status.Length > 5);
             var order = new Order { Status = null! };
 
-            Assert.False(rule.Evaluate(order));
+            Assert.Throws<NullReferenceException>(() => rule.Evaluate(order));
         }
 
         #endregion

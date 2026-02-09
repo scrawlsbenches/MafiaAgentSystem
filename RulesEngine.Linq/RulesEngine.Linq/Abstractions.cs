@@ -321,14 +321,13 @@ namespace RulesEngine.Linq
     }
 
     /// <summary>
-    /// Extended rule set interface with constraint support.
+    /// Extended rule set interface with constraint validation mode.
+    /// Constraint members (HasConstraints, GetConstraints, HasConstraint, TryAdd)
+    /// are declared on IRuleSet&lt;T&gt; with no-op defaults; this interface adds only
+    /// the ValidationMode property that controls when constraints are enforced.
     /// </summary>
     public interface IConstrainedRuleSet<T> : IRuleSet<T> where T : class
     {
-        new bool HasConstraints { get; }
-        new IReadOnlyList<IRuleConstraint<T>> GetConstraints();
-        new bool HasConstraint(string constraintName);
-        new bool TryAdd(IRule<T> rule, out IReadOnlyList<ConstraintViolation> violations);
         ValidationMode ValidationMode { get; }
     }
 

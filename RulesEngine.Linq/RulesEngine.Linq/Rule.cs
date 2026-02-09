@@ -261,6 +261,8 @@ namespace RulesEngine.Linq
         /// Evaluates the rule condition against the fact.
         /// For rules that require rewriting (contain FactQueryExpression),
         /// this will throw - use EvaluateWithRewriter instead.
+        /// Exceptions from condition evaluation propagate to the caller
+        /// (the session's error handler captures them in IEvaluationResult.Errors).
         /// </summary>
         public bool Evaluate(T fact)
         {
@@ -273,14 +275,7 @@ namespace RulesEngine.Linq
                     "rewriting before evaluation. Use EvaluateWithRewriter or evaluate through Session.Evaluate().");
             }
 
-            try
-            {
-                return _compiledCondition!(fact);
-            }
-            catch
-            {
-                return false;
-            }
+            return _compiledCondition!(fact);
         }
 
         /// <summary>
@@ -294,15 +289,8 @@ namespace RulesEngine.Linq
         {
             if (fact == null) return false;
 
-            try
-            {
-                var compiled = GetOrCompileWithRewriter(rewriter, sessionId);
-                return compiled(fact);
-            }
-            catch
-            {
-                return false;
-            }
+            var compiled = GetOrCompileWithRewriter(rewriter, sessionId);
+            return compiled(fact);
         }
 
         /// <summary>
@@ -352,17 +340,10 @@ namespace RulesEngine.Linq
                     "rewriting before execution. Use ExecuteWithRewriter or execute through Session.Evaluate().");
             }
 
-            bool matched;
-            try
-            {
-                matched = _compiledCondition!(fact);
-                if (!matched)
-                    return RuleResult.NoMatch(Id, Name);
-            }
-            catch (Exception ex)
-            {
-                return RuleResult.Error(Id, Name, ex.Message);
-            }
+            // Condition exceptions propagate to caller (session error handler).
+            bool matched = _compiledCondition!(fact);
+            if (!matched)
+                return RuleResult.NoMatch(Id, Name);
 
             try
             {
@@ -391,17 +372,10 @@ namespace RulesEngine.Linq
         /// </summary>
         public RuleResult ExecuteWithRewriter(T fact, FactQueryRewriter rewriter, Guid sessionId)
         {
-            bool matched;
-            try
-            {
-                matched = EvaluateWithRewriter(fact, rewriter, sessionId);
-                if (!matched)
-                    return RuleResult.NoMatch(Id, Name);
-            }
-            catch (Exception ex)
-            {
-                return RuleResult.Error(Id, Name, ex.Message);
-            }
+            // Condition exceptions propagate to caller (session error handler).
+            bool matched = EvaluateWithRewriter(fact, rewriter, sessionId);
+            if (!matched)
+                return RuleResult.NoMatch(Id, Name);
 
             try
             {

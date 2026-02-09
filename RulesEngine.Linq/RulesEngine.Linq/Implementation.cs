@@ -398,8 +398,8 @@ namespace RulesEngine.Linq
     {
         private readonly RulesContext _context;
         private readonly ConcurrentDictionary<Type, object> _factSets = new();
-        private readonly List<EvaluationError> _errors = new();
-        private SessionState _state = SessionState.Active;
+        private readonly ConcurrentBag<EvaluationError> _errors = new();
+        private volatile SessionState _state = SessionState.Active;
 
         // Cache for rewritten conditions of generic IRule<T> implementations
         // that contain FactQueryExpression but aren't Rule<T> (which has its own cache)
@@ -616,6 +616,12 @@ namespace RulesEngine.Linq
 
                             case RuleDispatchKind.GenericRewriting:
                             {
+                                // Condition is evaluated using the rewritten (substituted) expression.
+                                // Execute() is called only for its action side-effects — the condition
+                                // was already verified above. Custom IRule<T> implementations that
+                                // re-evaluate their condition in Execute() may fail if they access
+                                // FactQueryExpression nodes directly; use DependentRule<T> or Rule<T>
+                                // instead for cross-fact query rules.
                                 var compiled = GetOrCompileRewrittenCondition(rule, rewriter);
                                 matched = compiled(fact);
                                 if (!matched) continue;
@@ -737,27 +743,30 @@ namespace RulesEngine.Linq
             }
         }
 
+        // Cached generic MethodInfo for Queryable.AsQueryable<T>() — looked up once, reused per type.
+        private static readonly MethodInfo AsQueryableGenericMethod =
+            typeof(Queryable).GetMethods()
+                .First(m => m.Name == nameof(Queryable.AsQueryable) && m.IsGenericMethod);
+
+        private static readonly ConcurrentDictionary<Type, MethodInfo> AsQueryableMethodCache = new();
+
+        private static MethodInfo GetAsQueryableMethod(Type factType)
+            => AsQueryableMethodCache.GetOrAdd(factType, t => AsQueryableGenericMethod.MakeGenericMethod(t));
+
         /// <summary>
         /// Gets facts of a specific type as IQueryable.
         /// Used by FactQueryRewriter to substitute actual data for FactQueryExpression nodes.
         /// </summary>
         internal IQueryable GetFactsAsQueryable(Type factType)
         {
+            var asQueryable = GetAsQueryableMethod(factType);
+
             if (!_factSets.TryGetValue(factType, out var factSetObj))
             {
                 // Return empty queryable for types with no facts
                 var emptyListType = typeof(List<>).MakeGenericType(factType);
                 var emptyList = Activator.CreateInstance(emptyListType)!;
-                var asQueryableMethod = typeof(Queryable).GetMethod(nameof(Queryable.AsQueryable),
-                    new[] { typeof(IEnumerable<>).MakeGenericType(factType) });
-
-                // Use reflection to call AsQueryable on empty list
-                var genericAsQueryable = typeof(Queryable)
-                    .GetMethods()
-                    .First(m => m.Name == nameof(Queryable.AsQueryable) && m.IsGenericMethod)
-                    .MakeGenericMethod(factType);
-
-                return (IQueryable)genericAsQueryable.Invoke(null, new[] { emptyList })!;
+                return (IQueryable)asQueryable.Invoke(null, new[] { emptyList })!;
             }
 
             // Get the facts from the FactSet via reflection
@@ -765,13 +774,7 @@ namespace RulesEngine.Linq
             var getFactsMethod = factSetType.GetMethod("GetFacts", BindingFlags.Instance | BindingFlags.NonPublic);
             var facts = getFactsMethod!.Invoke(factSetObj, null);
 
-            // Convert to IQueryable
-            var queryableMethod = typeof(Queryable)
-                .GetMethods()
-                .First(m => m.Name == nameof(Queryable.AsQueryable) && m.IsGenericMethod)
-                .MakeGenericMethod(factType);
-
-            return (IQueryable)queryableMethod.Invoke(null, new[] { facts })!;
+            return (IQueryable)asQueryable.Invoke(null, new[] { facts })!;
         }
 
         /// <summary>

@@ -266,5 +266,48 @@ namespace RulesEngine.Linq.Tests
             var o3Match = matches.Single(m => m.Fact.Id == "O3");
             Assert.Equal(2, o3Match.MatchedRules.Count);
         }
+
+        [Test]
+        public void Session_Evaluate_CapturesRuleExceptionsInErrors()
+        {
+            // Rule<T>.Evaluate() now propagates exceptions instead of swallowing them.
+            // The session's error handler should capture them in IEvaluationResult.Errors.
+            using var context = new RulesContext();
+            var rules = context.GetRuleSet<Order>();
+
+            // This rule accesses Id which is "" — Substring(0, 100) will throw
+            rules.Add(new Rule<Order>("bad-rule", "Throws On Eval", o => o.Id.Substring(0, 100).Length > 0));
+
+            using var session = context.CreateSession();
+            session.Insert(new Order { Id = "O1", Total = 100 });
+
+            var result = session.Evaluate<Order>();
+
+            // The Id is "O1" (2 chars), Substring(0,100) throws ArgumentOutOfRangeException
+            // Session error handler should have captured it
+            Assert.True(result.Matches.Count == 0, "Throwing rule should not produce matches");
+        }
+
+        [Test]
+        public void Session_Evaluate_CapturesExceptionFromThrowingRule()
+        {
+            // Verify that a rule that throws during evaluation has the error captured
+            using var context = new RulesContext();
+            var rules = context.GetRuleSet<Order>();
+
+            // Rule that always throws during condition evaluation
+            var throwingOrder = new Order { Id = "T1" };
+            rules.Add(new Rule<Order>("throw-rule", "Always Throws",
+                o => o.Id.Substring(0, 100).Length > 0)); // Throws ArgumentOutOfRangeException
+
+            using var session = context.CreateSession();
+            session.Insert(throwingOrder);
+
+            var fullResult = session.Evaluate();
+
+            Assert.True(fullResult.HasErrors, "Session should have recorded the error");
+            Assert.True(fullResult.Errors.Count > 0);
+            Assert.Equal("throw-rule", fullResult.Errors[0].RuleId);
+        }
     }
 }
