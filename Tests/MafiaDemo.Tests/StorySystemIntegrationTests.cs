@@ -1160,7 +1160,7 @@ public class StorySystemIntegrationTests : MafiaTestBase
 
         // Act - Execute to get a failure
         MissionExecutionResult? failResult = null;
-        int initialIntelCount = 0;
+        var initialIntelCount = intelRegistry.GetRecent(100, 100).Count();
 
         for (int i = 0; i < 10; i++)
         {
@@ -1185,8 +1185,8 @@ public class StorySystemIntegrationTests : MafiaTestBase
         // Assert - Failed missions should not record intel
         if (failResult != null)
         {
-            var allIntel = intelRegistry.GetRecent(10, 5).ToList();
-            Assert.Equal(0, allIntel.Count);  // No intel from failed mission
+            var currentIntelCount = intelRegistry.GetRecent(100, 100).Count();
+            Assert.Equal(initialIntelCount, currentIntelCount);  // No new intel from failed mission
             Assert.False(failResult.MissionResult.Message.Contains("[Intel recorded:"));
         }
     }

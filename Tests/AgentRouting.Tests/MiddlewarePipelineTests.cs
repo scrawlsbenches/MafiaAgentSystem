@@ -252,7 +252,6 @@ public class MiddlewarePipelineTests
         pipeline.Use(new ContextSettingMiddleware("key1", "value1"));
         pipeline.Use(new ContextReadingMiddleware("key1"));
 
-        string? capturedValue = null;
         MessageDelegate handler = (msg, ct) =>
         {
             var result = MessageResult.Ok("Done");
@@ -341,9 +340,8 @@ public class MiddlewarePipelineTests
     public async Task AfterMiddleware_ExceptionInAfterPhase_StillExecutes()
     {
         var pipeline = new MiddlewarePipeline();
-        var afterExecuted = false;
 
-        pipeline.Use(new SimpleCallbackMiddleware(after: () => afterExecuted = true));
+        pipeline.Use(new SimpleCallbackMiddleware(after: () => { }));
         pipeline.Use(new AfterThrowingMiddleware());
 
         MessageDelegate handler = (msg, ct) => Task.FromResult(MessageResult.Ok("Done"));

@@ -323,7 +323,7 @@ public class AgentRoutingIntegrationTests
     // ==================== Additional Integration Tests ====================
 
     [Test]
-    public async Task Router_GetAgent_VerifiesAgentRegistration()
+    public Task Router_GetAgent_VerifiesAgentRegistration()
     {
         var logger = new ConsoleAgentLogger();
         var router = new AgentRouterBuilder().WithLogger(logger).Build();
@@ -335,8 +335,9 @@ public class AgentRoutingIntegrationTests
         // Verify agent is registered
         var found = router.GetAgent("agent-001");
         Assert.NotNull(found);
-        Assert.Equal("agent-001", found!.Id);
+        Assert.Equal("agent-001", found.Id);
         Assert.Equal("Agent 1", found.Name);
+        return Task.CompletedTask;
     }
 
     [Test]

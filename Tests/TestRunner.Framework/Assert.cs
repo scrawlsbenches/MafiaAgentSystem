@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace TestRunner.Framework;
 
 /// <summary>
@@ -29,7 +31,7 @@ public static class Assert
             throw new AssertionException(message ?? $"Expected values to differ but both were '{expected}'");
     }
 
-    public static void NotNull<T>(T? value, string? message = null) where T : class
+    public static void NotNull<T>([NotNull] T? value, string? message = null) where T : class
     {
         if (value is null)
             throw new AssertionException(message ?? "Expected non-null value but was null");
@@ -41,8 +43,10 @@ public static class Assert
             throw new AssertionException(message ?? $"Expected null but was '{value}'");
     }
 
-    public static void Contains(string expected, string actual, StringComparison comparison = StringComparison.Ordinal)
+    public static void Contains(string expected, [NotNull] string? actual, StringComparison comparison = StringComparison.Ordinal)
     {
+        if (actual is null)
+            throw new AssertionException($"Expected string to contain '{expected}' but was null");
         if (!actual.Contains(expected, comparison))
             throw new AssertionException($"Expected string to contain '{expected}' but was '{actual}'");
     }

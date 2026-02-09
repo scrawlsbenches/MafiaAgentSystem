@@ -325,10 +325,10 @@ namespace RulesEngine.Linq
     /// </summary>
     public interface IConstrainedRuleSet<T> : IRuleSet<T> where T : class
     {
-        bool HasConstraints { get; }
-        IReadOnlyList<IRuleConstraint<T>> GetConstraints();
-        bool HasConstraint(string constraintName);
-        bool TryAdd(IRule<T> rule, out IReadOnlyList<ConstraintViolation> violations);
+        new bool HasConstraints { get; }
+        new IReadOnlyList<IRuleConstraint<T>> GetConstraints();
+        new bool HasConstraint(string constraintName);
+        new bool TryAdd(IRule<T> rule, out IReadOnlyList<ConstraintViolation> violations);
         ValidationMode ValidationMode { get; }
     }
 

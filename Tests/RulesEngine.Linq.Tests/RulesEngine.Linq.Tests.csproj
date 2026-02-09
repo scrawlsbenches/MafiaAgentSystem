@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <RootNamespace>RulesEngine.Linq.Tests</RootNamespace>
     <AssemblyName>RulesEngine.Linq.Tests</AssemblyName>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
   <ItemGroup>

@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <RootNamespace>RulesEngine.Linq.AgentCommunication.Tests</RootNamespace>
     <AssemblyName>RulesEngine.Linq.AgentCommunication.Tests</AssemblyName>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
   <ItemGroup>
