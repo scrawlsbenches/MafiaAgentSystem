@@ -30,7 +30,7 @@ This runs 6 interactive demos showing:
 dotnet test
 ```
 
-You should see 40+ tests pass, demonstrating every feature.
+You should see 2,270+ tests pass across the full test suite.
 
 ## Your First Rule
 
@@ -188,7 +188,7 @@ See `Examples/ApprovalWorkflowExample.cs` for:
 
 ## Next Steps
 
-1. **Explore the Tests** - 40+ examples in `RulesEngine.Tests/`
+1. **Explore the Tests** - Hundreds of examples in `RulesEngine.Tests/`
 2. **Run the Demo** - See everything in action
 3. **Read the README** - Comprehensive guide with advanced features
 4. **Build Your Rules** - Apply to your own domain
@@ -227,7 +227,7 @@ See `Examples/ApprovalWorkflowExample.cs` for:
 ## Help & Resources
 
 - Full README: Comprehensive documentation
-- Tests: 40+ working examples
+- Tests: Hundreds of working examples
 - Demo: Interactive demonstrations
 - Examples: Real-world scenarios
 

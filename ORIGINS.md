@@ -227,7 +227,7 @@ AgentRouting (IAgent, AgentRouter, Middleware)
         ↓
 MafiaDemo (Test bed exercising both systems)
         ↓
-Custom TestRunner (Zero dependencies, 118 tests)
+Custom TestRunner (Zero dependencies, 2,270 tests)
 ```
 
 ---
@@ -267,7 +267,7 @@ What began as "I want to understand expression trees" evolved into:
 1. **RulesEngine** - Production-ready, thread-safe, async-capable rules evaluation
 2. **AgentRouting** - Enterprise middleware pipeline with 15+ middleware implementations
 3. **MafiaDemo** - A fun way to prove the architecture works under stress
-4. **Custom TestRunner** - Zero-dependency test framework with 118 tests
+4. **Custom TestRunner** - Zero-dependency test framework with 2,270 tests
 
 The key lesson: **Start with fundamentals (expression trees), build abstractions (rules engine), then prove them with real applications (agent routing, MafiaDemo).**
 

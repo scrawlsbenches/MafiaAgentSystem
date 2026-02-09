@@ -61,7 +61,7 @@ See `TASK_LIST.md` for full details.
 | **J** | Critical Bug Fixes | ✅ Complete | 12 | 2026-02-08 |
 | **F** | Polish | 🔵 Next | 10 | F-3 complete |
 
-**Test count: 2,268 tests (346 RulesEngine + 823 AgentRouting + 808 MafiaDemo + 291 other)**
+**Test count: 2,270 tests (346 RulesEngine + 823 AgentRouting + 808 MafiaDemo + 293 other)**
 
 ---
 

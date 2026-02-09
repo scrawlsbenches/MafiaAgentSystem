@@ -336,7 +336,7 @@ The project includes comprehensive tests using a **custom zero-dependency test f
 dotnet run --project Tests/TestRunner/
 ```
 
-**Current status: 118 tests passing**
+**Current status: 2,270 tests passing** (across the full test suite)
 
 Test coverage includes:
 - ✅ Basic rule creation and evaluation

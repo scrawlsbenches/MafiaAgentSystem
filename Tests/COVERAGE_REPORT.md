@@ -1,9 +1,9 @@
 # Test Coverage Report
 
-**Date:** 2026-02-03
-**Test Count:** ~1905 tests (runtime, including Theory data rows)
+**Date:** 2026-02-09
+**Test Count:** 2,270 tests (runtime, including Theory data rows)
 **Test Attributes:** ~1744 [Test] and [Theory] attributes across 50 test files
-**Test Duration:** ~5-8s
+**Test Duration:** ~30s
 
 ---
 
@@ -205,4 +205,4 @@ dotnet exec tools/coverage/coverlet/tools/net6.0/any/coverlet.console.dll \
 
 ---
 
-*Last Updated: 2026-02-03 (Batch E complete, 1905 tests passing)*
+*Last Updated: 2026-02-09 (Batch J complete, 2,270 tests passing)*

@@ -313,7 +313,7 @@ dotnet build Tests/AgentRouting.Tests/ --no-restore
 dotnet build Tests/MafiaDemo.Tests/ --no-restore
 dotnet build Tests/TestRunner/ --no-restore
 
-# Run all tests (1,862 tests)
+# Run all tests (2,270 tests)
 dotnet run --project Tests/TestRunner/ --no-build
 ```
 

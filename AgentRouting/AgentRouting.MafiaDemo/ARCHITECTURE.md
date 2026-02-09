@@ -196,7 +196,7 @@ public class RivalFamily
 
 ## Rules Integration Points
 
-The game uses **8 specialized `RulesEngineCore<T>` instances** with **105 rules total**:
+The game uses **8 specialized `RulesEngineCore<T>` instances** with **~98 rules total**:
 
 ### 1. Game Rules (`_gameRules` - `RulesEngineCore<GameRuleContext>`)
 
@@ -353,18 +353,17 @@ var investigation = new AsyncRuleBuilder<AsyncEventContext>()
 - [x] AI Autopilot mode using rules (AI Career Mode - Option 1 in Program.cs)
 - [x] Personality effects on decisions (rules check Aggression, Loyalty, Ambition traits)
 
-### Recently Completed (2026-02-03)
+### Completed (2026-02-03 through 2026-02-08)
 - [x] **Agent personality rules**: 47 rules implemented (exceeds target of 45)
 - [x] **AgentRouter game loop integration**: `RouteAgentActionAsync()` now routes all agent actions through middleware pipeline during `ProcessAutonomousActions()`
 - [x] **Story System integration** (Batch I): WorldState, StoryGraph, IntelRegistry wired into MafiaGameEngine
 - [x] **HybridMissionGenerator**: Combines Story + Legacy mission systems
 - [x] **Mission consequences**: ConsequenceRules applied after mission completion
 - [x] **Intel recording**: Information missions now record intel to IntelRegistry
-
-### Known Issues (Batch F)
-- [ ] **F-3a (HIGH)**: AI Career Mode (`AutonomousPlaythrough.cs:98`) creates raw `GameState` instead of `MafiaGameEngine`, bypassing Story System integration
-- [ ] **F-3b (MEDIUM)**: Mission success rate (60%) too harsh for new players
-- [ ] **F-3c (LOW)**: "0 active plots" display misleading (plots are Dormant until triggered)
+- [x] **F-3a**: AI Career Mode now uses MafiaGameEngine + Story System
+- [x] **F-3b**: Mission success rate balanced for new players (EARLY_CAREER_BOOST rule)
+- [x] **F-3c**: Plot count display shows both active and available plots
+- [x] **Batch J**: Critical bug fixes (thread safety, memory, logic errors)
 
 ### Enhancement Opportunities
 - [ ] Save/load game state persistence
@@ -407,13 +406,10 @@ AgentRouting.MafiaDemo/
 
 ## Next Steps
 
-**Batch F: Polish** (14 tasks) - see `TASK_LIST.md` for full details:
+**Batch F: Polish** (remaining tasks) - see `TASK_LIST.md` for full details:
 
-1. **F-3a (HIGH PRIORITY)**: Fix AI Career Mode to use MafiaGameEngine + Story System
-2. **F-3b**: Balance mission success rate for new players
-3. **F-3c**: Fix plot count display to show Available plots
-4. **F-1**: Documentation consolidation (merge overlapping MafiaDemo docs)
-5. **F-2**: NPC conversation commands
+1. **F-1**: Documentation consolidation (merge overlapping MafiaDemo docs)
+2. **F-2**: NPC conversation commands
 
 **Future Enhancement Opportunities:**
 - Save/Load game state persistence
