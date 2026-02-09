@@ -560,7 +560,7 @@ public class AsyncRuleBuilderTests
     }
 
     [Test]
-    public async Task Build_OverwriteProperties_UsesLatestValues()
+    public Task Build_OverwriteProperties_UsesLatestValues()
     {
         var rule = new AsyncRuleBuilder<TestFact>()
             .WithId("first-id")
@@ -576,6 +576,7 @@ public class AsyncRuleBuilderTests
         Assert.Equal("second-id", rule.Id);
         Assert.Equal("Second Name", rule.Name);
         Assert.Equal(20, rule.Priority);
+        return Task.CompletedTask;
     }
 
     [Test]
@@ -641,8 +642,8 @@ public class AsyncRuleBuilderTests
         var rule = new AsyncRule<TestFact>(
             "implements-test",
             "Implements Test",
-            async (fact, ct) => true,
-            async (fact, ct) => RuleResult.Success("implements-test", "Implements Test")
+            (fact, ct) => Task.FromResult(true),
+            (fact, ct) => Task.FromResult(RuleResult.Success("implements-test", "Implements Test"))
         );
 
         Assert.True(rule is IAsyncRule<TestFact>);

@@ -19,7 +19,6 @@ internal class AgentRule<T> : IAgentRule<T> where T : class
     // Compiled delegates (lazy)
     private List<Func<T, bool>>? _compiledSimple;
     private List<Func<T, IAgentRulesContext, bool>>? _compiledContext;
-    private HashSet<Type>? _detectedDependencies;
 
     public AgentRule(
         string id,
@@ -55,14 +54,9 @@ internal class AgentRule<T> : IAgentRule<T> where T : class
     {
         get
         {
-            // Combine explicit + detected
-            var all = new HashSet<Type>(_explicitDependencies);
-            if (_detectedDependencies != null)
-            {
-                foreach (var dep in _detectedDependencies)
-                    all.Add(dep);
-            }
-            return all;
+            // TODO: Use DependencyExtractor in EnsureCompiled() to detect
+            // additional dependencies from expression tree analysis
+            return _explicitDependencies;
         }
     }
 
@@ -115,7 +109,5 @@ internal class AgentRule<T> : IAgentRule<T> where T : class
             .Select(e => e.Compile())
             .ToList();
 
-        // TODO: Use DependencyExtractor to analyze expressions
-        // and populate _detectedDependencies
     }
 }

@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <RootNamespace>RulesEngine.Linq</RootNamespace>
     <AssemblyName>RulesEngine.Linq</AssemblyName>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
   <ItemGroup>

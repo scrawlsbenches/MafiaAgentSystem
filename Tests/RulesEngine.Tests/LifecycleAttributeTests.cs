@@ -67,7 +67,6 @@ public class LifecycleAttributeTests
 public class AsyncLifecycleTests
 {
     private bool _setUpRan;
-    private bool _tearDownRan;
 
     [SetUp]
     public async Task AsyncSetUp()
@@ -80,7 +79,6 @@ public class AsyncLifecycleTests
     public async Task AsyncTearDown()
     {
         await Task.Delay(1); // Simulate async work
-        _tearDownRan = true;
     }
 
     [Test]
