@@ -336,9 +336,11 @@ The `AgentRouting.MafiaDemo` project is a **test bed** for exercising the RulesE
 - `AgentRouting.MafiaDemo.AI` - PlayerAgent with rules-driven decision making
 - `AgentRouting.MafiaDemo.Autonomous` - NPC agents (Godfather, Underboss, etc.)
 
-## RulesEngine.Linq (Experimental)
+## RulesEngine.Linq
 
-An experimental LINQ-based rules engine with EF Core-inspired patterns. Rules are **expression trees first** — conditions are `Expression<Func<T, bool>>`, not compiled delegates. This makes them inspectable, serializable, and rewritable. The design targets a future where rules are authored locally but may execute on a remote server.
+The successor to `RulesEngine.Core`, built from lessons learned during the original implementation. Rules are **expression trees first** — conditions are `Expression<Func<T, bool>>`, not compiled delegates. This makes them inspectable, serializable, and rewritable. The design targets a future where rules are authored locally but may execute on a remote server.
+
+`RulesEngine.Core` remains in use by MafiaDemo (8 engines, ~98 rules) and is stable, but new rule engine work should target `RulesEngine.Linq`.
 
 **Status:** Stabilized — 332 tests passing, 14/18 audit items fixed (2026-02-06), 4 deferred design items remaining
 
@@ -540,27 +542,53 @@ Full audit in `RulesEngine.Linq/AUDIT_2026-02-05.md`. 332 tests across 13 test f
 
 Items 8 and 9 are a single architectural change (pass schema reference to session).
 
-### Known Gaps vs Original RulesEngine
+### Migration Roadmap from RulesEngine.Core
 
-| Capability | Original (`RulesEngine.Core`) | LINQ (`RulesEngine.Linq`) |
-|------------|-------------------------------|---------------------------|
+Features to port from the legacy engine before MafiaDemo can migrate:
+
+| Feature | Legacy (`RulesEngine.Core`) | Status in LINQ |
+|---------|----------------------------|----------------|
+| Async rules | `IAsyncRule<T>`, `ExecuteAsync` | **Not yet ported** |
+| Performance tracking | `TrackPerformance`, `GetMetrics()` | **Not yet ported** |
+| Parallel execution | `EnableParallelExecution` option | **Not yet ported** |
+| MafiaDemo integration | 8 engines, ~98 rules | **Not yet started** |
+
+Features already improved in LINQ over legacy:
+
+| Feature | Legacy | LINQ |
+|---------|--------|------|
 | Conditions | `Func<T, bool>` (opaque) | `Expression<Func<T, bool>>` (inspectable) |
 | Fact types | One per engine instance | Multi-fact sessions with cross-fact queries |
-| Async rules | `IAsyncRule<T>`, `ExecuteAsync` | Not implemented |
-| Performance tracking | `TrackPerformance`, `GetMetrics()` | Not implemented |
-| Parallel execution | `EnableParallelExecution` option | Not implemented |
 | Schema validation | None | Constraints, expression depth, closure restrictions |
 | Rule composition | `CompositeRuleBuilder<T>` | `Rule<T>.And()` / `.Or()` on expression trees |
 | Session lifecycle | Stateless `Execute(fact)` | Insert/Evaluate/Commit/Rollback |
-| MafiaDemo integration | 8 engines, ~98 rules | Test-only (no MafiaDemo usage) |
-| Serialization | N/A | Architecture ready, not implemented |
+| Serialization | N/A | Architecture ready, not yet implemented |
+
+### Open Design Issues (2026-02-09 Review)
+
+Issues identified during the stabilization review that should be addressed:
+
+**`IConstrainedRuleSet<T>` duplicates `IRuleSet<T>` members (interface smell)**
+`IRuleSet<T>` already declares `HasConstraints`, `GetConstraints()`, `HasConstraint()`, and `TryAdd()`. `IConstrainedRuleSet<T>` extends it and redeclares the same members plus `ValidationMode`. Either the constraint members should live only on the extended interface, or the extended interface should be removed.
+
+**`Rule<T>` swallows exceptions silently (observability gap)**
+`Rule<T>.Evaluate()` catches all exceptions and returns `false`. `Rule<T>.Execute()` catches and returns `RuleResult.Error`. In contrast, `DependentRule<T>` has no try-catch — exceptions propagate to the session's error handler and appear in `IEvaluationResult.Errors`. This means session error reporting is blind to `Rule<T>` failures. For the successor engine, this asymmetry should be resolved so all rule types report errors consistently.
+
+**No code coverage measurement**
+The CLAUDE.md coverage table tracks RulesEngine, AgentRouting, and MafiaDemo. RulesEngine.Linq has no measured coverage data yet. Should be added to the coverage workflow.
+
+**Session thread safety is undocumented**
+`RuleSession` uses `ConcurrentDictionary` for fact sets and rewrite cache, but `_errors` is a plain `List<>` and `_state` is a plain field with no synchronization. Sessions are likely intended to be single-threaded, but this isn't documented in the interface or class.
 
 ### Recommended Next Steps
 
 1. **Fix deferred design flaws (#7, #8, #9)** — Pass schema to session, wire `FindByKey` to `HasKey` config, fix `RegisteredFactTypes`. Single API change covers #8 and #9.
-2. **Add async rule support** — `IAsyncRule<T>` equivalent for LINQ engine. Required before LINQ can replace original for real workloads.
-3. **Integrate with MafiaDemo** — Wire one of the 8 rule engines through the LINQ API to stress-test cross-fact queries with real data.
-4. **Skip for now:** Serialization/remote execution (no consumer), full `IQueryable<T>` provider (symbolic marker suffices).
+2. **Resolve `Rule<T>` error swallowing** — Make exception reporting consistent across `Rule<T>` and `DependentRule<T>` so `IEvaluationResult.Errors` captures all failures.
+3. **Clean up `IConstrainedRuleSet<T>` duplication** — Remove redundant constraint members from either `IRuleSet<T>` or the extended interface.
+4. **Add async rule support** — Port `IAsyncRule<T>` from legacy engine. Required before MafiaDemo can migrate.
+5. **Add coverage measurement** — Wire RulesEngine.Linq into the Coverlet workflow.
+6. **Integrate with MafiaDemo** — Migrate one of the 8 rule engines to stress-test the LINQ API with real data.
+7. **Skip for now:** Serialization/remote execution (no consumer), full `IQueryable<T>` provider (symbolic marker suffices).
 
 ## RulesEngine API Patterns
 
