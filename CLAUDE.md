@@ -568,11 +568,11 @@ Features already improved in LINQ over legacy:
 
 Issues identified during the stabilization review that should be addressed:
 
-**`IConstrainedRuleSet<T>` duplicates `IRuleSet<T>` members (interface smell)**
-`IRuleSet<T>` already declares `HasConstraints`, `GetConstraints()`, `HasConstraint()`, and `TryAdd()`. `IConstrainedRuleSet<T>` extends it and redeclares the same members plus `ValidationMode`. Either the constraint members should live only on the extended interface, or the extended interface should be removed.
+**`IConstrainedRuleSet<T>` is unused and duplicates `IRuleSet<T>` members**
+`IRuleSet<T>` already declares `HasConstraints`, `GetConstraints()`, `HasConstraint()`, and `TryAdd()`. `RuleSet<T>` implements them as virtual no-ops. `IConstrainedRuleSet<T>` extends `IRuleSet<T>` and redeclares the same 4 members plus `ValidationMode`. The interface is never referenced as a type — production code uses concrete `ConstrainedRuleSet<T>` via `is` cast, and tests never reference it. Either remove `IConstrainedRuleSet<T>` entirely (move `ValidationMode` to `IRuleSet<T>`), or remove the constraint members from `IRuleSet<T>` so the separation is clean.
 
-**`Rule<T>` swallows exceptions silently (observability gap)**
-`Rule<T>.Evaluate()` catches all exceptions and returns `false`. `Rule<T>.Execute()` catches and returns `RuleResult.Error`. In contrast, `DependentRule<T>` has no try-catch — exceptions propagate to the session's error handler and appear in `IEvaluationResult.Errors`. This means session error reporting is blind to `Rule<T>` failures. For the successor engine, this asymmetry should be resolved so all rule types report errors consistently.
+**`Rule<T>` swallows exceptions before the session can capture them (observability gap)**
+The session's `EvaluateFactSet` has proper error handling — a try-catch around each rule/fact pair that records failures to `IEvaluationResult.Errors`. However, `Rule<T>.Evaluate()` and `EvaluateWithRewriter()` have internal try-catch blocks that return `false`, and `Execute()`/`ExecuteWithRewriter()` catch and return `RuleResult.Error`. These preempt the session's catch block. In contrast, `DependentRule<T>` has no internal try-catch, so its exceptions propagate correctly to the session error handler. Result: `_errors` captures failures from `DependentRule<T>` and custom `IRule<T>` implementations, but never from `Rule<T>`.
 
 **No code coverage measurement**
 The CLAUDE.md coverage table tracks RulesEngine, AgentRouting, and MafiaDemo. RulesEngine.Linq has no measured coverage data yet. Should be added to the coverage workflow.
