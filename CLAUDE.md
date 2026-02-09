@@ -373,6 +373,8 @@ An experimental LINQ-based rules engine with EF Core-inspired patterns. Rules ar
 - `Constraints.cs` - Schema constraint configuration and enforcement
 - `ClosureExtractor.cs` - Closure analysis for rule serialization
 - `Extensions.cs` - Helper extensions (`WouldMatch`, `WithRule`, etc.)
+- `CrossFactRulesDesign.cs` - Design doc for cross-fact evaluation with dependency tracking
+- `AgentCommunicationDesign.cs` - Design doc for agent communication rules API
 
 ### Expression Tree Architecture
 
