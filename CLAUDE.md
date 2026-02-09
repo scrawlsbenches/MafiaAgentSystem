@@ -179,7 +179,7 @@ Three systems sharing patterns:
 |--------|---------|------------------|
 | **RulesEngine** | Expression-based business rules | `IRule<T>` |
 | **AgentRouting** | Message routing with middleware | `IAgent`, `IAgentMiddleware` |
-| **RulesEngine.Linq** | EF Core-inspired LINQ rules (experimental) | `IRulesContext`, `IRuleSet<T>` |
+| **RulesEngine.Linq** | EF Core-inspired LINQ rules (stabilized, 332 tests) | `IRulesContext`, `IRuleSet<T>` |
 
 ## SOLID Extension Points
 
@@ -336,11 +336,13 @@ The `AgentRouting.MafiaDemo` project is a **test bed** for exercising the RulesE
 - `AgentRouting.MafiaDemo.AI` - PlayerAgent with rules-driven decision making
 - `AgentRouting.MafiaDemo.Autonomous` - NPC agents (Godfather, Underboss, etc.)
 
-## RulesEngine.Linq (Experimental)
+## RulesEngine.Linq
 
-An experimental LINQ-based rules engine with EF Core-inspired patterns. Rules are **expression trees first** — conditions are `Expression<Func<T, bool>>`, not compiled delegates. This makes them inspectable, serializable, and rewritable. The design targets a future where rules are authored locally but may execute on a remote server.
+The successor to `RulesEngine.Core`, built from lessons learned during the original implementation. Rules are **expression trees first** — conditions are `Expression<Func<T, bool>>`, not compiled delegates. This makes them inspectable, serializable, and rewritable. The design targets a future where rules are authored locally but may execute on a remote server.
 
-**Status:** Experimental - API is evolving
+`RulesEngine.Core` remains in use by MafiaDemo (8 engines, ~98 rules) and is stable, but new rule engine work should target `RulesEngine.Linq`.
+
+**Status:** Stabilized — 332 tests passing, 14/18 audit items fixed (2026-02-06), 4 deferred design items remaining
 
 **Location:** `RulesEngine.Linq/RulesEngine.Linq/`
 
@@ -369,9 +371,12 @@ An experimental LINQ-based rules engine with EF Core-inspired patterns. Rules ar
 - `Rule.cs` - Fluent `Rule<T>` class with automatic `FactQueryExpression` detection
 - `Provider.cs` - Expression tree infrastructure (`FactQueryExpression`, `FactQueryRewriter`, `FactQueryable<T>`)
 - `DependencyAnalysis.cs` - Cross-fact analysis (`IFactContext`, `DependentRule<T>`, `DependencyGraph`, `ContextConditionProjector`)
-- `Validation.cs` - Expression validation and constraints
+- `Validation.cs` - Expression validation
+- `Constraints.cs` - Schema constraint configuration and enforcement
 - `ClosureExtractor.cs` - Closure analysis for rule serialization
 - `Extensions.cs` - Helper extensions (`WouldMatch`, `WithRule`, etc.)
+- `CrossFactRulesDesign.cs` - Design doc for cross-fact evaluation with dependency tracking
+- `AgentCommunicationDesign.cs` - Design doc for agent communication rules API
 
 ### Expression Tree Architecture
 
@@ -519,6 +524,71 @@ The test file `Tests/RulesEngine.Linq.Tests/AgentCommunicationRulesTests.cs` dem
 - Rule composition for complex conditions
 - Territory-based message filtering
 - Audit trail tracking
+
+### Audit Status (2026-02-06)
+
+Full audit in `RulesEngine.Linq/AUDIT_2026-02-05.md`. 332 tests across 13 test files.
+
+**Fixed (14/18):** Stale cache on re-evaluation (P0), `TotalRulesEvaluated` always 0, `ClearSessionCache` never called, `ContainsFactQuery` per-fact perf, `Evaluate<T>` state transition, detector/rewriter asymmetry, `GetFacts()` live list exposure, cycle detection untested, error accumulation untested, projector error paths, session lifecycle edge cases, dead code removal.
+
+**Deferred (4/18):**
+
+| # | Issue | Priority | Reason Deferred |
+|---|-------|----------|-----------------|
+| 7 | `DependentRule.Execute()` skips condition check | P3 | Session handles it; trap for direct callers only |
+| 8 | `FindByKey()` ignores `HasKey()` schema config | P2 | Requires schema access from session — larger API change |
+| 9 | `RegisteredFactTypes` returns inserted types, not registered | P2 | Same — requires schema access from session |
+| 14 | False-positive test naming | P3 | Low impact |
+
+Items 8 and 9 are a single architectural change (pass schema reference to session).
+
+### Migration Roadmap from RulesEngine.Core
+
+Features to port from the legacy engine before MafiaDemo can migrate:
+
+| Feature | Legacy (`RulesEngine.Core`) | Status in LINQ |
+|---------|----------------------------|----------------|
+| Async rules | `IAsyncRule<T>`, `ExecuteAsync` | **Not yet ported** |
+| Performance tracking | `TrackPerformance`, `GetMetrics()` | **Not yet ported** |
+| Parallel execution | `EnableParallelExecution` option | **Not yet ported** |
+| MafiaDemo integration | 8 engines, ~98 rules | **Not yet started** |
+
+Features already improved in LINQ over legacy:
+
+| Feature | Legacy | LINQ |
+|---------|--------|------|
+| Conditions | `Func<T, bool>` (opaque) | `Expression<Func<T, bool>>` (inspectable) |
+| Fact types | One per engine instance | Multi-fact sessions with cross-fact queries |
+| Schema validation | None | Constraints, expression depth, closure restrictions |
+| Rule composition | `CompositeRuleBuilder<T>` | `Rule<T>.And()` / `.Or()` on expression trees |
+| Session lifecycle | Stateless `Execute(fact)` | Insert/Evaluate/Commit/Rollback |
+| Serialization | N/A | Architecture ready, not yet implemented |
+
+### Open Design Issues (2026-02-09 Review)
+
+Issues identified during the stabilization review that should be addressed:
+
+**`IConstrainedRuleSet<T>` is unused and duplicates `IRuleSet<T>` members**
+`IRuleSet<T>` already declares `HasConstraints`, `GetConstraints()`, `HasConstraint()`, and `TryAdd()`. `RuleSet<T>` implements them as virtual no-ops. `IConstrainedRuleSet<T>` extends `IRuleSet<T>` and redeclares the same 4 members plus `ValidationMode`. The interface is never referenced as a type — production code uses concrete `ConstrainedRuleSet<T>` via `is` cast, and tests never reference it. Either remove `IConstrainedRuleSet<T>` entirely (move `ValidationMode` to `IRuleSet<T>`), or remove the constraint members from `IRuleSet<T>` so the separation is clean.
+
+**`Rule<T>` swallows exceptions before the session can capture them (observability gap)**
+The session's `EvaluateFactSet` has proper error handling — a try-catch around each rule/fact pair that records failures to `IEvaluationResult.Errors`. However, `Rule<T>.Evaluate()` and `EvaluateWithRewriter()` have internal try-catch blocks that return `false`, and `Execute()`/`ExecuteWithRewriter()` catch and return `RuleResult.Error`. These preempt the session's catch block. In contrast, `DependentRule<T>` has no internal try-catch, so its exceptions propagate correctly to the session error handler. Result: `_errors` captures failures from `DependentRule<T>` and custom `IRule<T>` implementations, but never from `Rule<T>`.
+
+**No code coverage measurement**
+The CLAUDE.md coverage table tracks RulesEngine, AgentRouting, and MafiaDemo. RulesEngine.Linq has no measured coverage data yet. Should be added to the coverage workflow.
+
+**Session thread safety is undocumented**
+`RuleSession` uses `ConcurrentDictionary` for fact sets and rewrite cache, but `_errors` is a plain `List<>` and `_state` is a plain field with no synchronization. Sessions are likely intended to be single-threaded, but this isn't documented in the interface or class.
+
+### Recommended Next Steps
+
+1. **Fix deferred design flaws (#7, #8, #9)** — Pass schema to session, wire `FindByKey` to `HasKey` config, fix `RegisteredFactTypes`. Single API change covers #8 and #9.
+2. **Resolve `Rule<T>` error swallowing** — Make exception reporting consistent across `Rule<T>` and `DependentRule<T>` so `IEvaluationResult.Errors` captures all failures.
+3. **Clean up `IConstrainedRuleSet<T>` duplication** — Remove redundant constraint members from either `IRuleSet<T>` or the extended interface.
+4. **Add async rule support** — Port `IAsyncRule<T>` from legacy engine. Required before MafiaDemo can migrate.
+5. **Add coverage measurement** — Wire RulesEngine.Linq into the Coverlet workflow.
+6. **Integrate with MafiaDemo** — Migrate one of the 8 rule engines to stress-test the LINQ API with real data.
+7. **Skip for now:** Serialization/remote execution (no consumer), full `IQueryable<T>` provider (symbolic marker suffices).
 
 ## RulesEngine API Patterns
 
