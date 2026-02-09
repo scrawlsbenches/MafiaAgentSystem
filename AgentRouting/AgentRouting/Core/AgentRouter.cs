@@ -186,7 +186,15 @@ public class AgentRouter
         if (string.IsNullOrEmpty(context.TargetAgentId))
         {
             var reason = $"No agent available to handle message: [{message.Priority}] {message.Subject} from {message.SenderId} (Category: {message.Category})";
-            OnUnroutableMessage?.Invoke(message, reason);
+            try
+            {
+                OnUnroutableMessage?.Invoke(message, reason);
+            }
+            catch
+            {
+                // Subscriber exceptions must not break routing.
+                // The caller gets MessageResult.Fail regardless.
+            }
             return MessageResult.Fail("No agent available to handle this message");
         }
 
