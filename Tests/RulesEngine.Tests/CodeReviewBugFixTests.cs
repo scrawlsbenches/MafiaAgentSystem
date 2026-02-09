@@ -222,4 +222,66 @@ public class CodeReviewBugFixTests
     }
 
     #endregion
+
+    #region CR-36: ImmutableRulesEngine options isolation
+
+    [Test]
+    public void CR36_ImmutableEngine_WithRule_OptionsAreIsolated()
+    {
+        // Arrange: Create engine with specific options
+        var options = new RulesEngineOptions { MaxRulesToExecute = 5 };
+        var engine1 = new ImmutableRulesEngine<int>(options);
+
+        var rule = new RuleBuilder<int>()
+            .WithId("test-rule")
+            .WithName("Test Rule")
+            .When(x => x > 0)
+            .Build();
+
+        var engine2 = engine1.WithRule(rule);
+
+        // Act: Mutate the original options object
+        options.MaxRulesToExecute = 999;
+
+        // Assert: engine2 should NOT see the mutation
+        // Execute with facts [1,2,3,4,5,6,7,8,9,10] — if limit is 5, only 5 results
+        var result = engine2.Execute(1);
+
+        // The engine should have its own copy of options, not the mutated reference.
+        // If options are shared, MaxRulesToExecute would be 999 (mutated).
+        // If isolated, it should still be 5.
+        // We test this indirectly: add 10 rules, execute, and check result count.
+        var engineWith10Rules = new ImmutableRulesEngine<int>(new RulesEngineOptions { MaxRulesToExecute = 2 });
+        for (int i = 0; i < 10; i++)
+        {
+            engineWith10Rules = engineWith10Rules.WithRule(
+                new RuleBuilder<int>()
+                    .WithId($"rule-{i}")
+                    .WithName($"Rule {i}")
+                    .When(x => true)
+                    .Build());
+        }
+
+        var originalOptions = new RulesEngineOptions { MaxRulesToExecute = 2 };
+        var baseEngine = new ImmutableRulesEngine<int>(originalOptions);
+        for (int i = 0; i < 10; i++)
+        {
+            baseEngine = baseEngine.WithRule(
+                new RuleBuilder<int>()
+                    .WithId($"rule-{i}")
+                    .WithName($"Rule {i}")
+                    .When(x => true)
+                    .Build());
+        }
+
+        // Mutate AFTER creating derived engines
+        originalOptions.MaxRulesToExecute = 100;
+
+        var result2 = baseEngine.Execute(42);
+        // If options are isolated: limit stays 2, so MatchedCount should be 2
+        // If options are shared: limit becomes 100, MatchedCount would be 10
+        Assert.Equal(2, result2.MatchedRules);
+    }
+
+    #endregion
 }

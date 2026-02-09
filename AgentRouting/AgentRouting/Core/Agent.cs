@@ -115,11 +115,35 @@ public abstract class AgentBase : IAgent
 {
     private readonly ConcurrentQueue<AgentMessage> _messageQueue = new();
     private int _activeMessages = 0;
-    
+    private volatile AgentStatus _statusOverride = AgentStatus.Available;
+    private volatile bool _hasExplicitStatus = false;
+
     public string Id { get; }
     public string Name { get; }
     public AgentCapabilities Capabilities { get; protected set; }
-    public AgentStatus Status { get; protected set; } = AgentStatus.Available;
+
+    /// <summary>
+    /// Agent status derived from active message count, unless explicitly overridden.
+    /// This avoids the race condition where a finishing message sets Status=Available
+    /// while other messages are still processing.
+    /// </summary>
+    public AgentStatus Status
+    {
+        get
+        {
+            if (_hasExplicitStatus)
+                return _statusOverride;
+            return _activeMessages >= Capabilities.MaxConcurrentMessages
+                ? AgentStatus.Busy
+                : AgentStatus.Available;
+        }
+        protected set
+        {
+            // Allow subclasses to set Offline/Error explicitly
+            _statusOverride = value;
+            _hasExplicitStatus = value == AgentStatus.Offline || value == AgentStatus.Error;
+        }
+    }
     
     protected IAgentLogger Logger { get; }
     
@@ -203,16 +227,12 @@ public abstract class AgentBase : IAgent
 
         try
         {
-            Status = _activeMessages >= Capabilities.MaxConcurrentMessages
-                ? AgentStatus.Busy
-                : AgentStatus.Available;
-            
             Logger.LogMessageReceived(this, message);
-            
+
             var result = await HandleMessageAsync(message, ct);
-            
+
             Logger.LogMessageProcessed(this, message, result);
-            
+
             return result;
         }
         catch (Exception ex)
@@ -223,7 +243,7 @@ public abstract class AgentBase : IAgent
         finally
         {
             Interlocked.Decrement(ref _activeMessages);
-            Status = AgentStatus.Available;
+            // Status is now computed from _activeMessages — no manual reset needed
         }
     }
     

@@ -83,6 +83,33 @@ public class AgentRoutingCodeReviewBugFixTests
         Assert.False(eventFired, "OnUnroutableMessage should not fire when agent handles message");
     }
 
+    [Test]
+    public async Task CR04_RouteMessage_ThrowingEventHandler_StillReturnsFailResult()
+    {
+        // Arrange: Router with no agents, event handler that throws
+        var logger = new TestLogger();
+        var router = new AgentRouterBuilder().WithLogger(logger).Build();
+
+        router.OnUnroutableMessage += (msg, reason) =>
+        {
+            throw new InvalidOperationException("Handler blew up!");
+        };
+
+        var message = new AgentMessage
+        {
+            SenderId = "user-1",
+            Subject = "Test message",
+            Content = "No one can handle this"
+        };
+
+        // Act: Should NOT throw — should return MessageResult.Fail
+        var result = await router.RouteMessageAsync(message);
+
+        // Assert: Routing returns a failure result despite the handler exception
+        Assert.False(result.Success, "Should return failure, not throw");
+        Assert.Contains("No agent available", result.Error!);
+    }
+
     #endregion
 
     #region CR-15: ServiceContainer disposal exception aggregation

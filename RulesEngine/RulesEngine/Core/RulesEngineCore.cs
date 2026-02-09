@@ -927,7 +927,14 @@ public class ImmutableRulesEngine<T>
         ConcurrentDictionary<string, RulePerformanceMetrics> metrics)
     {
         _rules = rules;
-        _options = options;
+        _options = new RulesEngineOptions
+        {
+            StopOnFirstMatch = options.StopOnFirstMatch,
+            EnableParallelExecution = options.EnableParallelExecution,
+            TrackPerformance = options.TrackPerformance,
+            MaxRulesToExecute = options.MaxRulesToExecute,
+            AllowDuplicateRuleIds = options.AllowDuplicateRuleIds
+        };
         _metrics = metrics;
     }
 

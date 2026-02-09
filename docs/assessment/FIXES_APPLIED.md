@@ -99,3 +99,20 @@ The following issues from the code review were found to be already addressed:
 ### Pre-existing Test Issues
 - ~25 tests use non-deterministic random seed hunting pattern
 - `PlayerAgent_FailedMission_DoesNotRecordIntel` has a game logic assertion issue (expects 0 intel on failed mission, gets 1)
+
+---
+
+## Delta Review Fixes (2026-02-09)
+
+**Branch:** claude/review-history-files-Qt637
+**Tests before:** 2,268 passed | **Tests after:** 2,270 passed (2 new regression tests)
+
+### CR-04b: OnUnroutableMessage Event Handler Exception Breaks Routing
+**File:** `AgentRouting/AgentRouting/Core/AgentRouter.cs`
+**Fix:** Wrapped `OnUnroutableMessage?.Invoke(message, reason)` in try-catch so subscriber exceptions cannot propagate through routing. Callers always receive `MessageResult.Fail` regardless of handler behavior.
+**Tests:** `CR04_RouteMessage_ThrowingEventHandler_StillReturnsFailResult`
+
+### CR-36: ImmutableRulesEngine Shares Mutable Options Reference
+**File:** `RulesEngine/RulesEngine/Core/RulesEngineCore.cs`
+**Fix:** Private constructor now clones `RulesEngineOptions` instead of storing the reference. Each derived engine (`WithRule`/`WithRules`/`WithoutRule`) gets its own isolated options copy, matching the existing metrics isolation pattern.
+**Tests:** `CR36_ImmutableEngine_WithRule_OptionsAreIsolated`
